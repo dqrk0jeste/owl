@@ -39,18 +39,6 @@ enum owl_cursor_mode {
 	OWL_CURSOR_RESIZE,
 };
 
-struct owl_server;
-typedef void (*keybind_action_func_t)(struct owl_server *, void *);
-
-struct keybind {
-  uint32_t modifiers;
-  uint32_t sym;
-  keybind_action_func_t action;
-  bool active;
-  keybind_action_func_t stop;
-  void *args;
-  struct wl_list link;
-};
 
 struct owl_server {
 	struct wl_display *wl_display;
@@ -95,7 +83,6 @@ struct owl_server {
   struct wl_listener request_xdg_decoration;
 
   struct owl_config *config;
-  struct wl_list keybinds;
 };
 
 struct owl_output {
@@ -212,7 +199,7 @@ static bool handle_keybinds(struct owl_server *server, uint32_t modifiers,
 	 * processing.
 	 */
   struct keybind *k;
-  wl_list_for_each(k, &server->keybinds, link) {
+  wl_list_for_each(k, &server->config->keybinds, link) {
     if(k->active && k->stop && sym == k->sym && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
       k->active = false;
       k->stop(server, k->args);
@@ -980,11 +967,6 @@ static void stop_move_focused_toplevel(struct owl_server *server, void *data) {
 
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
-  *c = (struct owl_config){
-    .mod = WLR_MODIFIER_ALT
-  };
-
-  wl_list_init(&c->monitors);
 
   struct monitor_config *first_monitor = calloc(1, sizeof(*first_monitor));
   *first_monitor = (struct monitor_config){
@@ -1006,6 +988,7 @@ static bool server_load_config(struct owl_server *server) {
     .y = 0,
   };
 
+  wl_list_init(&c->monitors);
   wl_list_insert(&c->monitors, &first_monitor->link);
   wl_list_insert(&c->monitors, &second_monitor->link);
 
@@ -1040,35 +1023,39 @@ static bool server_load_config(struct owl_server *server) {
     .stop = stop_move_focused_toplevel,
   };
 
-  wl_list_init(&server->keybinds);
-  wl_list_insert(&server->keybinds, &stop_server_keybind->link);
-  wl_list_insert(&server->keybinds, &run_kitty->link);
-  wl_list_insert(&server->keybinds, &resize_toplevel->link);
-  wl_list_insert(&server->keybinds, &move_toplevel->link);
+  wl_list_init(&c->keybinds);
+  wl_list_insert(&c->keybinds, &stop_server_keybind->link);
+  wl_list_insert(&c->keybinds, &run_kitty->link);
+  wl_list_insert(&c->keybinds, &resize_toplevel->link);
+  wl_list_insert(&c->keybinds, &move_toplevel->link);
+
+  server->config = c;
 
   return true;
 }
 
-void server_destroy_config(struct owl_config *c) {
+static void server_destroy_config(struct owl_server *server) {
   struct monitor_config *m, *tmp_m;
 
-  wl_list_for_each_safe(m, tmp_m, &c->monitors, link) {
+  wl_list_for_each_safe(m, tmp_m, &server->config->monitors, link) {
     wl_list_remove(&m->link);
     free(m);
   }
 
+  assert(wl_list_empty(&server->config->monitors));
+
   struct keybind *k, *tmp_k;
 
-  wl_list_for_each_safe(k, tmp_k, &c->monitors, link) {
+  wl_list_for_each_safe(k, tmp_k, &server->config->keybinds, link) {
     wl_list_remove(&k->link);
     free(k);
   }
 
-  assert(wl_list_empty(&c->monitors));
+  assert(wl_list_empty(&server->config->keybinds));
 
-  free(c);
+  free(server->config);
+    wlr_log(WLR_ERROR, "config freed");
 }
-
 
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_DEBUG, NULL);
@@ -1253,6 +1240,7 @@ int main(int argc, char *argv[]) {
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
 	 * server. */
+  server_destroy_config(&server);
 	wl_display_destroy_clients(server.wl_display);
 	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.cursor_mgr);
