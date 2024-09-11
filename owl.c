@@ -140,11 +140,12 @@ struct owl_keyboard {
 
 static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *surface) {
 	/* Note: this function only deals with keyboard focus. */
+	struct owl_server *server = toplevel->server;
+  server->focused_toplevel = toplevel;
+
 	if (toplevel == NULL) {
 		return;
 	}
-	struct owl_server *server = toplevel->server;
-  server->focused_toplevel = toplevel;
 
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
@@ -210,9 +211,6 @@ static bool handle_keybinds(struct owl_server *server, uint32_t modifiers,
 	 * processing keys, rather than passing them on to the client for its own
 	 * processing.
 	 */
-  FILE *f = fopen("log.txt", "a");
-  fprintf(f, "code: %d, pressed: %d\n", sym, state == WL_KEYBOARD_KEY_STATE_PRESSED);
-  fclose(f);
   struct keybind *k;
   wl_list_for_each(k, &server->keybinds, link) {
     if(k->active && k->stop && sym == k->sym && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
@@ -498,12 +496,17 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 	struct owl_toplevel *toplevel = desktop_toplevel_at(server,
 			server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 	if (!toplevel) {
+    server->focused_toplevel = NULL;
+
 		/* If there's no toplevel under the cursor, set the cursor image to a
 		 * default. This is what makes the cursor image appear when you move it
 		 * around the screen, not over any toplevels. */
 		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-	}
-	if (surface) {
+
+		/* Clear pointer focus so future button events and such are not sent to
+		 * the last client to have the cursor over it. */
+		wlr_seat_pointer_clear_focus(seat);
+	} else {
 		/*
 		 * Send pointer enter and motion events.
 		 *
@@ -515,12 +518,9 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		 * the surface has already has pointer focus or if the client is already
 		 * aware of the coordinates passed.
 		 */
+    focus_toplevel(toplevel, surface);
 		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
 		wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-	} else {
-		/* Clear pointer focus so future button events and such are not sent to
-		 * the last client to have the cursor over it. */
-		wlr_seat_pointer_clear_focus(seat);
 	}
 }
 
@@ -572,9 +572,6 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		/* If you released any buttons, we exit interactive move/resize mode. */
 		reset_cursor_mode(server);
-	} else {
-		/* Focus that client if the button was _pressed_ */
-		focus_toplevel(toplevel, surface);
 	}
 }
 
@@ -784,10 +781,7 @@ static void begin_interactive(struct owl_toplevel *toplevel,
 	 * compositor stops propegating pointer events to clients and instead
 	 * consumes them itself, to move or resize windows. */
 	struct owl_server *server = toplevel->server;
-	struct wlr_surface *focused_surface =
-		server->seat->pointer_state.focused_surface;
-	if (toplevel->xdg_toplevel->base->surface !=
-			wlr_surface_get_root_surface(focused_surface)) {
+	if (toplevel != server->focused_toplevel) {
 		/* Deny move/resize requests from unfocused clients. */
 		return;
 	}
@@ -946,7 +940,7 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }
 
-void handle_request_xdg_decoration(struct wl_listener *listener, void *data) {
+static void handle_request_xdg_decoration(struct wl_listener *listener, void *data) {
   struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
   wlr_xdg_toplevel_decoration_v1_set_mode(decoration,
     WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
@@ -963,21 +957,25 @@ static void run(struct owl_server *server, void *data) {
 }
 
 static void resize_focused_toplevel(struct owl_server *server, void *data) {
+  if(server->focused_toplevel == NULL) return;
+
   begin_interactive(server->focused_toplevel,
     OWL_CURSOR_RESIZE,
     cursor_get_closest_toplevel_corner(server->cursor, server->focused_toplevel));
 }
 
 static void stop_resize_focused_toplevel(struct owl_server *server, void *data) {
-  server->cursor_mode = OWL_CURSOR_PASSTHROUGH;
+  reset_cursor_mode(server);
 }
 
 static void move_focused_toplevel(struct owl_server *server, void *data) {
+  if(server->focused_toplevel == NULL) return;
+
   begin_interactive(server->focused_toplevel, OWL_CURSOR_MOVE, 0);
 }
 
 static void stop_move_focused_toplevel(struct owl_server *server, void *data) {
-  server->cursor_mode = OWL_CURSOR_PASSTHROUGH;
+  reset_cursor_mode(server);
 }
 
 static bool server_load_config(struct owl_server *server) {
@@ -1020,7 +1018,7 @@ static bool server_load_config(struct owl_server *server) {
 
   struct keybind *run_kitty = calloc(1, sizeof(*run_kitty));
   *run_kitty = (struct keybind){
-    .modifiers = WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL,
+    .modifiers = WLR_MODIFIER_LOGO,
     .sym = XKB_KEY_t,
     .action = run,
     .args = "kitty",
@@ -1028,7 +1026,7 @@ static bool server_load_config(struct owl_server *server) {
 
   struct keybind *resize_toplevel = calloc(1, sizeof(*resize_toplevel));
   *resize_toplevel = (struct keybind) {
-    .modifiers = WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL,
+    .modifiers = WLR_MODIFIER_LOGO,
     .sym = XKB_KEY_x,
     .action = resize_focused_toplevel,
     .stop = stop_resize_focused_toplevel,
@@ -1052,11 +1050,18 @@ static bool server_load_config(struct owl_server *server) {
 }
 
 void server_destroy_config(struct owl_config *c) {
-  struct monitor_config *m, *tmp;
+  struct monitor_config *m, *tmp_m;
 
-  wl_list_for_each_safe(m, tmp, &c->monitors, link) {
+  wl_list_for_each_safe(m, tmp_m, &c->monitors, link) {
     wl_list_remove(&m->link);
     free(m);
+  }
+
+  struct keybind *k, *tmp_k;
+
+  wl_list_for_each_safe(k, tmp_k, &c->monitors, link) {
+    wl_list_remove(&k->link);
+    free(k);
   }
 
   assert(wl_list_empty(&c->monitors));
