@@ -30,8 +30,9 @@
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 
-#include "config.h"
 #include "util.h"
+
+#define MAX_WORKSPACES_PER_WINDOW 10
 
 enum owl_cursor_mode {
 	OWL_CURSOR_PASSTHROUGH,
@@ -39,6 +40,38 @@ enum owl_cursor_mode {
 	OWL_CURSOR_RESIZE,
 };
 
+struct owl_config {
+  struct wl_list monitors;
+  struct wl_list keybinds;
+  char* cursor_theme;
+  uint32_t min_toplevel_size;
+  uint32_t workspaces_per_monitor;
+};
+
+struct monitor_config {
+  char* name;
+  struct wl_list link;
+  uint32_t width;
+  uint32_t height;
+  uint32_t refresh_rate;
+  uint32_t x;
+  uint32_t y;
+};
+
+struct owl_server;
+typedef void (*keybind_action_func_t)(struct owl_server *, void *);
+
+struct keybind {
+  uint32_t modifiers;
+  uint32_t sym;
+  keybind_action_func_t action;
+  bool active;
+  keybind_action_func_t stop;
+  void *args;
+  struct wl_list link;
+};
+
+struct owl_workspace;
 
 struct owl_server {
 	struct wl_display *wl_display;
@@ -51,7 +84,6 @@ struct owl_server {
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
-	struct wl_list toplevels;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -68,12 +100,16 @@ struct owl_server {
 	struct wl_list keyboards;
 	enum owl_cursor_mode cursor_mode;
 
-  struct owl_toplevel *focused_toplevel;
-
 	struct owl_toplevel *grabbed_toplevel;
 	double grab_x, grab_y;
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
+
+  struct {
+    struct wlr_surface *surface;
+    uint32_t hotspot_x;
+    uint32_t hotspot_y;
+  } client_cursor;
 
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
@@ -83,12 +119,23 @@ struct owl_server {
   struct wl_listener request_xdg_decoration;
 
   struct owl_config *config;
+  struct owl_workspace *active_workspace;
+};
+
+struct owl_workspace {
+  struct owl_output *output;
+  uint32_t index;
+  struct wl_list tiled_toplevels;
+  struct wl_list floating_toplevels;
 };
 
 struct owl_output {
 	struct wl_list link;
 	struct owl_server *server;
 	struct wlr_output *wlr_output;
+  /* this is kind of dumb but it will work for now */
+  struct owl_workspace workspaces[MAX_WORKSPACES_PER_WINDOW];
+  struct owl_workspace *active_workspace;
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
@@ -99,6 +146,8 @@ struct owl_toplevel {
 	struct owl_server *server;
 	struct wlr_xdg_toplevel *xdg_toplevel;
 	struct wlr_scene_tree *scene_tree;
+  struct owl_workspace *workspace;
+  bool floating;
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
@@ -125,14 +174,41 @@ struct owl_keyboard {
 	struct wl_listener destroy;
 };
 
-static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *surface) {
-	/* Note: this function only deals with keyboard focus. */
-	struct owl_server *server = toplevel->server;
-  server->focused_toplevel = toplevel;
+static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
+  struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
+  struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
+  if(xdg_surface == NULL) {
+    return NULL;
+  }
+  
+  /*according to docs i have to keep scene_tree in surface's data*/
+  /*and i am keeping the topleve in scene_tree->node->data*/
+  struct wlr_scene_tree *tree = xdg_surface->data;
+	return tree->node.data;
+}
 
+static struct owl_toplevel *get_keyboard_focused_toplevel(struct owl_server *server) {
+  struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
+  if(focused_surface == NULL) {
+    return NULL;
+  }
+  return toplevel_parent_of_surface(focused_surface);
+}
+
+static struct owl_toplevel *get_pointer_focused_toplevel(struct owl_server *server) {
+  struct wlr_surface *focused_surface = server->seat->pointer_state.focused_surface;
+  if(focused_surface == NULL) {
+    return NULL;
+  }
+  return toplevel_parent_of_surface(focused_surface);
+}
+
+static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *surface) {
 	if (toplevel == NULL) {
 		return;
 	}
+
+	struct owl_server *server = toplevel->server;
 
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
@@ -140,6 +216,7 @@ static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *su
 		/* Don't re-focus an already focused surface. */
 		return;
 	}
+
 	if (prev_surface) {
 		/*
 		 * Deactivate the previously focused surface. This lets the client know
@@ -152,13 +229,16 @@ static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *su
 			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
 		}
 	}
-	/* Move the toplevel to the front */
-	wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-	wl_list_remove(&toplevel->link);
-	wl_list_insert(&server->toplevels, &toplevel->link);
+
+  if(toplevel->floating) {
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+    wl_list_remove(&toplevel->link);
+    wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
+  }
 
 	/* Activate the new surface */
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+  server->client_cursor.surface = NULL;
 
 	/*
 	 * Tell the seat to have the keyboard enter this surface. wlroots will keep
@@ -205,7 +285,7 @@ static bool handle_keybinds(struct owl_server *server, uint32_t modifiers,
       k->stop(server, k->args);
     }
 
-    if(((modifiers & k->modifiers) == k->modifiers) && sym == k->sym && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+    if(modifiers == k->modifiers && sym == k->sym && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
       k->active = true;
       k->action(server, k->args);
       return true;
@@ -344,6 +424,9 @@ static void seat_request_cursor(struct wl_listener *listener, void *data) {
 		 * cursor moves between outputs. */
 		wlr_cursor_set_surface(server->cursor, event->surface,
 				event->hotspot_x, event->hotspot_y);
+    server->client_cursor.surface = event->surface;
+    server->client_cursor.hotspot_x = event->hotspot_x;
+    server->client_cursor.hotspot_y = event->hotspot_y;
 	}
 }
 
@@ -390,6 +473,12 @@ static void reset_cursor_mode(struct owl_server *server) {
 	/* Reset the cursor mode to passthrough. */
 	server->cursor_mode = OWL_CURSOR_PASSTHROUGH;
 	server->grabbed_toplevel = NULL;
+  if(server->client_cursor.surface != NULL) {
+		wlr_cursor_set_surface(server->cursor, server->client_cursor.surface,
+				server->client_cursor.hotspot_x, server->client_cursor.hotspot_y);
+  } else {
+    wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+  }
 }
 
 static void process_cursor_move(struct owl_server *server, uint32_t time) {
@@ -427,8 +516,8 @@ static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 	int new_width = server->grab_geobox.width;
   int new_height = server->grab_geobox.height;
 
-  int min_width = max(toplevel->xdg_toplevel->current.min_width, MIN_TOPLEVEL_SIZE);
-  int min_height = max(toplevel->xdg_toplevel->current.min_height, MIN_TOPLEVEL_SIZE);
+  int min_width = max(toplevel->xdg_toplevel->current.min_width, server->config->min_toplevel_size);
+  int min_height = max(toplevel->xdg_toplevel->current.min_height, server->config->min_toplevel_size);
 
 	if (server->resize_edges & WLR_EDGE_TOP) {
 		new_y = start_y + (server->cursor->y - server->grab_y);
@@ -476,6 +565,14 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		return;
 	}
 
+  /* get output cursor is on */
+  struct wlr_output *wlr_output = wlr_output_layout_output_at(
+    server->output_layout, server->cursor->x, server->cursor->y);
+  struct owl_output *output = wlr_output->data;
+
+  /*set globaly active workspace*/
+  server->active_workspace = output->active_workspace;
+
 	/* Otherwise, find the toplevel under the pointer and send the event along. */
 	double sx, sy;
 	struct wlr_seat *seat = server->seat;
@@ -483,8 +580,6 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 	struct owl_toplevel *toplevel = desktop_toplevel_at(server,
 			server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 	if (!toplevel) {
-    server->focused_toplevel = NULL;
-
 		/* If there's no toplevel under the cursor, set the cursor image to a
 		 * default. This is what makes the cursor image appear when you move it
 		 * around the screen, not over any toplevels. */
@@ -621,75 +716,167 @@ static void output_destroy(struct wl_listener *listener, void *data) {
 	free(output);
 }
 
+static void change_workspace(struct owl_server *server, void *data) {
+  struct owl_workspace *workspace = data;
+
+  if(server->active_workspace == workspace) {
+    return;
+  }
+  
+  struct owl_output *o;
+  wl_list_for_each(o, &server->outputs, link) {
+    if(workspace == o->active_workspace) {
+      server->active_workspace = workspace;
+
+      struct wlr_box output_box;
+      wlr_output_layout_get_box(server->output_layout,
+        workspace->output->wlr_output, &output_box);
+
+      wlr_cursor_warp(server->cursor, NULL,
+        output_box.x + output_box.width / 2.0,
+        output_box.y + output_box.height / 2.0);
+      return;
+    }
+  }
+
+  server->active_workspace = workspace;
+
+  struct owl_toplevel *t;
+  wl_list_for_each(t, &workspace->output->active_workspace->floating_toplevels, link) {
+    wlr_log(WLR_ERROR, "dakro1");
+    wlr_scene_node_set_enabled(&t->scene_tree->node, false);
+  }
+  wl_list_for_each(t, &workspace->output->active_workspace->tiled_toplevels, link) {
+    wlr_scene_node_set_enabled(&t->scene_tree->node, false);
+  }
+
+  wl_list_for_each(t, &workspace->floating_toplevels, link) {
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+  }
+  wl_list_for_each(t, &workspace->tiled_toplevels, link) {
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+  }
+}
+
 static void server_new_output(struct wl_listener *listener, void *data) {
-	/* This event is raised by the backend when a new output (aka a display or
-	 * monitor) becomes available. */
-	struct owl_server *server =
-		wl_container_of(listener, server, new_output);
-	struct wlr_output *wlr_output = data;
+  /* This event is raised by the backend when a new output (aka a display or
+   * monitor) becomes available. */
+  struct owl_server *server =
+    wl_container_of(listener, server, new_output);
+  struct wlr_output *wlr_output = data;
 
-	/* Configures the output created by the backend to use our allocator
-	 * and our renderer. Must be done once, before commiting the output */
-	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
+  /* Configures the output created by the backend to use our allocator
+   * and our renderer. Must be done once, before commiting the output */
+  wlr_output_init_render(wlr_output, server->allocator, server->renderer);
 
-	/* The output may be disabled, switch it on. */
-	struct wlr_output_state state;
-	wlr_output_state_init(&state);
-	wlr_output_state_set_enabled(&state, true);
+  /* The output may be disabled, switch it on. */
+  struct wlr_output_state state;
+  wlr_output_state_init(&state);
+  wlr_output_state_set_enabled(&state, true);
 
-	/* Some backends don't have modes. DRM+KMS does, and we need to set a mode
-	 * before we can use the output. The mode is a tuple of (width, height,
-	 * refresh rate), and each monitor supports only a specific set of modes. We
-	 * just pick the monitor's preferred mode, a more sophisticated compositor
-	 * would let the user configure it. */
-	struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
-	if (mode != NULL) {
-		wlr_output_state_set_mode(&state, mode);
-	}
+  bool set = false;
+  struct monitor_config *m;
+  wl_list_for_each(m, &server->config->monitors, link) {
+    if(strcmp(m->name, wlr_output->name) == 0) {  
+      wlr_log(WLR_DEBUG, "found: %s, set mode: %dx%d@%dmHz", m->name, m->width, m->height, m->refresh_rate);
+      struct wlr_output_mode mode = {
+        .width = m->width,
+        .height = m->height,
+        .refresh = m->refresh_rate,
+      };
+      wlr_output_state_set_mode(&state, &mode);
+      bool set = true;
+    }
+  }
 
-	/* Atomically applies the new output state. */
-	wlr_output_commit_state(wlr_output, &state);
-	wlr_output_state_finish(&state);
+  if(!set) {
+    struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
+    if (mode != NULL) {
+      wlr_output_state_set_mode(&state, mode);
+    }
+  }
 
-	/* Allocates and configures our state for this output */
-	struct owl_output *output = calloc(1, sizeof(*output));
-	output->wlr_output = wlr_output;
-	output->server = server;
+  /* Atomically applies the new output state. */
+  wlr_output_commit_state(wlr_output, &state);
+  wlr_output_state_finish(&state);
 
-	/* Sets up a listener for the frame event. */
-	output->frame.notify = output_frame;
-	wl_signal_add(&wlr_output->events.frame, &output->frame);
+  /* Allocates and configures our state for this output */
+  struct owl_output *output = calloc(1, sizeof(*output));
+  wlr_output->data = output;
+  output->wlr_output = wlr_output;
+  output->server = server;
 
-	/* Sets up a listener for the state request event. */
-	output->request_state.notify = output_request_state;
-	wl_signal_add(&wlr_output->events.request_state, &output->request_state);
+  /* Sets up a listener for the frame event. */
+  output->frame.notify = output_frame;
+  wl_signal_add(&wlr_output->events.frame, &output->frame);
 
-	/* Sets up a listener for the destroy event. */
-	output->destroy.notify = output_destroy;
-	wl_signal_add(&wlr_output->events.destroy, &output->destroy);
+  /* Sets up a listener for the state request event. */
+  output->request_state.notify = output_request_state;
+  wl_signal_add(&wlr_output->events.request_state, &output->request_state);
 
-	wl_list_insert(&server->outputs, &output->link);
+  /* Sets up a listener for the destroy event. */
+  output->destroy.notify = output_destroy;
+  wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
-	/* Adds this to the output layout. The add_auto function arranges outputs
-	 * from left-to-right in the order they appear. A more sophisticated
-	 * compositor would let the user configure the arrangement of outputs in the
-	 * layout.
-	 *
-	 * The output layout utility automatically adds a wl_output global to the
-	 * display, which Wayland clients can see to find out information about the
-	 * output (such as DPI, scale factor, manufacturer, etc).
-	 */
-	struct wlr_output_layout_output *l_output = wlr_output_layout_add_auto(server->output_layout,
-		wlr_output);
-	struct wlr_scene_output *scene_output = wlr_scene_output_create(server->scene, wlr_output);
-	wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
+  for(size_t i = 0; i < server->config->workspaces_per_monitor; i++) {
+    struct owl_workspace *workspace = &output->workspaces[i];
+    wl_list_init(&workspace->tiled_toplevels);
+    wl_list_init(&workspace->floating_toplevels);
+
+    workspace->output = output;
+    /* i dont think this will work for hotplugging */
+    workspace->index =
+      wl_list_length(&server->outputs) * server->config->workspaces_per_monitor + i;
+
+    struct keybind *change_workspace_k = calloc(1, sizeof(*change_workspace_k));
+    *change_workspace_k = (struct keybind) {
+      .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
+      .sym = XKB_KEY_1 + i,
+      .action = change_workspace,
+      .args = workspace,
+    };
+
+    wl_list_insert(
+      &server->config->keybinds,
+      &change_workspace_k->link);
+  }
+  
+  output->active_workspace = &output->workspaces[0];
+  if(server->active_workspace == NULL) {
+    server->active_workspace = output->active_workspace;
+  }
+
+  wl_list_insert(&server->outputs, &output->link);
+
+  struct wlr_output_layout_output *l_output;
+  set = false;
+  wl_list_for_each(m, &server->config->monitors, link) {
+    if(strcmp(m->name, wlr_output->name) == 0) {  
+      wlr_log(WLR_DEBUG, "found: %s, set position: %d, %d", m->name, m->x, m->y);
+      l_output = wlr_output_layout_add(server->output_layout, wlr_output, m->x, m->y);
+      set = true;
+    }
+  }
+
+  if(!set) {
+    l_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
+  }
+
+  struct wlr_scene_output *scene_output =
+    wlr_scene_output_create(server->scene, wlr_output);
+
+  wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
 }
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
-	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(toplevel->server->output_layout,
+    toplevel->workspace->output->wlr_output, &output_box);
+  wlr_scene_node_set_position(&toplevel->scene_tree->node,
+    output_box.x + 24, output_box.y + 24);
 
 	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 }
@@ -702,8 +889,6 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	if (toplevel == toplevel->server->grabbed_toplevel) {
 		reset_cursor_mode(toplevel->server);
 	}
-
-	wl_list_remove(&toplevel->link);
 }
 
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
@@ -738,19 +923,29 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 static uint32_t cursor_get_closest_toplevel_corner(struct wlr_cursor *cursor,
     struct owl_toplevel *toplevel) {
   struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-  int toplevel_x = toplevel->scene_tree->node.x;
-  int toplevel_y = toplevel->scene_tree->node.y;
+  int toplevel_x = toplevel->scene_tree->node.x + geo_box->x;
+  int toplevel_y = toplevel->scene_tree->node.y + geo_box->y;
 
-  int left_dist = abs((int)cursor->x - geo_box->x);
-  int right_dist = abs(toplevel_x + geo_box->width - left_dist);
-  int top_dist = abs((int)cursor->y - geo_box->y);
-  int bottom_dist = abs(toplevel_y + geo_box->height - top_dist);
+  int left_dist = cursor->x - toplevel_x;
+  int right_dist = geo_box->width - left_dist;
+  int top_dist = cursor->y - toplevel_y;
+  int bottom_dist = geo_box->height - top_dist;
+
+  /*debug logs*/
+  /*wlr_log(WLR_ERROR, "cursor: %f, %f", cursor->x, cursor->y);*/
+  /*wlr_log(WLR_ERROR, "x, y: %d, %d", toplevel_x, toplevel_y);*/
+  /*wlr_log(WLR_ERROR, "width: %d", geo_box->width);*/
+  /*wlr_log(WLR_ERROR, "height: %d", geo_box->height);*/
+  /*wlr_log(WLR_ERROR, "left: %d", left_dist);*/
+  /*wlr_log(WLR_ERROR, "right: %d", right_dist);*/
+  /*wlr_log(WLR_ERROR, "top: %d", top_dist);*/
+  /*wlr_log(WLR_ERROR, "bottom: %d", bottom_dist);*/
 
   uint32_t edges = 0;
-  if(right_dist <= left_dist) {
-    edges |= WLR_EDGE_RIGHT;
-  } else {
+  if(left_dist <= right_dist) {
     edges |= WLR_EDGE_LEFT;
+  } else {
+    edges |= WLR_EDGE_RIGHT;
   }
 
   if(top_dist <= bottom_dist) {
@@ -764,14 +959,15 @@ static uint32_t cursor_get_closest_toplevel_corner(struct wlr_cursor *cursor,
 
 static void begin_interactive(struct owl_toplevel *toplevel,
 		enum owl_cursor_mode mode, uint32_t edges) {
-	/* This function sets up an interactive move or resize operation, where the
-	 * compositor stops propegating pointer events to clients and instead
-	 * consumes them itself, to move or resize windows. */
+  if(toplevel == NULL) {
+    return;
+  }
+
 	struct owl_server *server = toplevel->server;
-	if (toplevel != server->focused_toplevel) {
-		/* Deny move/resize requests from unfocused clients. */
+	if (toplevel != get_pointer_focused_toplevel(server)) {
+		/*Deny move/resize requests from unfocused clients. */
 		return;
-	}
+	 }
 
 	server->grabbed_toplevel = toplevel;
 	server->cursor_mode = mode;
@@ -841,12 +1037,29 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	struct owl_server *server = wl_container_of(listener, server, new_xdg_toplevel);
 	struct wlr_xdg_toplevel *xdg_toplevel = data;
 
-  xdg_toplevel->current.min_width = MIN_TOPLEVEL_SIZE;
-  xdg_toplevel->current.min_height = MIN_TOPLEVEL_SIZE;
+  xdg_toplevel->current.min_width = server->config->min_toplevel_size;
+  xdg_toplevel->current.min_height = server->config->min_toplevel_size;
 
 	/* Allocate a owl_toplevel for this surface */
 	struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
+
 	toplevel->server = server;
+  toplevel->workspace = server->active_workspace;
+
+  // TODO: add tiling and TODO_LONG_TERM: windowrules
+  if(xdg_toplevel->parent != NULL) {
+    toplevel->floating = true;
+  } else {
+    toplevel->floating = true;
+  }
+
+  if(toplevel->floating) {
+	  wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
+  } else {
+	  wl_list_insert(&toplevel->workspace->tiled_toplevels, &toplevel->link);
+  }
+  
+
 	toplevel->xdg_toplevel = xdg_toplevel;
 	toplevel->scene_tree =
 		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
@@ -944,11 +1157,30 @@ static void run(struct owl_server *server, void *data) {
 }
 
 static void resize_focused_toplevel(struct owl_server *server, void *data) {
-  if(server->focused_toplevel == NULL) return;
+  struct owl_toplevel *toplevel =
+    get_pointer_focused_toplevel(server);
 
-  begin_interactive(server->focused_toplevel,
-    OWL_CURSOR_RESIZE,
-    cursor_get_closest_toplevel_corner(server->cursor, server->focused_toplevel));
+  if(toplevel == NULL) {
+    return;
+  }
+
+  uint32_t edges = cursor_get_closest_toplevel_corner(server->cursor, toplevel);
+
+  char cursor_image[128] = {0};
+  if(edges & WLR_EDGE_TOP) {
+    strcat(cursor_image, "top_");
+  } else {
+    strcat(cursor_image, "bottom_");
+  }
+  if(edges & WLR_EDGE_LEFT) {
+    strcat(cursor_image, "left_");
+  } else {
+    strcat(cursor_image, "right_");
+  }
+  strcat(cursor_image, "corner");
+
+  wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, cursor_image);
+  begin_interactive(toplevel, OWL_CURSOR_RESIZE, edges);
 }
 
 static void stop_resize_focused_toplevel(struct owl_server *server, void *data) {
@@ -956,9 +1188,15 @@ static void stop_resize_focused_toplevel(struct owl_server *server, void *data) 
 }
 
 static void move_focused_toplevel(struct owl_server *server, void *data) {
-  if(server->focused_toplevel == NULL) return;
+  struct owl_toplevel *toplevel =
+    get_pointer_focused_toplevel(server);
 
-  begin_interactive(server->focused_toplevel, OWL_CURSOR_MOVE, 0);
+  if(toplevel == NULL) {
+    return;
+  }
+
+  wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "hand1");
+  begin_interactive(toplevel, OWL_CURSOR_MOVE, 0);
 }
 
 static void stop_move_focused_toplevel(struct owl_server *server, void *data) {
@@ -967,6 +1205,10 @@ static void stop_move_focused_toplevel(struct owl_server *server, void *data) {
 
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
+
+  c->min_toplevel_size = 100;
+  c->workspaces_per_monitor = 5;
+  c->cursor_theme = "Bibata-Modern-Ice";
 
   struct monitor_config *first_monitor = calloc(1, sizeof(*first_monitor));
   *first_monitor = (struct monitor_config){
@@ -992,8 +1234,8 @@ static bool server_load_config(struct owl_server *server) {
   wl_list_insert(&c->monitors, &first_monitor->link);
   wl_list_insert(&c->monitors, &second_monitor->link);
 
-  struct keybind *stop_server_keybind = calloc(1, sizeof(*stop_server_keybind));
-  *stop_server_keybind = (struct keybind){
+  struct keybind *stop_server_k = calloc(1, sizeof(*stop_server_k));
+  *stop_server_k = (struct keybind){
     .modifiers = WLR_MODIFIER_ALT,
     .sym = XKB_KEY_Escape,
     .action = stop_server,
@@ -1024,7 +1266,7 @@ static bool server_load_config(struct owl_server *server) {
   };
 
   wl_list_init(&c->keybinds);
-  wl_list_insert(&c->keybinds, &stop_server_keybind->link);
+  wl_list_insert(&c->keybinds, &stop_server_k->link);
   wl_list_insert(&c->keybinds, &run_kitty->link);
   wl_list_insert(&c->keybinds, &resize_toplevel->link);
   wl_list_insert(&c->keybinds, &move_toplevel->link);
@@ -1054,12 +1296,10 @@ static void server_destroy_config(struct owl_server *server) {
   assert(wl_list_empty(&server->config->keybinds));
 
   free(server->config);
-    wlr_log(WLR_ERROR, "config freed");
 }
 
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_DEBUG, NULL);
-	char *startup_cmd = "kitty";
 
 	struct owl_server server = {0};
 
@@ -1072,6 +1312,7 @@ int main(int argc, char *argv[]) {
 	/* The Wayland display is managed by libwayland. It handles accepting
 	 * clients from the Unix socket, manging Wayland globals, and so on. */
 	server.wl_display = wl_display_create();
+
 	/* The backend is a wlroots feature which abstracts the underlying input and
 	 * output hardware. The autocreate option will choose the most suitable
 	 * backend based on the current environment, such as opening an X11 window
@@ -1139,7 +1380,6 @@ int main(int argc, char *argv[]) {
 	 * used for application windows. For more detail on shells, refer to
 	 * https://drewdevault.com/2018/07/29/Wayland-shells.html.
 	 */
-	wl_list_init(&server.toplevels);
 	server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 3);
 	server.new_xdg_toplevel.notify = server_new_xdg_toplevel;
 	wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel);
@@ -1157,7 +1397,7 @@ int main(int argc, char *argv[]) {
 	 * Xcursor themes to source cursor images from and makes sure that cursor
 	 * images are available at all scale factors on the screen (necessary for
 	 * HiDPI support). */
-	server.cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+	server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, 24);
 
 	/*
 	 * wlr_cursor *only* displays an image on screen. It does not move around
@@ -1225,11 +1465,7 @@ int main(int argc, char *argv[]) {
 	/* Set the WAYLAND_DISPLAY environment variable to our socket and run the
 	 * startup command if requested. */
 	setenv("WAYLAND_DISPLAY", socket, true);
-	if (startup_cmd) {
-		if (fork() == 0) {
-			execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (void *)NULL);
-		}
-	}
+
 	/* Run the Wayland event loop. This does not return until you exit the
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate

@@ -18,7 +18,7 @@ protocols/xdg-decoration-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml $@
 
-build/owl.o: owl.c config.h protocols/xdg-shell-protocol.h protocols/xdg-decoration-protocol.h
+build/owl.o: owl.c protocols/xdg-shell-protocol.h protocols/xdg-decoration-protocol.h
 	$(CC) -c $< $(CFLAGS) -I. -DWLR_USE_UNSTABLE -o $@
 
 build/owl: build/owl.o
