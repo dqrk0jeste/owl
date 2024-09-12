@@ -965,10 +965,27 @@ static void server_new_output(struct wl_listener *listener, void *data) {
   wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
 }
 
+static void clip_surface_if_needed(struct owl_toplevel *toplevel, 
+  uint32_t width, uint32_t height) {
+  if(width < toplevel->xdg_toplevel->base->geometry.width
+    || height < toplevel->xdg_toplevel->base->geometry.height) {
+    struct wlr_box clip = (struct wlr_box){
+      .x = 0,
+      .y = 0,
+      .width = width,
+      .height = height,
+    };
+    wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip);
+  } else {
+    wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+  }
+}
+
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
   struct owl_server *server = toplevel->server;
+
   // TODO: windowrules
   toplevel->floating = toplevel->xdg_toplevel->parent != NULL;
 
@@ -998,6 +1015,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
       output_box.x + outer_gaps, output_box.y + outer_gaps);
     toplevel_create_or_update_borders(toplevel,
       output_box.width - 2 * outer_gaps, output_box.height - 2 * outer_gaps);
+    return;
   } else {
     wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
 
@@ -1011,6 +1029,8 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
       wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
       toplevel_create_or_update_borders(master, master_width, master_height);
+
+      clip_surface_if_needed(master, master_width, master_height);
     }
 
     /* share the other half among slaves */
@@ -1022,12 +1042,23 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     size_t i = 0;
     wl_list_for_each(t, &toplevel->workspace->slaves, link) {
       wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
-
       wlr_scene_node_set_position(&t->scene_tree->node,
         output_box.x + output_box.width / 2 + inner_gaps,
         outer_gaps + i * (slave_height + inner_gaps * 2));
-        
       toplevel_create_or_update_borders(t, slave_width, slave_height);
+
+      if(slave_width < t->xdg_toplevel->base->geometry.width
+        || slave_height < t->xdg_toplevel->base->geometry.height) {
+        struct wlr_box clip = (struct wlr_box){
+          .x = 0,
+          .y = 0,
+          .width = slave_width,
+          .height = slave_height,
+        };
+        wlr_scene_subsurface_tree_set_clip(&t->scene_tree->node, &clip);
+      } else {
+        wlr_scene_subsurface_tree_set_clip(&t->scene_tree->node, NULL);
+      }
       i++;
     }
   }
@@ -1051,7 +1082,6 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
-
 
   if(toplevel->floating) {
 	  wl_list_remove(&toplevel->link);
@@ -1095,12 +1125,39 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
       output_box.x + outer_gaps, output_box.y + outer_gaps);
     toplevel_create_or_update_borders(master, master_width, master_height);
     focus_toplevel(master);
+
+    if(master_width < master->xdg_toplevel->base->geometry.width
+      || master_height < master->xdg_toplevel->base->geometry.height) {
+      struct wlr_box clip = (struct wlr_box){
+        .x = 0,
+        .y = 0,
+        .width = master_width,
+        .height = master_height,
+      };
+      wlr_scene_subsurface_tree_set_clip(&master->scene_tree->node, &clip);
+    } else {
+      wlr_scene_subsurface_tree_set_clip(&master->scene_tree->node, NULL);
+    }
+
     return;
   }
 
   /* else share the monitor among master and slaves */
   uint32_t master_width = output_box.width / 2 - outer_gaps - inner_gaps;
   uint32_t master_height = output_box.height - 2 * outer_gaps;
+
+  if(master_width < master->xdg_toplevel->base->geometry.width
+    || master_height < master->xdg_toplevel->base->geometry.height) {
+    struct wlr_box clip = (struct wlr_box){
+      .x = 0,
+      .y = 0,
+      .width = master_width,
+      .height = master_height,
+    };
+    wlr_scene_subsurface_tree_set_clip(&master->scene_tree->node, &clip);
+  } else {
+    wlr_scene_subsurface_tree_set_clip(&master->scene_tree->node, NULL);
+  }
 
   wlr_scene_node_set_position(&master->scene_tree->node,
     output_box.x + outer_gaps, output_box.y + outer_gaps);
@@ -1117,12 +1174,23 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
   size_t i = 0;
   wl_list_for_each(t, &toplevel->workspace->slaves, link) {
     wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
-
     wlr_scene_node_set_position(&t->scene_tree->node,
       output_box.x + output_box.width / 2 + inner_gaps,
       outer_gaps + i * (slave_height + inner_gaps * 2));
-      
     toplevel_create_or_update_borders(t, slave_width, slave_height);
+
+    if(slave_width < t->xdg_toplevel->base->geometry.width
+      || slave_height < t->xdg_toplevel->base->geometry.height) {
+      struct wlr_box clip = (struct wlr_box){
+        .x = 0,
+        .y = 0,
+        .width = slave_width,
+        .height = slave_height,
+      };
+      wlr_scene_subsurface_tree_set_clip(&t->scene_tree->node, &clip);
+    } else {
+      wlr_scene_subsurface_tree_set_clip(&t->scene_tree->node, NULL);
+    }
     i++;
   }
 
@@ -1157,6 +1225,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
       /* one more render, i don't really care */
 		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     }
+    return;
 	}
 }
 
