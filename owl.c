@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
@@ -31,6 +30,7 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 
 #include "util.h"
+#include "xdg-shell-protocol.h"
 
 #define MAX_WORKSPACES_PER_WINDOW 10
 
@@ -46,6 +46,9 @@ struct owl_config {
   char* cursor_theme;
   uint32_t min_toplevel_size;
   uint32_t workspaces_per_monitor;
+  float inactive_border_color[4];
+  float active_border_color[4];
+  uint32_t border_width;
 };
 
 struct monitor_config {
@@ -148,6 +151,7 @@ struct owl_toplevel {
 	struct wlr_scene_tree *scene_tree;
   struct owl_workspace *workspace;
   bool floating;
+  struct wlr_scene_rect *borders[4];
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
@@ -181,8 +185,8 @@ static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_s
     return NULL;
   }
   
-  /*according to docs we have to keep scene_tree in surface's data*/
-  /*and we are keeping the toplevel in scene_tree->node->data*/
+  /* according to docs we have to keep scene_tree in surface's data */
+  /* and we are keeping the toplevel in scene_tree->node->data */
   struct wlr_scene_tree *tree = xdg_surface->data;
 	return tree->node.data;
 }
@@ -204,30 +208,33 @@ static struct owl_toplevel *get_pointer_focused_toplevel(struct owl_server *serv
 }
 
 static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *surface) {
-	if (toplevel == NULL) {
-		return;
-	}
+  if (toplevel == NULL) {
+    return;
+  }
 
 	struct owl_server *server = toplevel->server;
 
 	struct wlr_seat *seat = server->seat;
-	struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
-	if (prev_surface == surface) {
-		/* Don't re-focus an already focused surface. */
+  struct owl_toplevel *prev_toplevel = get_keyboard_focused_toplevel(server);
+	if (prev_toplevel == toplevel) {
+		/* Don't re-focus an already focused toplevel. */
 		return;
 	}
 
-	if (prev_surface) {
+	if (prev_toplevel != NULL) {
 		/*
 		 * Deactivate the previously focused surface. This lets the client know
 		 * it no longer has focus and the client will repaint accordingly, e.g.
 		 * stop displaying a caret.
 		 */
-		struct wlr_xdg_toplevel *prev_toplevel =
-			wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
-		if (prev_toplevel != NULL) {
-			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
-		}
+
+		wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
+
+    /* paint its borders to inactive color */
+    wlr_scene_rect_set_color(prev_toplevel->borders[0], server->config->inactive_border_color);
+    wlr_scene_rect_set_color(prev_toplevel->borders[1], server->config->inactive_border_color);
+    wlr_scene_rect_set_color(prev_toplevel->borders[2], server->config->inactive_border_color);
+    wlr_scene_rect_set_color(prev_toplevel->borders[3], server->config->inactive_border_color);
 	}
 
   if(toplevel->floating) {
@@ -238,6 +245,12 @@ static void focus_toplevel(struct owl_toplevel *toplevel, struct wlr_surface *su
 
 	/* Activate the new surface */
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+
+  /* paint borders to active color */
+  wlr_scene_rect_set_color(toplevel->borders[0], server->config->active_border_color);
+  wlr_scene_rect_set_color(toplevel->borders[1], server->config->active_border_color);
+  wlr_scene_rect_set_color(toplevel->borders[2], server->config->active_border_color);
+  wlr_scene_rect_set_color(toplevel->borders[3], server->config->active_border_color);
 
 	/*
 	 * Tell the seat to have the keyboard enter this surface. wlroots will keep
@@ -562,6 +575,18 @@ static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 		new_x - geo_box->x, new_y - geo_box->y);
 
 	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, new_width, new_height);
+
+  uint32_t border_width = 4;
+  
+  /* move borders */
+  wlr_scene_node_set_position(&toplevel->borders[1]->node, new_width, 0);
+  wlr_scene_node_set_position(&toplevel->borders[2]->node, -border_width, new_height);
+
+  /* resize borders */
+  wlr_scene_rect_set_size(toplevel->borders[0], new_width + 2 * border_width, border_width);
+  wlr_scene_rect_set_size(toplevel->borders[1], border_width, new_height);
+  wlr_scene_rect_set_size(toplevel->borders[2], new_width + 2 * border_width, border_width);
+  wlr_scene_rect_set_size(toplevel->borders[3], border_width, new_height);
 }
 
 static void process_cursor_motion(struct owl_server *server, uint32_t time) {
@@ -719,6 +744,8 @@ static void output_request_state(struct wl_listener *listener, void *data) {
 	wlr_output_commit_state(output->wlr_output, event->state);
 }
 
+/*TODO: this needs tweaking in the future, rn outputs are not removed from */
+/*the layout, and workspaces and not updated.*/
 static void output_destroy(struct wl_listener *listener, void *data) {
 	struct owl_output *output = wl_container_of(listener, output, destroy);
 
@@ -732,10 +759,12 @@ static void output_destroy(struct wl_listener *listener, void *data) {
 static void change_workspace(struct owl_server *server, void *data) {
   struct owl_workspace *workspace = data;
 
+  /* if it is the same as global->active_workspace, do nothing */
   if(server->active_workspace == workspace) {
     return;
   }
 
+  /* if it is an already presented workspace on some other monitor, just switch to it */
   struct owl_output *o;
   wl_list_for_each(o, &server->outputs, link) {
     if(workspace == o->active_workspace) {
@@ -751,7 +780,8 @@ static void change_workspace(struct owl_server *server, void *data) {
       return;
     }
   }
-
+  
+  /* else remove all the toplevels on that workspace and show this workspace's toplevels */
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->output->active_workspace->floating_toplevels, link) {
     wlr_scene_node_set_enabled(&t->scene_tree->node, false);
@@ -769,16 +799,6 @@ static void change_workspace(struct owl_server *server, void *data) {
 
   server->active_workspace = workspace;
   workspace->output->active_workspace = workspace;
-
-  struct wlr_box output_box;
-  wlr_output_layout_get_box(server->output_layout,
-    workspace->output->wlr_output, &output_box);
-
-  bool s = wlr_cursor_warp(server->cursor, NULL,
-    output_box.x + output_box.width / 2.0,
-    output_box.y + output_box.height / 2.0);
-
-  wlr_log(WLR_ERROR, "x: %d, y: %d, width: %d, height: %d", output_box.x, output_box.y, output_box.width, output_box.height);
 }
 
 static void server_new_output(struct wl_listener *listener, void *data) {
@@ -854,15 +874,15 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 
     /* this needs to be freeid on output destroy, TODO: */
     /* these binds should also be specified in the config, TODO: */
-    struct keybind *change_workspace_k = calloc(1, sizeof(*change_workspace_k));
-    *change_workspace_k = (struct keybind) {
+    struct keybind *change_workspace_i = calloc(1, sizeof(*change_workspace_i));
+    *change_workspace_i = (struct keybind) {
       .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
-      .sym = XKB_KEY_1 + i,
+      .sym = XKB_KEY_1 + workspace->index - 1,
       .action = change_workspace,
       .args = workspace,
     };
 
-    wl_list_insert(&server->config->keybinds, &change_workspace_k->link);
+    wl_list_insert(&server->config->keybinds, &change_workspace_i->link);
   }
   
   output->active_workspace = &output->workspaces[0];
@@ -903,10 +923,41 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
   }
 
   struct wlr_box output_box;
+  struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
   wlr_output_layout_get_box(toplevel->server->output_layout,
     toplevel->workspace->output->wlr_output, &output_box);
-  wlr_scene_node_set_position(&toplevel->scene_tree->node,
+  wlr_scene_node_set_position(&scene_tree->node,
     output_box.x + 24, output_box.y + 24);
+
+  struct owl_server *server = toplevel->server;
+  struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
+
+  uint32_t border_width = 4;
+
+  /* borders, starting from top, going clockwise */
+  toplevel->borders[0] = wlr_scene_rect_create(scene_tree,
+    geo_box.width + 2 * border_width, border_width,
+    server->config->active_border_color);
+  wlr_scene_node_set_position(&toplevel->borders[0]->node,
+    -border_width, -border_width);
+
+  toplevel->borders[1] = wlr_scene_rect_create(scene_tree,
+    border_width, geo_box.height,
+    server->config->active_border_color);
+  wlr_scene_node_set_position(&toplevel->borders[1]->node,
+    geo_box.width, 0);
+
+  toplevel->borders[2] = wlr_scene_rect_create(scene_tree,
+    geo_box.width + 2 * border_width, border_width,
+    server->config->active_border_color);
+  wlr_scene_node_set_position(&toplevel->borders[2]->node,
+    -border_width, geo_box.height);
+
+  toplevel->borders[3] = wlr_scene_rect_create(scene_tree,
+    border_width, geo_box.height,
+    server->config->active_border_color);
+  wlr_scene_node_set_position(&toplevel->borders[3]->node,
+    -border_width, 0);
 
 	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 }
@@ -1182,9 +1233,7 @@ static void resize_focused_toplevel(struct owl_server *server, void *data) {
   struct owl_toplevel *toplevel =
     get_pointer_focused_toplevel(server);
 
-  if(toplevel == NULL) {
-    return;
-  }
+  if(toplevel == NULL) return;
 
   uint32_t edges = cursor_get_closest_toplevel_corner(server->cursor, toplevel);
 
@@ -1213,9 +1262,7 @@ static void move_focused_toplevel(struct owl_server *server, void *data) {
   struct owl_toplevel *toplevel =
     get_pointer_focused_toplevel(server);
 
-  if(toplevel == NULL) {
-    return;
-  }
+  if(toplevel == NULL) return;
 
   wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "hand1");
   begin_interactive(toplevel, OWL_CURSOR_MOVE, 0);
@@ -1225,12 +1272,31 @@ static void stop_move_focused_toplevel(struct owl_server *server, void *data) {
   reset_cursor_mode(server);
 }
 
+static void close_keyboard_focused_toplevel(struct owl_server *server, void *data) {
+  struct owl_toplevel *toplevel = get_keyboard_focused_toplevel(server);
+  if(toplevel == NULL) return;
+
+  xdg_toplevel_send_close(toplevel->xdg_toplevel->resource);
+}
+
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
 
   c->min_toplevel_size = 100;
   c->workspaces_per_monitor = 5;
   c->cursor_theme = "Bibata-Modern-Ice";
+
+  float inactive_col[4] = { 0xff, 0xff, 0xff, 0xff };
+  c->inactive_border_color[0] = inactive_col[0];
+  c->inactive_border_color[1] = inactive_col[1];
+  c->inactive_border_color[2] = inactive_col[2];
+  c->inactive_border_color[3] = inactive_col[3];
+
+  float active_col[4] = { 0, 0, 0xff, 0xff };
+  c->active_border_color[0] = active_col[0];
+  c->active_border_color[1] = active_col[1];
+  c->active_border_color[2] = active_col[2];
+  c->active_border_color[3] = active_col[3];
 
   struct monitor_config *first_monitor = calloc(1, sizeof(*first_monitor));
   *first_monitor = (struct monitor_config){
@@ -1287,11 +1353,19 @@ static bool server_load_config(struct owl_server *server) {
     .stop = stop_move_focused_toplevel,
   };
 
+  struct keybind *close_toplevel = calloc(1, sizeof(*close_toplevel));
+  *close_toplevel = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO,
+    .sym = XKB_KEY_q,
+    .action = close_keyboard_focused_toplevel,
+  };
+
   wl_list_init(&c->keybinds);
   wl_list_insert(&c->keybinds, &stop_server_k->link);
   wl_list_insert(&c->keybinds, &run_kitty->link);
   wl_list_insert(&c->keybinds, &resize_toplevel->link);
   wl_list_insert(&c->keybinds, &move_toplevel->link);
+  wl_list_insert(&c->keybinds, &close_toplevel->link);
 
   server->config = c;
 
@@ -1484,8 +1558,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	/* Set the WAYLAND_DISPLAY environment variable to our socket and run the
-	 * startup command if requested. */
+	/* Set the WAYLAND_DISPLAY environment variable to our socket */
 	setenv("WAYLAND_DISPLAY", socket, true);
 
 	/* Run the Wayland event loop. This does not return until you exit the
