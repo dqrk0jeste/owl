@@ -545,7 +545,7 @@ static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 		new_y = start_y + (server->cursor->y - server->grab_y);
     new_height = start_height - (server->cursor->y - server->grab_y);
 		if (new_height <= min_height) {
-      new_y = start_y + start_height - min_width;
+      new_y = start_y + start_height - min_height;
       new_height = min_height;
 		}
 	} else if (server->resize_edges & WLR_EDGE_BOTTOM) {
@@ -576,7 +576,7 @@ static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 
 	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, new_width, new_height);
 
-  uint32_t border_width = 4;
+  uint32_t border_width = server->config->border_width;
   
   /* move borders */
   wlr_scene_node_set_position(&toplevel->borders[1]->node, new_width, 0);
@@ -932,7 +932,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
   struct owl_server *server = toplevel->server;
   struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
 
-  uint32_t border_width = 4;
+  uint32_t border_width = server->config->border_width;
 
   /* borders, starting from top, going clockwise */
   toplevel->borders[0] = wlr_scene_rect_create(scene_tree,
@@ -1297,6 +1297,8 @@ static bool server_load_config(struct owl_server *server) {
   c->active_border_color[1] = active_col[1];
   c->active_border_color[2] = active_col[2];
   c->active_border_color[3] = active_col[3];
+
+  c->border_width = 2;
 
   struct monitor_config *first_monitor = calloc(1, sizeof(*first_monitor));
   *first_monitor = (struct monitor_config){
