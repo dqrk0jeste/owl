@@ -49,6 +49,8 @@ struct owl_config {
   float inactive_border_color[4];
   float active_border_color[4];
   uint32_t border_width;
+  uint32_t outer_gaps;
+  uint32_t inner_gaps;
 };
 
 struct monitor_config {
@@ -128,7 +130,8 @@ struct owl_server {
 struct owl_workspace {
   struct owl_output *output;
   uint32_t index;
-  struct wl_list tiled_toplevels;
+  struct owl_toplevel *master;
+  struct wl_list slaves;
   struct wl_list floating_toplevels;
 };
 
@@ -786,14 +789,18 @@ static void change_workspace(struct owl_server *server, void *data) {
   wl_list_for_each(t, &workspace->output->active_workspace->floating_toplevels, link) {
     wlr_scene_node_set_enabled(&t->scene_tree->node, false);
   }
-  wl_list_for_each(t, &workspace->output->active_workspace->tiled_toplevels, link) {
+
+  wlr_scene_node_set_enabled(&workspace->output->active_workspace->master->scene_tree->node, false);
+  wl_list_for_each(t, &workspace->output->active_workspace->slaves, link) {
     wlr_scene_node_set_enabled(&t->scene_tree->node, false);
   }
 
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);
   }
-  wl_list_for_each(t, &workspace->tiled_toplevels, link) {
+
+  wlr_scene_node_set_enabled(&workspace->master->scene_tree->node, true);
+  wl_list_for_each(t, &workspace->slaves, link) {
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);
   }
 
@@ -864,7 +871,7 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 
   for(size_t i = 0; i < server->config->workspaces_per_monitor; i++) {
     struct owl_workspace *workspace = &output->workspaces[i];
-    wl_list_init(&workspace->tiled_toplevels);
+    wl_list_init(&workspace->slaves);
     wl_list_init(&workspace->floating_toplevels);
 
     workspace->output = output;
@@ -915,26 +922,84 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
+  struct owl_server *server = toplevel->server;
+  // TODO: windowrules
+  toplevel->floating = toplevel->xdg_toplevel->parent != NULL;
+
+  struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(toplevel->server->output_layout,
+    toplevel->workspace->output->wlr_output, &output_box);
 
   if(toplevel->floating) {
 	  wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
+    wlr_scene_node_set_position(&scene_tree->node,
+      output_box.x + (output_box.width - toplevel->xdg_toplevel->base->geometry.width) / 2,
+      output_box.y + (output_box.height - toplevel->xdg_toplevel->base->geometry.height) / 2);
+  } else if(toplevel->workspace->master == NULL) {
+    toplevel->workspace->master = toplevel;
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, 
+      output_box.x + server->config->outer_gaps, output_box.y + server->config->outer_gaps);
   } else {
-	  wl_list_insert(&toplevel->workspace->tiled_toplevels, &toplevel->link);
+    wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
+
+    uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves);
+
+    uint32_t border_width = server->config->border_width;
+
+    /* if first slave set master to span half a monitor */
+    if(number_of_slaves == 1) {
+      struct owl_toplevel *master = toplevel->workspace->master;
+      uint32_t master_width = output_box.width / 2
+        - server->config->outer_gaps - server->config->inner_gaps;
+      uint32_t master_height = output_box.height - 2 * server->config->outer_gaps;
+
+      wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
+
+      /* we also have to adjust the borders, same as in cursor_handle_resize() */
+      /* TODO: maybe extract this in a separate function? */
+      wlr_scene_node_set_position(&master->borders[1]->node, master_width, 0);
+      wlr_scene_node_set_position(&master->borders[2]->node, -border_width, master_height);
+
+      wlr_scene_rect_set_size(master->borders[0], master_width + 2 * border_width, border_width);
+      wlr_scene_rect_set_size(master->borders[1], border_width, master_height);
+      wlr_scene_rect_set_size(master->borders[2], master_width + 2 * border_width, border_width);
+      wlr_scene_rect_set_size(master->borders[3], border_width, master_height);
+    }
+
+    /* share the other half with slaves */
+    struct owl_toplevel *t;
+    uint32_t slave_width = output_box.width / 2 - server->config->outer_gaps
+      - server->config->inner_gaps;
+    uint32_t slave_height = (output_box.height - 2 * server->config->outer_gaps -
+        (number_of_slaves - 1) * server->config->inner_gaps) / number_of_slaves;
+    
+    size_t i = 0;
+    wl_list_for_each(t, &toplevel->workspace->slaves, link) {
+      wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
+
+      wlr_scene_node_set_position(&t->scene_tree->node,
+        output_box.x + output_box.width / 2 + server->config->inner_gaps,
+        server->config->outer_gaps + i * (slave_height + server->config->inner_gaps));
+
+      /* adjust the borders, but not for the new toplevel as they are not initialized yet */
+      if(t != toplevel) {
+        wlr_scene_node_set_position(&t->borders[1]->node, slave_width, 0);
+        wlr_scene_node_set_position(&t->borders[2]->node, -border_width, slave_height);
+
+        wlr_scene_rect_set_size(t->borders[0], slave_width + 2 * border_width, border_width);
+        wlr_scene_rect_set_size(t->borders[1], border_width, slave_height);
+        wlr_scene_rect_set_size(t->borders[2], slave_width + 2 * border_width, border_width);
+        wlr_scene_rect_set_size(t->borders[3], border_width, slave_height);
+      }
+      i++;
+    }
   }
 
-  struct wlr_box output_box;
-  struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
-  wlr_output_layout_get_box(toplevel->server->output_layout,
-    toplevel->workspace->output->wlr_output, &output_box);
-  wlr_scene_node_set_position(&scene_tree->node,
-    output_box.x + 24, output_box.y + 24);
-
-  struct owl_server *server = toplevel->server;
   struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
-
   uint32_t border_width = server->config->border_width;
 
-  /* borders, starting from top, going clockwise */
+  /* create borders for this new toplevel, starting from top, going clockwise */
   toplevel->borders[0] = wlr_scene_rect_create(scene_tree,
     geo_box.width + 2 * border_width, border_width,
     server->config->active_border_color);
@@ -980,10 +1045,27 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 
 	if (toplevel->xdg_toplevel->base->initial_commit) {
 		/* When an xdg_surface performs an initial commit, the compositor must
-		 * reply with a configure so the client can map the surface. owl
-		 * configures the xdg_toplevel with 0,0 size to let the client pick the
-		 * dimensions itself. */
-		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+		 * reply with a configure so the client can map the surface. */
+    if(toplevel->floating) {
+		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+      return;
+    }
+
+    struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
+    struct wlr_box output_box;
+    struct owl_server *server = toplevel->server;
+    wlr_output_layout_get_box(toplevel->server->output_layout,
+      toplevel->workspace->output->wlr_output, &output_box);
+
+    if(toplevel->workspace->master == NULL) {
+		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
+        output_box.width - 2 * server->config->outer_gaps,
+        output_box.height - 2 * server->config->outer_gaps);
+    } else {
+      /* this is kinda cheaty, because i am going to change it immediately on map. */
+      /* one more render, i don't really care */
+		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+    }
 	}
 }
 
@@ -1125,13 +1207,6 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 
 	toplevel->server = server;
   toplevel->workspace = server->active_workspace;
-
-  // TODO: add tiling and TODO_LONG_TERM: windowrules
-  if(xdg_toplevel->parent != NULL) {
-    toplevel->floating = true;
-  } else {
-    toplevel->floating = true;
-  }
 
 	toplevel->xdg_toplevel = xdg_toplevel;
 	toplevel->scene_tree =
@@ -1299,6 +1374,8 @@ static bool server_load_config(struct owl_server *server) {
   c->active_border_color[3] = active_col[3];
 
   c->border_width = 2;
+  c->outer_gaps = 40;
+  c->inner_gaps = 20;
 
   struct monitor_config *first_monitor = calloc(1, sizeof(*first_monitor));
   *first_monitor = (struct monitor_config){
