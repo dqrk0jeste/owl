@@ -1,9 +1,3 @@
 build/*
-build/
-build
-
 protocols/*
-protocols/
-protocols
-
 logs
