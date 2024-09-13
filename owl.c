@@ -588,6 +588,14 @@ static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 }
 
 static void process_cursor_motion(struct owl_server *server, uint32_t time) {
+  /* get the output that the cursor is on currently */
+  struct wlr_output *wlr_output = wlr_output_layout_output_at(
+    server->output_layout, server->cursor->x, server->cursor->y);
+  struct owl_output *output = wlr_output->data;
+
+  /* set global active workspace */
+  server->active_workspace = output->active_workspace;
+
 	/* If the mode is non-passthrough, delegate to those functions. */
 	if (server->cursor_mode == OWL_CURSOR_MOVE) {
 		process_cursor_move(server, time);
@@ -596,14 +604,6 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		process_cursor_resize(server, time);
 		return;
 	}
-
-  /* get the output that the cursor is on currently */
-  struct wlr_output *wlr_output = wlr_output_layout_output_at(
-    server->output_layout, server->cursor->x, server->cursor->y);
-  struct owl_output *output = wlr_output->data;
-
-  /* set global active workspace */
-  server->active_workspace = output->active_workspace;
 
 	/* find the toplevel under the pointer and send the event along. */
 	double sx, sy;
@@ -633,7 +633,6 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		 * the surface has already has pointer focus or if the client is already
 		 * aware of the coordinates passed.
 		 */
-    server->client_cursor.surface = NULL;
     focus_toplevel(toplevel);
 
 		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
@@ -685,8 +684,22 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 	wlr_seat_pointer_notify_button(server->seat,
 		event->time_msec, event->button, event->state);
 
-	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-		/* If you released any buttons, we exit interactive move/resize mode. */
+	if(event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+    /* may someday implement moving the toplevels with a mouse */
+    /*if(server->cursor_mode == OWL_CURSOR_MOVE && !server->grabbed_toplevel->floating) {*/
+    /*  struct wlr_surface *surface;*/
+    /*  double sx, sy;*/
+    /*  struct owl_toplevel *toplevel_under_cursor = */
+    /*    desktop_toplevel_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy);*/
+    /*  if(toplevel_under_cursor == NULL) {*/
+    /**/
+    /*  } else if(toplevel_under_cursor == server->active_workspace->master) {*/
+    /*    wl_list_insert(&server->active_workspace->slaves, &server->active_workspace->master->link);*/
+    /*    server->active_workspace->master = toplevel_under_cursor;*/
+    /*    if(toplevel_under_cursor->workspace->)*/
+    /*  }*/
+    /*}*/
+     
 		reset_cursor_mode(server);
 	}
 }
@@ -970,8 +983,8 @@ static void clip_if_needed(struct owl_toplevel *toplevel,
   if(width < toplevel->xdg_toplevel->base->geometry.width
     || height < toplevel->xdg_toplevel->base->geometry.height) {
     struct wlr_box clip = (struct wlr_box){
-      .x = 0,
-      .y = 0,
+      .x = toplevel->xdg_toplevel->base->geometry.x,
+      .y = toplevel->xdg_toplevel->base->geometry.y,
       .width = width,
       .height = height,
     };
@@ -1015,6 +1028,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
       output_box.x + outer_gaps, output_box.y + outer_gaps);
     toplevel_create_or_update_borders(toplevel,
       output_box.width - 2 * outer_gaps, output_box.height - 2 * outer_gaps);
+	  focus_toplevel(toplevel);
     return;
   } else {
     wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
@@ -1246,7 +1260,7 @@ static void begin_interactive(struct owl_toplevel *toplevel,
 
 	struct owl_server *server = toplevel->server;
 	if (toplevel != get_pointer_focused_toplevel(server)) {
-		/*Deny move/resize requests from unfocused clients. */
+		/* Deny move/resize requests from unfocused clients. */
 		return;
 	}
 
@@ -1272,6 +1286,8 @@ static void xdg_toplevel_request_move(
 	 * provided serial against a list of button press serials sent to this
 	 * client, to prevent the client from requesting this whenever they want. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
+  if(!toplevel->floating) return;
+
 	begin_interactive(toplevel, OWL_CURSOR_MOVE, 0);
 }
 
@@ -1284,6 +1300,8 @@ static void xdg_toplevel_request_resize(
 	 * client, to prevent the client from requesting this whenever they want. */
 	struct wlr_xdg_toplevel_resize_event *event = data;
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
+  if(!toplevel->floating) return;
+
 	begin_interactive(toplevel, OWL_CURSOR_RESIZE, event->edges);
 }
 
@@ -1421,10 +1439,9 @@ static void run(struct owl_server *server, void *data) {
 }
 
 static void resize_focused_toplevel(struct owl_server *server, void *data) {
-  struct owl_toplevel *toplevel =
-    get_pointer_focused_toplevel(server);
+  struct owl_toplevel *toplevel = get_pointer_focused_toplevel(server);
 
-  if(toplevel == NULL) return;
+  if(toplevel == NULL || !toplevel->floating) return;
 
   uint32_t edges = cursor_get_closest_toplevel_corner(server->cursor, toplevel);
 
@@ -1453,7 +1470,7 @@ static void move_focused_toplevel(struct owl_server *server, void *data) {
   struct owl_toplevel *toplevel =
     get_pointer_focused_toplevel(server);
 
-  if(toplevel == NULL) return;
+  if(toplevel == NULL || !toplevel->floating) return;
 
   wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "hand1");
   begin_interactive(toplevel, OWL_CURSOR_MOVE, 0);
@@ -1465,6 +1482,7 @@ static void stop_move_focused_toplevel(struct owl_server *server, void *data) {
 
 static void close_keyboard_focused_toplevel(struct owl_server *server, void *data) {
   struct owl_toplevel *toplevel = get_keyboard_focused_toplevel(server);
+
   if(toplevel == NULL) return;
 
   xdg_toplevel_send_close(toplevel->xdg_toplevel->resource);
