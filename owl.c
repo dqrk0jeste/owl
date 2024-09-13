@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
@@ -30,6 +31,7 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 
 #include "util.h"
+#include "wlr/util/box.h"
 #include "xdg-shell-protocol.h"
 
 #define MAX_WORKSPACES_PER_WINDOW 10
@@ -202,6 +204,45 @@ static bool toplevel_position_changed(struct owl_toplevel *toplevel,
   return toplevel->scene_tree->node.x != new_x || toplevel->scene_tree->node.y != new_y;
 }
 
+struct owl_output *get_output_relative(struct owl_server *server,
+    struct owl_output *output, enum owl_direction direction) {
+
+  struct wlr_box original_output_box;
+  wlr_output_layout_get_box(server->output_layout, output->wlr_output, &original_output_box);
+  uint32_t original_output_midpoint_x = original_output_box.x + original_output_box.width / 2;
+  uint32_t original_output_midpoint_y = original_output_box.y + original_output_box.height / 2;
+
+  struct owl_output *o;
+  wl_list_for_each(o, &server->outputs, link) {
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server->output_layout, o->wlr_output, &output_box);
+
+    if(direction == LEFT &&
+        original_output_box.x == output_box.x + output_box.width
+        && original_output_midpoint_y > output_box.y
+        && original_output_midpoint_y < output_box.y + output_box.height) {
+      return o;
+    } else if(direction == RIGHT
+        && original_output_box.x + original_output_box.width == output_box.x
+        && original_output_midpoint_y > output_box.y
+        && original_output_midpoint_y < output_box.y + output_box.height) {
+      return o;
+    } else if(direction == UP
+        && original_output_box.y == output_box.y + output_box.height
+        && original_output_midpoint_x > output_box.x
+        && original_output_midpoint_x < output_box.x + output_box.width) {
+      return o;
+    } else if(direction == DOWN
+        && original_output_box.y + original_output_box.height == output_box.y
+        && original_output_midpoint_x > output_box.x
+        && original_output_midpoint_x < output_box.x + output_box.width) {
+      return o;
+    }
+  }
+
+  return NULL;
+}
+
 static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
   struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
@@ -263,6 +304,8 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
   }
 
+  server->active_workspace = toplevel->workspace;
+
 	/* Activate the new surface */
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
 
@@ -282,6 +325,28 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 		wlr_seat_keyboard_notify_enter(seat, toplevel->xdg_toplevel->base->surface,
 			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
+}
+
+static void jump_focus_toplevel(struct owl_toplevel *toplevel) {
+  struct owl_server *server = toplevel->server;
+  focus_toplevel(toplevel);
+
+  struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
+  wlr_cursor_warp(server->cursor, NULL,
+    toplevel->scene_tree->node.x + geo_box.x + geo_box.width / 2.0,
+    toplevel->scene_tree->node.y + geo_box.y + geo_box.height / 2.0);
+}
+
+static void cursor_jump_workspace(struct owl_workspace *workspace) {
+  struct owl_server *server = workspace->output->server;
+
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(server->output_layout,
+    workspace->output->wlr_output, &output_box);
+
+  wlr_cursor_warp(server->cursor, NULL,
+    output_box.x + output_box.width / 2.0,
+    output_box.y + output_box.height / 2.0);
 }
 
 static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
@@ -836,14 +901,7 @@ static void change_workspace(struct owl_server *server, void *data) {
   wl_list_for_each(o, &server->outputs, link) {
     if(workspace == o->active_workspace) {
       server->active_workspace = workspace;
-
-      struct wlr_box output_box;
-      wlr_output_layout_get_box(server->output_layout,
-        workspace->output->wlr_output, &output_box);
-
-      wlr_cursor_warp(server->cursor, NULL,
-        output_box.x + output_box.width / 2.0,
-        output_box.y + output_box.height / 2.0);
+      cursor_jump_workspace(workspace);
       return;
     }
   }
@@ -875,6 +933,10 @@ static void change_workspace(struct owl_server *server, void *data) {
   }
   wl_list_for_each(t, &workspace->slaves, link) {
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+  }
+
+  if(server->active_workspace->output != workspace->output) {
+    cursor_jump_workspace(workspace);
   }
 
   server->active_workspace = workspace;
@@ -1499,38 +1561,60 @@ static void close_keyboard_focused_toplevel(struct owl_server *server, void *dat
 static void move_tiled_focus(struct owl_server *server, void *data) {
   uint32_t direction = (uint32_t)data;
 
-  struct owl_toplevel *focused_toplevel = 
+  struct owl_toplevel *toplevel = 
     get_keyboard_focused_toplevel(server);
 
-  if(focused_toplevel == NULL || focused_toplevel->floating) return;
+  if(toplevel == NULL || toplevel->floating) return;
   
-  if(focused_toplevel == server->active_workspace->master) {
-    if(direction == RIGHT && !wl_list_empty(&server->active_workspace->slaves)) {
-      struct owl_toplevel *next = wl_container_of(server->active_workspace->slaves.next, next, link);
-      focus_toplevel(next);
-    }
-    return;
-  }
-
-  if(direction == LEFT) {
-    focus_toplevel(server->active_workspace->master);
-    return;
-  }
-
-  if(direction == UP) {
-    struct owl_toplevel *above = wl_container_of(focused_toplevel->link.prev, above, link);
-    if(&above->link != &server->active_workspace->slaves) {
-      focus_toplevel(above);
-    }
-    return;
-  }
-
-  if(direction == DOWN) {
-    struct owl_toplevel *bellow = wl_container_of(focused_toplevel->link.next, bellow, link);
-    if(&bellow->link != &server->active_workspace->slaves) {
-      focus_toplevel(bellow);
+  if(toplevel == server->active_workspace->master) {
+    switch (direction) {
+      case RIGHT: {}
+        if(!wl_list_empty(&server->active_workspace->slaves)) {
+          struct owl_toplevel *first_slave =
+            wl_container_of(server->active_workspace->slaves.next, first_slave, link);
+          jump_focus_toplevel(first_slave);
+          return;
+        }
+      /* fallthrough is interntional; if there are no slaves then try right monitor */
+      default: goto try_monitor;
     }
   }
+
+  switch (direction) {
+    case LEFT: {}
+      jump_focus_toplevel(server->active_workspace->master);
+      return;
+
+    case RIGHT: {}
+      goto try_monitor;
+
+    case UP: {}
+      struct owl_toplevel *above = wl_container_of(toplevel->link.prev, above, link);
+      if(&above->link != &server->active_workspace->slaves) {
+        jump_focus_toplevel(above);
+        return;
+      }
+      goto try_monitor;
+
+    case DOWN: {}
+      struct owl_toplevel *bellow = wl_container_of(toplevel->link.next, bellow, link);
+      if(&bellow->link != &server->active_workspace->slaves) {
+        jump_focus_toplevel(bellow);
+        return;
+      }
+      goto try_monitor;
+  }
+
+try_monitor: {}
+  struct owl_output *relative_output =
+    get_output_relative(server, toplevel->workspace->output, direction);
+  if(relative_output == NULL) return; 
+  if(relative_output->active_workspace->master == NULL) {
+    cursor_jump_workspace(relative_output->active_workspace);
+    return;
+  }
+  jump_focus_toplevel(relative_output->active_workspace->master);
+  return;
 }
 
 static void move_tiled_toplevel(struct owl_server *server, void *data) {
