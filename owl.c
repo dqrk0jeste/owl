@@ -50,6 +50,8 @@ enum owl_direction {
 struct owl_config {
   struct wl_list monitors;
   struct wl_list keybinds;
+  uint32_t keyboard_rate;
+  uint32_t keyboard_delay;
   char* cursor_theme;
   uint32_t min_toplevel_size;
   uint32_t workspaces_per_monitor;
@@ -389,7 +391,9 @@ static void server_new_keyboard(struct owl_server *server,
 	xkb_context_unref(context);
 
   /*TODO: add this as a config option*/
-	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+  uint32_t rate = server->config->keyboard_rate;
+  uint32_t delay = server->config->keyboard_delay;
+	wlr_keyboard_set_repeat_info(wlr_keyboard, rate, delay);
 
 	/* Here we set up listeners for keyboard events. */
 	keyboard->modifiers.notify = keyboard_handle_modifiers;
@@ -1628,6 +1632,8 @@ static bool server_load_config(struct owl_server *server) {
   c->min_toplevel_size = 100;
   c->workspaces_per_monitor = 5;
   c->cursor_theme = "Bibata-Modern-Ice";
+  c->keyboard_rate = 30;
+  c->keyboard_delay = 200;
 
   float inactive_col[4] = { 1, 1, 1, 1 };
   c->inactive_border_color[0] = inactive_col[0];
