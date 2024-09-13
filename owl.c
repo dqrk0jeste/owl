@@ -189,6 +189,17 @@ struct owl_keyboard {
 	struct wl_listener destroy;
 };
 
+static bool toplevel_dimensions_changed(struct owl_toplevel *toplevel, 
+    uint32_t new_width, uint32_t new_height) {
+  return toplevel->xdg_toplevel->base->geometry.width != new_width
+    || toplevel->xdg_toplevel->base->geometry.height != new_height;
+}
+
+static bool toplevel_position_changed(struct owl_toplevel *toplevel, 
+    uint32_t new_x, uint32_t new_y) {
+  return toplevel->scene_tree->node.x != new_x || toplevel->scene_tree->node.y != new_y;
+}
+
 static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
   struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
@@ -464,6 +475,47 @@ static void seat_request_set_selection(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
 }
 
+static void toplevel_create_or_update_borders(struct owl_toplevel *toplevel,
+    uint32_t width, uint32_t height) {
+  struct owl_server *server = toplevel->server;
+  uint32_t border_width = server->config->border_width;
+
+  if(toplevel->borders[0] == NULL) {
+    toplevel->borders[0] = wlr_scene_rect_create(toplevel->scene_tree,
+      width + 2 * border_width, border_width,
+      server->config->active_border_color);
+    wlr_scene_node_set_position(&toplevel->borders[0]->node,
+      -border_width, -border_width);
+
+    toplevel->borders[1] = wlr_scene_rect_create(toplevel->scene_tree,
+      border_width, height,
+      server->config->active_border_color);
+    wlr_scene_node_set_position(&toplevel->borders[1]->node,
+      width, 0);
+
+    toplevel->borders[2] = wlr_scene_rect_create(toplevel->scene_tree,
+      width + 2 * border_width, border_width,
+      server->config->active_border_color);
+    wlr_scene_node_set_position(&toplevel->borders[2]->node,
+      -border_width, height);
+
+    toplevel->borders[3] = wlr_scene_rect_create(toplevel->scene_tree,
+      border_width, height,
+      server->config->active_border_color);
+    wlr_scene_node_set_position(&toplevel->borders[3]->node,
+      -border_width, 0);
+    return;
+  }
+
+  wlr_scene_node_set_position(&toplevel->borders[1]->node, width, 0);
+  wlr_scene_node_set_position(&toplevel->borders[2]->node, -border_width, height);
+
+  wlr_scene_rect_set_size(toplevel->borders[0], width + 2 * border_width, border_width);
+  wlr_scene_rect_set_size(toplevel->borders[1], border_width, height);
+  wlr_scene_rect_set_size(toplevel->borders[2], width + 2 * border_width, border_width);
+  wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
+}
+
 static struct owl_toplevel *desktop_toplevel_at(
 		struct owl_server *server, double lx, double ly,
 		struct wlr_surface **surface, double *sx, double *sy) {
@@ -584,15 +636,7 @@ static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 
   uint32_t border_width = server->config->border_width;
   
-  /* move borders */
-  wlr_scene_node_set_position(&toplevel->borders[1]->node, new_width, 0);
-  wlr_scene_node_set_position(&toplevel->borders[2]->node, -border_width, new_height);
-
-  /* resize borders */
-  wlr_scene_rect_set_size(toplevel->borders[0], new_width + 2 * border_width, border_width);
-  wlr_scene_rect_set_size(toplevel->borders[1], border_width, new_height);
-  wlr_scene_rect_set_size(toplevel->borders[2], new_width + 2 * border_width, border_width);
-  wlr_scene_rect_set_size(toplevel->borders[3], border_width, new_height);
+  toplevel_create_or_update_borders(toplevel, new_width, new_height);
 }
 
 static void process_cursor_motion(struct owl_server *server, uint32_t time) {
@@ -773,47 +817,6 @@ static void output_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
 	free(output);
-}
-
-static void toplevel_create_or_update_borders(struct owl_toplevel *toplevel,
-    uint32_t width, uint32_t height) {
-  struct owl_server *server = toplevel->server;
-  uint32_t border_width = server->config->border_width;
-
-  if(toplevel->borders[0] == NULL) {
-    toplevel->borders[0] = wlr_scene_rect_create(toplevel->scene_tree,
-      width + 2 * border_width, border_width,
-      server->config->active_border_color);
-    wlr_scene_node_set_position(&toplevel->borders[0]->node,
-      -border_width, -border_width);
-
-    toplevel->borders[1] = wlr_scene_rect_create(toplevel->scene_tree,
-      border_width, height,
-      server->config->active_border_color);
-    wlr_scene_node_set_position(&toplevel->borders[1]->node,
-      width, 0);
-
-    toplevel->borders[2] = wlr_scene_rect_create(toplevel->scene_tree,
-      width + 2 * border_width, border_width,
-      server->config->active_border_color);
-    wlr_scene_node_set_position(&toplevel->borders[2]->node,
-      -border_width, height);
-
-    toplevel->borders[3] = wlr_scene_rect_create(toplevel->scene_tree,
-      border_width, height,
-      server->config->active_border_color);
-    wlr_scene_node_set_position(&toplevel->borders[3]->node,
-      -border_width, 0);
-    return;
-  }
-
-  wlr_scene_node_set_position(&toplevel->borders[1]->node, width, 0);
-  wlr_scene_node_set_position(&toplevel->borders[2]->node, -border_width, height);
-
-  wlr_scene_rect_set_size(toplevel->borders[0], width + 2 * border_width, border_width);
-  wlr_scene_rect_set_size(toplevel->borders[1], border_width, height);
-  wlr_scene_rect_set_size(toplevel->borders[2], width + 2 * border_width, border_width);
-  wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
 }
 
 static void change_workspace(struct owl_server *server, void *data) {
@@ -1059,12 +1062,12 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
 static void swap_tiled_toplevels(struct owl_toplevel *t1, struct owl_toplevel *t2) {
   if(t1 == t1->workspace->master) {
     t1->workspace->master = t2;
+    wl_list_insert(&t2->link, &t1->link);
     wl_list_remove(&t2->link);
-    wl_list_insert(&t1->workspace->slaves, &t1->link);
   } else if(t2 == t1->workspace->master) {
     t1->workspace->master = t1;
+    wl_list_insert(&t1->link, &t2->link);
     wl_list_remove(&t1->link);
-    wl_list_insert(&t1->workspace->slaves, &t2->link);
   } else {
     struct wl_list *before_t1 = t1->link.prev;
     wl_list_remove(&t1->link);
@@ -1201,6 +1204,12 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
       wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, slave_width, slave_height);
     }
     return;
+  }
+ 
+  if(toplevel->floating) {
+    toplevel_create_or_update_borders(toplevel,
+      toplevel->xdg_toplevel->base->geometry.width,
+      toplevel->xdg_toplevel->base->geometry.height);
   }
 }
 
@@ -1488,6 +1497,8 @@ static void move_tiled_focus(struct owl_server *server, void *data) {
 
   struct owl_toplevel *focused_toplevel = 
     get_keyboard_focused_toplevel(server);
+
+  if(focused_toplevel == NULL || focused_toplevel->floating) return;
   
   if(focused_toplevel == server->active_workspace->master) {
     if(direction == RIGHT && !wl_list_empty(&server->active_workspace->slaves)) {
@@ -1523,6 +1534,8 @@ static void move_tiled_toplevel(struct owl_server *server, void *data) {
 
   struct owl_toplevel *focused_toplevel = 
     get_keyboard_focused_toplevel(server);
+
+  if(focused_toplevel == NULL || focused_toplevel->floating) return;
   
   if(focused_toplevel == server->active_workspace->master) {
     if(direction == RIGHT && !wl_list_empty(&server->active_workspace->slaves)) {
@@ -1553,6 +1566,62 @@ static void move_tiled_toplevel(struct owl_server *server, void *data) {
   }
 }
 
+static void switch_focused_toplevel_state(struct owl_server *server, void *data) {
+  struct owl_toplevel *toplevel = 
+    get_keyboard_focused_toplevel(server);
+
+  if(toplevel == NULL) return;
+
+  if(toplevel->floating) {
+    toplevel->floating = false;
+    wl_list_remove(&toplevel->link);
+
+    if(toplevel->workspace->master == NULL) {
+      toplevel->workspace->master = toplevel;
+    } else {
+      wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
+    }
+
+    place_tiled_toplevels(toplevel->workspace);
+    return;
+  }
+
+  toplevel->floating = true;
+  if(toplevel == toplevel->workspace->master) {
+    if(wl_list_empty(&toplevel->workspace->slaves)) {
+      toplevel->workspace->master = NULL;
+    } else {
+      struct owl_toplevel *new_master = wl_container_of(
+        toplevel->workspace->slaves.next, new_master, link);
+      toplevel->workspace->master = new_master;
+      /* remove him from the slaves list */
+      wl_list_remove(&new_master->link);
+    }
+  } else {
+    wl_list_remove(&toplevel->link);
+  }
+
+  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+  clip_if_needed(toplevel, INT32_MAX, INT32_MAX);
+
+  uint32_t width = toplevel->xdg_toplevel->base->geometry.width;
+  uint32_t height = toplevel->xdg_toplevel->base->geometry.height;
+
+  toplevel_create_or_update_borders(toplevel, width, height);
+
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(server->output_layout,
+    toplevel->workspace->output->wlr_output, &output_box);
+
+  wlr_scene_node_set_position(&toplevel->scene_tree->node,
+    (output_box.width - width) / 2, (output_box.height - height) / 2);
+
+  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+  wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
+
+  place_tiled_toplevels(toplevel->workspace);
+}
+
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
 
@@ -1560,7 +1629,7 @@ static bool server_load_config(struct owl_server *server) {
   c->workspaces_per_monitor = 5;
   c->cursor_theme = "Bibata-Modern-Ice";
 
-  float inactive_col[4] = { 23 / 256.0, 27 / 256.0, 32 / 256.0, 1.0 };
+  float inactive_col[4] = { 1, 1, 1, 1 };
   c->inactive_border_color[0] = inactive_col[0];
   c->inactive_border_color[1] = inactive_col[1];
   c->inactive_border_color[2] = inactive_col[2];
@@ -1601,14 +1670,14 @@ static bool server_load_config(struct owl_server *server) {
   wl_list_insert(&c->monitors, &first_monitor->link);
   wl_list_insert(&c->monitors, &second_monitor->link);
 
-  struct keybind *stop_server_k = calloc(1, sizeof(*stop_server_k));
+  struct keybind *stop_server_k = calloc(1, sizeof(struct keybind));
   *stop_server_k = (struct keybind){
     .modifiers = WLR_MODIFIER_ALT,
     .sym = XKB_KEY_Escape,
     .action = stop_server,
   };
 
-  struct keybind *run_kitty = calloc(1, sizeof(*run_kitty));
+  struct keybind *run_kitty = calloc(1, sizeof(struct keybind));
   *run_kitty = (struct keybind){
     .modifiers = WLR_MODIFIER_LOGO,
     .sym = XKB_KEY_t,
@@ -1616,7 +1685,7 @@ static bool server_load_config(struct owl_server *server) {
     .args = "kitty",
   };
 
-  struct keybind *resize_toplevel = calloc(1, sizeof(*resize_toplevel));
+  struct keybind *resize_toplevel = calloc(1, sizeof(struct keybind));
   *resize_toplevel = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO,
     .sym = XKB_KEY_x,
@@ -1624,7 +1693,7 @@ static bool server_load_config(struct owl_server *server) {
     .stop = stop_resize_focused_toplevel,
   };
 
-  struct keybind *move_toplevel = calloc(1, sizeof(*move_toplevel));
+  struct keybind *move_toplevel = calloc(1, sizeof(struct keybind));
   *move_toplevel = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO,
     .sym = XKB_KEY_z,
@@ -1632,7 +1701,7 @@ static bool server_load_config(struct owl_server *server) {
     .stop = stop_move_focused_toplevel,
   };
 
-  struct keybind *move_tiled_focus_up = calloc(1, sizeof(*move_tiled_focus_up));
+  struct keybind *move_tiled_focus_up = calloc(1, sizeof(struct keybind));
   *move_tiled_focus_up = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
     .sym = XKB_KEY_k,
@@ -1640,7 +1709,7 @@ static bool server_load_config(struct owl_server *server) {
     .args = (void *)UP,
   };
 
-  struct keybind *move_tiled_focus_right = calloc(1, sizeof(*move_tiled_focus_right));
+  struct keybind *move_tiled_focus_right = calloc(1, sizeof(struct keybind));
   *move_tiled_focus_right = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
     .sym = XKB_KEY_l,
@@ -1648,7 +1717,7 @@ static bool server_load_config(struct owl_server *server) {
     .args = (void *)RIGHT,
   };
 
-  struct keybind *move_tiled_focus_down = calloc(1, sizeof(*move_tiled_focus_down));
+  struct keybind *move_tiled_focus_down = calloc(1, sizeof(struct keybind));
   *move_tiled_focus_down = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
     .sym = XKB_KEY_j,
@@ -1656,11 +1725,43 @@ static bool server_load_config(struct owl_server *server) {
     .args = (void *)DOWN,
   };
 
-  struct keybind *move_tiled_focus_left = calloc(1, sizeof(*move_tiled_focus_left));
+  struct keybind *move_tiled_focus_left = calloc(1, sizeof(struct keybind));
   *move_tiled_focus_left = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
     .sym = XKB_KEY_h,
     .action = move_tiled_focus,
+    .args = (void *)LEFT,
+  };
+
+  struct keybind *move_tiled_toplevel_up = calloc(1, sizeof(struct keybind));
+  *move_tiled_toplevel_up = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_K,
+    .action = move_tiled_toplevel,
+    .args = (void *)UP,
+  };
+
+  struct keybind *move_tiled_toplevel_right = calloc(1, sizeof(struct keybind));
+  *move_tiled_toplevel_right = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_L,
+    .action = move_tiled_toplevel,
+    .args = (void *)RIGHT,
+  };
+  
+  struct keybind *move_tiled_toplevel_down = calloc(1, sizeof(struct keybind));
+  *move_tiled_toplevel_down = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_J,
+    .action = move_tiled_toplevel,
+    .args = (void *)DOWN,
+  };
+
+  struct keybind *move_tiled_toplevel_left = calloc(1, sizeof(struct keybind));
+  *move_tiled_toplevel_left = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_H,
+    .action = move_tiled_toplevel,
     .args = (void *)LEFT,
   };
 
@@ -1670,37 +1771,12 @@ static bool server_load_config(struct owl_server *server) {
     .sym = XKB_KEY_q,
     .action = close_keyboard_focused_toplevel,
   };
-
-  struct keybind *move_tiled_toplevel_up = calloc(1, sizeof(*move_tiled_focus_up));
-  *move_tiled_toplevel_up = (struct keybind) {
-    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
-    .sym = XKB_KEY_K,
-    .action = move_tiled_toplevel,
-    .args = (void *)UP,
-  };
-
-  struct keybind *move_tiled_toplevel_right = calloc(1, sizeof(*move_tiled_focus_right));
-  *move_tiled_toplevel_right = (struct keybind) {
-    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
-    .sym = XKB_KEY_L,
-    .action = move_tiled_toplevel,
-    .args = (void *)RIGHT,
-  };
   
-  struct keybind *move_tiled_toplevel_down = calloc(1, sizeof(*move_tiled_focus_down));
-  *move_tiled_toplevel_down = (struct keybind) {
-    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
-    .sym = XKB_KEY_J,
-    .action = move_tiled_toplevel,
-    .args = (void *)DOWN,
-  };
-
-  struct keybind *move_tiled_toplevel_left = calloc(1, sizeof(*move_tiled_focus_left));
-  *move_tiled_toplevel_left = (struct keybind) {
-    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
-    .sym = XKB_KEY_H,
-    .action = move_tiled_toplevel,
-    .args = (void *)LEFT,
+  struct keybind *switch_focused_toplevel_state_k = calloc(1, sizeof(struct keybind));
+  *switch_focused_toplevel_state_k = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO,
+    .sym = XKB_KEY_w,
+    .action = switch_focused_toplevel_state,
   };
 
   wl_list_init(&c->keybinds);
@@ -1720,6 +1796,7 @@ static bool server_load_config(struct owl_server *server) {
   wl_list_insert(&c->keybinds, &move_tiled_toplevel_left->link);
 
   wl_list_insert(&c->keybinds, &close_toplevel->link);
+  wl_list_insert(&c->keybinds, &switch_focused_toplevel_state_k->link);
 
   server->config = c;
 
