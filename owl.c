@@ -327,9 +327,8 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 	}
 }
 
-static void jump_focus_toplevel(struct owl_toplevel *toplevel) {
-  struct owl_server *server = toplevel->server;
-  focus_toplevel(toplevel);
+static void cursor_jump_focused_toplevel(struct owl_server *server) {
+  struct owl_toplevel *toplevel = get_keyboard_focused_toplevel(server);
 
   struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
   wlr_cursor_warp(server->cursor, NULL,
@@ -1080,6 +1079,7 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
 
   struct owl_toplevel *master = workspace->master;
   if(master == NULL) return;
+  wlr_log(WLR_ERROR, "master nije null");
 
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
@@ -1572,7 +1572,8 @@ static void move_tiled_focus(struct owl_server *server, void *data) {
         if(!wl_list_empty(&server->active_workspace->slaves)) {
           struct owl_toplevel *first_slave =
             wl_container_of(server->active_workspace->slaves.next, first_slave, link);
-          jump_focus_toplevel(first_slave);
+          focus_toplevel(first_slave);
+          cursor_jump_focused_toplevel(server);
           return;
         }
       /* fallthrough is interntional; if there are no slaves then try right monitor */
@@ -1582,7 +1583,8 @@ static void move_tiled_focus(struct owl_server *server, void *data) {
 
   switch (direction) {
     case LEFT: {}
-      jump_focus_toplevel(server->active_workspace->master);
+      focus_toplevel(server->active_workspace->master);
+      cursor_jump_focused_toplevel(server);
       return;
 
     case RIGHT: {}
@@ -1591,7 +1593,8 @@ static void move_tiled_focus(struct owl_server *server, void *data) {
     case UP: {}
       struct owl_toplevel *above = wl_container_of(toplevel->link.prev, above, link);
       if(&above->link != &server->active_workspace->slaves) {
-        jump_focus_toplevel(above);
+        focus_toplevel(above);
+        cursor_jump_focused_toplevel(server);
         return;
       }
       goto try_monitor;
@@ -1599,7 +1602,8 @@ static void move_tiled_focus(struct owl_server *server, void *data) {
     case DOWN: {}
       struct owl_toplevel *bellow = wl_container_of(toplevel->link.next, bellow, link);
       if(&bellow->link != &server->active_workspace->slaves) {
-        jump_focus_toplevel(bellow);
+        focus_toplevel(bellow);
+        cursor_jump_focused_toplevel(server);
         return;
       }
       goto try_monitor;
@@ -1613,45 +1617,114 @@ try_monitor: {}
     cursor_jump_workspace(relative_output->active_workspace);
     return;
   }
-  jump_focus_toplevel(relative_output->active_workspace->master);
+  focus_toplevel(relative_output->active_workspace->master);
+  cursor_jump_focused_toplevel(server);
   return;
 }
 
 static void move_tiled_toplevel(struct owl_server *server, void *data) {
   uint32_t direction = (uint32_t)data;
 
-  struct owl_toplevel *focused_toplevel = 
+  struct owl_toplevel *toplevel = 
     get_keyboard_focused_toplevel(server);
+  struct owl_workspace *active_workspace = server->active_workspace;
 
-  if(focused_toplevel == NULL || focused_toplevel->floating) return;
+  if(toplevel == NULL || toplevel->floating) return;
   
-  if(focused_toplevel == server->active_workspace->master) {
-    if(direction == RIGHT && !wl_list_empty(&server->active_workspace->slaves)) {
-      struct owl_toplevel *next = wl_container_of(server->active_workspace->slaves.next, next, link);
-      swap_tiled_toplevels(next, focused_toplevel);
+  if(toplevel == active_workspace->master) {
+    switch (direction) {
+      case RIGHT: {}
+        if(!wl_list_empty(&active_workspace->slaves)) {
+          struct owl_toplevel *first_slave =
+            wl_container_of(active_workspace->slaves.next, first_slave, link);
+          swap_tiled_toplevels(first_slave, active_workspace->master);
+          return;
+        }
+      /* fallthrough is interntional; if there are no slaves then try right monitor */
+      default: {}
+        struct owl_output *relative_output =
+          get_output_relative(server, active_workspace->output, direction);
+        if(relative_output == NULL) return; 
+
+        if(!wl_list_empty(&active_workspace->slaves)) {
+          struct owl_toplevel *first_slave =
+            wl_container_of(active_workspace->slaves.next, first_slave, link);
+          toplevel->workspace->master = first_slave;
+          wl_list_remove(&first_slave->link);
+        } else {
+          toplevel->workspace->master = NULL;
+        }
+
+        toplevel->workspace = relative_output->active_workspace;
+        if(relative_output->active_workspace->master == NULL) {
+          relative_output->active_workspace->master = toplevel;
+
+          place_tiled_toplevels(relative_output->active_workspace);
+          place_tiled_toplevels(active_workspace);
+
+          server->active_workspace = relative_output->active_workspace;
+          cursor_jump_focused_toplevel(server);
+          return;
+        }
+
+        wl_list_insert(&relative_output->active_workspace->slaves, &toplevel->link);
+
+        place_tiled_toplevels(relative_output->active_workspace);
+        place_tiled_toplevels(server->active_workspace);
+
+        server->active_workspace = relative_output->active_workspace;
+        cursor_jump_focused_toplevel(server);
+        return;
     }
-    return;
   }
 
-  if(direction == LEFT) {
-    swap_tiled_toplevels(focused_toplevel, server->active_workspace->master);
-    return;
+  switch (direction) {
+    case LEFT: {}
+      swap_tiled_toplevels(toplevel, server->active_workspace->master);
+      return;
+
+    case RIGHT: {}
+      goto try_monitor_for_slave;
+
+    case UP: {}
+      struct owl_toplevel *above = wl_container_of(toplevel->link.prev, above, link);
+      if(&above->link != &server->active_workspace->slaves) {
+        swap_tiled_toplevels(above, toplevel);
+        return;
+      }
+      goto try_monitor_for_slave;
+
+    case DOWN: {}
+      struct owl_toplevel *bellow = wl_container_of(toplevel->link.next, bellow, link);
+      if(&bellow->link != &server->active_workspace->slaves) {
+        swap_tiled_toplevels(toplevel, bellow);
+        return;
+      }
+      goto try_monitor_for_slave;
   }
 
-  if(direction == UP) {
-    struct owl_toplevel *above = wl_container_of(focused_toplevel->link.prev, above, link);
-    if(&above->link != &server->active_workspace->slaves) {
-      swap_tiled_toplevels(above, focused_toplevel);
-    }
+try_monitor_for_slave: {}
+  struct owl_output *relative_output =
+    get_output_relative(server, toplevel->workspace->output, direction);
+  if(relative_output == NULL) return; 
+  if(relative_output->active_workspace->master == NULL) {
+    wl_list_remove(&toplevel->link);
+    relative_output->active_workspace->master = toplevel;
+    toplevel->workspace = relative_output->active_workspace;
+
+    place_tiled_toplevels(relative_output->active_workspace);
+    place_tiled_toplevels(server->active_workspace);
+    server->active_workspace = relative_output->active_workspace;
     return;
   }
+  wl_list_remove(&toplevel->link);
+  wl_list_insert(&relative_output->active_workspace->slaves, &toplevel->link);
+  toplevel->workspace = relative_output->active_workspace;
 
-  if(direction == DOWN) {
-    struct owl_toplevel *bellow = wl_container_of(focused_toplevel->link.next, bellow, link);
-    if(&bellow->link != &server->active_workspace->slaves) {
-      swap_tiled_toplevels(focused_toplevel, bellow);
-    }
-  }
+  place_tiled_toplevels(relative_output->active_workspace);
+  place_tiled_toplevels(server->active_workspace);
+  server->active_workspace = relative_output->active_workspace;
+  return;
 }
 
 static void switch_focused_toplevel_state(struct owl_server *server, void *data) {
