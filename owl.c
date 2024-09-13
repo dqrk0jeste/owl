@@ -40,6 +40,13 @@ enum owl_cursor_mode {
 	OWL_CURSOR_RESIZE,
 };
 
+enum owl_direction {
+  UP,
+  RIGHT,
+  DOWN,
+  LEFT,
+};
+
 struct owl_config {
   struct wl_list monitors;
   struct wl_list keybinds;
@@ -51,6 +58,7 @@ struct owl_config {
   uint32_t border_width;
   uint32_t outer_gaps;
   uint32_t inner_gaps;
+  double master_ratio;
 };
 
 struct monitor_config {
@@ -994,6 +1002,80 @@ static void clip_if_needed(struct owl_toplevel *toplevel,
   }
 }
 
+static void place_tiled_toplevels(struct owl_workspace *workspace) {
+  struct owl_server *server = workspace->output->server;
+
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(server->output_layout,
+    workspace->output->wlr_output, &output_box);
+
+  struct owl_toplevel *master = workspace->master;
+  if(master == NULL) return;
+
+  uint32_t outer_gaps = server->config->outer_gaps;
+  uint32_t inner_gaps = server->config->inner_gaps;
+  double master_ratio = server->config->master_ratio;
+
+  uint32_t master_width, master_height;
+  uint32_t number_of_slaves = wl_list_length(&workspace->slaves);
+
+  if(number_of_slaves > 0) {
+    master_width = output_box.width * master_ratio - outer_gaps - inner_gaps;
+    master_height = output_box.height - 2 * outer_gaps;
+  } else {
+    master_width = output_box.width  - 2 * outer_gaps;
+    master_height = output_box.height - 2 * outer_gaps;
+  }
+
+  wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
+  wlr_scene_node_set_position(&master->scene_tree->node, 
+                              output_box.x + outer_gaps, output_box.y + outer_gaps);
+  toplevel_create_or_update_borders(master, master_width, master_height);
+
+  clip_if_needed(master, master_width, master_height);
+
+  if(number_of_slaves == 0) return;
+
+  /* share the remaining space among slaves */
+  struct owl_toplevel *t;
+  uint32_t slave_width = output_box.width * (1 - master_ratio) - outer_gaps - inner_gaps;
+  uint32_t slave_height = (output_box.height - 2 * outer_gaps
+    - (number_of_slaves - 1) * inner_gaps * 2) / number_of_slaves;
+
+  size_t i = 0;
+  wl_list_for_each(t, &workspace->slaves, link) {
+    wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
+    wlr_scene_node_set_position(&t->scene_tree->node,
+      output_box.x + output_box.width * master_ratio + inner_gaps,
+      outer_gaps + i * (slave_height + inner_gaps * 2));
+    toplevel_create_or_update_borders(t, slave_width, slave_height);
+
+    clip_if_needed(t, slave_width, slave_height);
+    i++;
+  }
+}
+
+/* this function assumes they are in the same workspace and that t2 comes after t1 in a list */
+static void swap_tiled_toplevels(struct owl_toplevel *t1, struct owl_toplevel *t2) {
+  if(t1 == t1->workspace->master) {
+    t1->workspace->master = t2;
+    wl_list_remove(&t2->link);
+    wl_list_insert(&t1->workspace->slaves, &t1->link);
+  } else if(t2 == t1->workspace->master) {
+    t1->workspace->master = t1;
+    wl_list_remove(&t1->link);
+    wl_list_insert(&t1->workspace->slaves, &t2->link);
+  } else {
+    struct wl_list *before_t1 = t1->link.prev;
+    wl_list_remove(&t1->link);
+    wl_list_insert(&t2->link, &t1->link);
+    wl_list_remove(&t2->link);
+    wl_list_insert(before_t1, &t2->link);
+  }
+
+  place_tiled_toplevels(t1->workspace);
+}
+
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
@@ -1018,52 +1100,12 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
     struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
     toplevel_create_or_update_borders(toplevel, geo_box.width, geo_box.height);
-	  focus_toplevel(toplevel);
-    return;
-  }
-
-  if(toplevel->workspace->master == NULL) {
+  } else if(toplevel->workspace->master == NULL) {
     toplevel->workspace->master = toplevel;
-    wlr_scene_node_set_position(&toplevel->scene_tree->node, 
-      output_box.x + outer_gaps, output_box.y + outer_gaps);
-    toplevel_create_or_update_borders(toplevel,
-      output_box.width - 2 * outer_gaps, output_box.height - 2 * outer_gaps);
-	  focus_toplevel(toplevel);
-    return;
+    place_tiled_toplevels(toplevel->workspace);
   } else {
     wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
-
-    uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves);
-    /* if first slave set master to span half a monitor */
-    if(number_of_slaves == 1) {
-      struct owl_toplevel *master = toplevel->workspace->master;
-      uint32_t master_width = output_box.width / 2
-        - server->config->outer_gaps - server->config->inner_gaps;
-      uint32_t master_height = output_box.height - 2 * server->config->outer_gaps;
-
-      wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
-      toplevel_create_or_update_borders(master, master_width, master_height);
-
-      clip_if_needed(master, master_width, master_height);
-    }
-
-    /* share the other half among slaves */
-    struct owl_toplevel *t;
-    uint32_t slave_width = output_box.width / 2 - outer_gaps - inner_gaps;
-    uint32_t slave_height = (output_box.height - 2 * outer_gaps
-      - (number_of_slaves - 1) * inner_gaps * 2) / number_of_slaves;
-    
-    size_t i = 0;
-    wl_list_for_each(t, &toplevel->workspace->slaves, link) {
-      wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
-      wlr_scene_node_set_position(&t->scene_tree->node,
-        output_box.x + output_box.width / 2 + inner_gaps,
-        outer_gaps + i * (slave_height + inner_gaps * 2));
-      toplevel_create_or_update_borders(t, slave_width, slave_height);
-
-      clip_if_needed(t, slave_width, slave_height);
-      i++;
-    }
+    place_tiled_toplevels(toplevel->workspace);
   }
 
 	focus_toplevel(toplevel);
@@ -1082,9 +1124,6 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
   struct wlr_box output_box;
   wlr_output_layout_get_box(server->output_layout,
     toplevel->workspace->output->wlr_output, &output_box);
-
-  uint32_t outer_gaps = server->config->outer_gaps;
-  uint32_t inner_gaps = server->config->inner_gaps;
 
   if(toplevel->floating) {
 	  wl_list_remove(&toplevel->link);
@@ -1107,63 +1146,18 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
   } else {
     /* take the previous toplevel in the slaves list. if its head (which means the to be */
     /* removed toplevel was the first) then instead take the next one. if its also head, */
-    /* that means it was the only slave, but we dont care because then this variable is */
-    /* not going to be used anyway. */
+    /* that means it was the only slave, so take the master. */
     should_focus_next = wl_container_of(toplevel->link.prev, should_focus_next, link);
     if(&should_focus_next->link == &toplevel->workspace->slaves) {
       should_focus_next = wl_container_of(toplevel->link.next, should_focus_next, link);
     }
+    if(&should_focus_next->link == &toplevel->workspace->slaves) {
+      should_focus_next = toplevel->workspace->master;
+    }
     wl_list_remove(&toplevel->link);
   }
-
-  struct owl_toplevel *master = toplevel->workspace->master;
-  uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves);
-  /* if no more slaves set master to span the whole monitor */
-  if(number_of_slaves == 0) {
-    uint32_t master_width = output_box.width - 2 * outer_gaps;
-    uint32_t master_height = output_box.height - 2 * outer_gaps;
-
-    wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
-    wlr_scene_node_set_position(&master->scene_tree->node,
-      output_box.x + outer_gaps, output_box.y + outer_gaps);
-    toplevel_create_or_update_borders(master, master_width, master_height);
-    focus_toplevel(master);
-
-    clip_if_needed(master, master_width, master_height);
-
-    return;
-  }
-
-  /* else share the monitor among master and slaves */
-  uint32_t master_width = output_box.width / 2 - outer_gaps - inner_gaps;
-  uint32_t master_height = output_box.height - 2 * outer_gaps;
-
-  clip_if_needed(master, master_width, master_height);
-
-  wlr_scene_node_set_position(&master->scene_tree->node,
-    output_box.x + outer_gaps, output_box.y + outer_gaps);
-  wlr_xdg_toplevel_set_size(master->xdg_toplevel,
-    master_width, master_height);
-  toplevel_create_or_update_borders(master,
-    master_width, master_height);
-
-  struct owl_toplevel *t;
-  uint32_t slave_width = output_box.width / 2 - outer_gaps - inner_gaps;
-  uint32_t slave_height = (output_box.height - 2 * outer_gaps
-    - (number_of_slaves - 1) * inner_gaps * 2) / number_of_slaves;
   
-  size_t i = 0;
-  wl_list_for_each(t, &toplevel->workspace->slaves, link) {
-    wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
-    wlr_scene_node_set_position(&t->scene_tree->node,
-      output_box.x + output_box.width / 2 + inner_gaps,
-      outer_gaps + i * (slave_height + inner_gaps * 2));
-    toplevel_create_or_update_borders(t, slave_width, slave_height);
-
-    clip_if_needed(t, slave_width, slave_height);
-    i++;
-  }
-
+  place_tiled_toplevels(toplevel->workspace);
   focus_toplevel(should_focus_next);
 }
 
@@ -1171,7 +1165,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 	/* Called when a new surface state is committed. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
-	if (toplevel->xdg_toplevel->base->initial_commit) {
+	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* When an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
     if(toplevel->floating) {
@@ -1179,24 +1173,35 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
       return;
     }
 
-    struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
     struct wlr_box output_box;
     struct owl_server *server = toplevel->server;
+    uint32_t outer_gaps = server->config->outer_gaps;
+    uint32_t inner_gaps = server->config->inner_gaps;
+    double master_ratio = server->config->master_ratio;
 
     wlr_output_layout_get_box(toplevel->server->output_layout,
       toplevel->workspace->output->wlr_output, &output_box);
 
     if(toplevel->workspace->master == NULL) {
 		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
-        output_box.width - 2 * server->config->outer_gaps,
-        output_box.height - 2 * server->config->outer_gaps);
+        output_box.width - 2 * outer_gaps, output_box.height - 2 * outer_gaps);
     } else {
-      /* this is kinda cheaty, because i am going to change it immediately on map. */
-      /* one more render, i don't really care */
-		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+
+      uint32_t slave_width, slave_height;
+      uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves);
+      if (number_of_slaves == 0) {
+        slave_width = output_box.width * (1 - master_ratio) - outer_gaps - inner_gaps;
+        slave_height = output_box.height - 2 * outer_gaps;
+      } else {
+        slave_width = output_box.width * (1 - master_ratio) - outer_gaps - inner_gaps;
+        slave_height = (output_box.height - 2 * outer_gaps
+          - (number_of_slaves - 1) * inner_gaps * 2) / number_of_slaves;
+      }
+
+      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, slave_width, slave_height);
     }
     return;
-	}
+  }
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
@@ -1225,16 +1230,6 @@ static uint32_t cursor_get_closest_toplevel_corner(struct wlr_cursor *cursor,
   int right_dist = geo_box->width - left_dist;
   int top_dist = cursor->y - toplevel_y;
   int bottom_dist = geo_box->height - top_dist;
-
-  /*debug logs*/
-  /*wlr_log(WLR_ERROR, "cursor: %f, %f", cursor->x, cursor->y);*/
-  /*wlr_log(WLR_ERROR, "x, y: %d, %d", toplevel_x, toplevel_y);*/
-  /*wlr_log(WLR_ERROR, "width: %d", geo_box->width);*/
-  /*wlr_log(WLR_ERROR, "height: %d", geo_box->height);*/
-  /*wlr_log(WLR_ERROR, "left: %d", left_dist);*/
-  /*wlr_log(WLR_ERROR, "right: %d", right_dist);*/
-  /*wlr_log(WLR_ERROR, "top: %d", top_dist);*/
-  /*wlr_log(WLR_ERROR, "bottom: %d", bottom_dist);*/
 
   uint32_t edges = 0;
   if(left_dist <= right_dist) {
@@ -1488,6 +1483,76 @@ static void close_keyboard_focused_toplevel(struct owl_server *server, void *dat
   xdg_toplevel_send_close(toplevel->xdg_toplevel->resource);
 }
 
+static void move_tiled_focus(struct owl_server *server, void *data) {
+  uint32_t direction = (uint32_t)data;
+
+  struct owl_toplevel *focused_toplevel = 
+    get_keyboard_focused_toplevel(server);
+  
+  if(focused_toplevel == server->active_workspace->master) {
+    if(direction == RIGHT && !wl_list_empty(&server->active_workspace->slaves)) {
+      struct owl_toplevel *next = wl_container_of(server->active_workspace->slaves.next, next, link);
+      focus_toplevel(next);
+    }
+    return;
+  }
+
+  if(direction == LEFT) {
+    focus_toplevel(server->active_workspace->master);
+    return;
+  }
+
+  if(direction == UP) {
+    struct owl_toplevel *above = wl_container_of(focused_toplevel->link.prev, above, link);
+    if(&above->link != &server->active_workspace->slaves) {
+      focus_toplevel(above);
+    }
+    return;
+  }
+
+  if(direction == DOWN) {
+    struct owl_toplevel *bellow = wl_container_of(focused_toplevel->link.next, bellow, link);
+    if(&bellow->link != &server->active_workspace->slaves) {
+      focus_toplevel(bellow);
+    }
+  }
+}
+
+static void move_tiled_toplevel(struct owl_server *server, void *data) {
+  uint32_t direction = (uint32_t)data;
+
+  struct owl_toplevel *focused_toplevel = 
+    get_keyboard_focused_toplevel(server);
+  
+  if(focused_toplevel == server->active_workspace->master) {
+    if(direction == RIGHT && !wl_list_empty(&server->active_workspace->slaves)) {
+      struct owl_toplevel *next = wl_container_of(server->active_workspace->slaves.next, next, link);
+      swap_tiled_toplevels(next, focused_toplevel);
+    }
+    return;
+  }
+
+  if(direction == LEFT) {
+    swap_tiled_toplevels(focused_toplevel, server->active_workspace->master);
+    return;
+  }
+
+  if(direction == UP) {
+    struct owl_toplevel *above = wl_container_of(focused_toplevel->link.prev, above, link);
+    if(&above->link != &server->active_workspace->slaves) {
+      swap_tiled_toplevels(above, focused_toplevel);
+    }
+    return;
+  }
+
+  if(direction == DOWN) {
+    struct owl_toplevel *bellow = wl_container_of(focused_toplevel->link.next, bellow, link);
+    if(&bellow->link != &server->active_workspace->slaves) {
+      swap_tiled_toplevels(focused_toplevel, bellow);
+    }
+  }
+}
+
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
 
@@ -1510,6 +1575,7 @@ static bool server_load_config(struct owl_server *server) {
   c->border_width = 2;
   c->outer_gaps = 32;
   c->inner_gaps = 16;
+  c->master_ratio = 0.65;
 
   struct monitor_config *first_monitor = calloc(1, sizeof(*first_monitor));
   *first_monitor = (struct monitor_config){
@@ -1566,6 +1632,38 @@ static bool server_load_config(struct owl_server *server) {
     .stop = stop_move_focused_toplevel,
   };
 
+  struct keybind *move_tiled_focus_up = calloc(1, sizeof(*move_tiled_focus_up));
+  *move_tiled_focus_up = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
+    .sym = XKB_KEY_k,
+    .action = move_tiled_focus,
+    .args = (void *)UP,
+  };
+
+  struct keybind *move_tiled_focus_right = calloc(1, sizeof(*move_tiled_focus_right));
+  *move_tiled_focus_right = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
+    .sym = XKB_KEY_l,
+    .action = move_tiled_focus,
+    .args = (void *)RIGHT,
+  };
+
+  struct keybind *move_tiled_focus_down = calloc(1, sizeof(*move_tiled_focus_down));
+  *move_tiled_focus_down = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
+    .sym = XKB_KEY_j,
+    .action = move_tiled_focus,
+    .args = (void *)DOWN,
+  };
+
+  struct keybind *move_tiled_focus_left = calloc(1, sizeof(*move_tiled_focus_left));
+  *move_tiled_focus_left = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
+    .sym = XKB_KEY_h,
+    .action = move_tiled_focus,
+    .args = (void *)LEFT,
+  };
+
   struct keybind *close_toplevel = calloc(1, sizeof(*close_toplevel));
   *close_toplevel = (struct keybind) {
     .modifiers = WLR_MODIFIER_LOGO,
@@ -1573,11 +1671,54 @@ static bool server_load_config(struct owl_server *server) {
     .action = close_keyboard_focused_toplevel,
   };
 
+  struct keybind *move_tiled_toplevel_up = calloc(1, sizeof(*move_tiled_focus_up));
+  *move_tiled_toplevel_up = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_K,
+    .action = move_tiled_toplevel,
+    .args = (void *)UP,
+  };
+
+  struct keybind *move_tiled_toplevel_right = calloc(1, sizeof(*move_tiled_focus_right));
+  *move_tiled_toplevel_right = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_L,
+    .action = move_tiled_toplevel,
+    .args = (void *)RIGHT,
+  };
+  
+  struct keybind *move_tiled_toplevel_down = calloc(1, sizeof(*move_tiled_focus_down));
+  *move_tiled_toplevel_down = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_J,
+    .action = move_tiled_toplevel,
+    .args = (void *)DOWN,
+  };
+
+  struct keybind *move_tiled_toplevel_left = calloc(1, sizeof(*move_tiled_focus_left));
+  *move_tiled_toplevel_left = (struct keybind) {
+    .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT,
+    .sym = XKB_KEY_H,
+    .action = move_tiled_toplevel,
+    .args = (void *)LEFT,
+  };
+
   wl_list_init(&c->keybinds);
   wl_list_insert(&c->keybinds, &stop_server_k->link);
   wl_list_insert(&c->keybinds, &run_kitty->link);
   wl_list_insert(&c->keybinds, &resize_toplevel->link);
   wl_list_insert(&c->keybinds, &move_toplevel->link);
+
+  wl_list_insert(&c->keybinds, &move_tiled_focus_up->link);
+  wl_list_insert(&c->keybinds, &move_tiled_focus_right->link);
+  wl_list_insert(&c->keybinds, &move_tiled_focus_down->link);
+  wl_list_insert(&c->keybinds, &move_tiled_focus_left->link);
+
+  wl_list_insert(&c->keybinds, &move_tiled_toplevel_up->link);
+  wl_list_insert(&c->keybinds, &move_tiled_toplevel_right->link);
+  wl_list_insert(&c->keybinds, &move_tiled_toplevel_down->link);
+  wl_list_insert(&c->keybinds, &move_tiled_toplevel_left->link);
+
   wl_list_insert(&c->keybinds, &close_toplevel->link);
 
   server->config = c;
