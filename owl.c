@@ -34,8 +34,6 @@
 #include "wlr/util/box.h"
 #include "xdg-shell-protocol.h"
 
-#define MAX_WORKSPACES_PER_WINDOW 10
-
 enum owl_cursor_mode {
 	OWL_CURSOR_PASSTHROUGH,
 	OWL_CURSOR_MOVE,
@@ -140,6 +138,7 @@ struct owl_server {
 };
 
 struct owl_workspace {
+  struct wl_list link;
   struct owl_output *output;
   uint32_t index;
   struct owl_toplevel *master;
@@ -151,8 +150,7 @@ struct owl_output {
 	struct wl_list link;
 	struct owl_server *server;
 	struct wlr_output *wlr_output;
-  /* this is kind of dumb but it will work for now */
-  struct owl_workspace workspaces[MAX_WORKSPACES_PER_WINDOW];
+  struct wl_list workspaces;
   struct owl_workspace *active_workspace;
 	struct wl_listener frame;
 	struct wl_listener request_state;
@@ -890,7 +888,7 @@ static void output_destroy(struct wl_listener *listener, void *data) {
 static void change_workspace(struct owl_server *server, void *data) {
   struct owl_workspace *workspace = data;
 
-  /* if it is the same as global->active_workspace, do nothing */
+  /* if it is the same as global active workspace, do nothing */
   if(server->active_workspace == workspace) {
     return;
   }
@@ -901,6 +899,9 @@ static void change_workspace(struct owl_server *server, void *data) {
     if(workspace == o->active_workspace) {
       server->active_workspace = workspace;
       cursor_jump_workspace(workspace);
+      if(workspace->master != NULL) {
+        focus_toplevel(workspace->master);
+      }
       return;
     }
   }
@@ -940,6 +941,9 @@ static void change_workspace(struct owl_server *server, void *data) {
 
   server->active_workspace = workspace;
   workspace->output->active_workspace = workspace;
+  if(workspace->master != NULL) {
+    focus_toplevel(workspace->master);
+  }
 }
 
 static void server_new_output(struct wl_listener *listener, void *data) {
@@ -1004,16 +1008,23 @@ static void server_new_output(struct wl_listener *listener, void *data) {
   output->destroy.notify = output_destroy;
   wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
+  wl_list_init(&output->workspaces);
+
   for(size_t i = 0; i < server->config->workspaces_per_monitor; i++) {
-    struct owl_workspace *workspace = &output->workspaces[i];
+    struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
     wl_list_init(&workspace->slaves);
     wl_list_init(&workspace->floating_toplevels);
     workspace->master = NULL;
-
-    /* i dont think this will work for hotplugging */
     workspace->output = output;
     workspace->index =
       wl_list_length(&server->outputs) * server->config->workspaces_per_monitor + i + 1;
+
+    wl_list_insert(&output->workspaces, &workspace->link);
+
+    /* if first then set it active */
+    if(output->active_workspace == NULL) {
+      output->active_workspace = workspace;
+    }
 
     /* these binds should also be specified in the config, TODO: */
     struct keybind *change_workspace_i = calloc(1, sizeof(*change_workspace_i));
@@ -1027,7 +1038,7 @@ static void server_new_output(struct wl_listener *listener, void *data) {
     wl_list_insert(&server->config->keybinds, &change_workspace_i->link);
   }
   
-  output->active_workspace = &output->workspaces[0];
+  /* if first output then set its active workspace to this one */
   if(server->active_workspace == NULL) {
     server->active_workspace = output->active_workspace;
   }
