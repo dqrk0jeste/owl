@@ -29,8 +29,10 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 
 #include "util.h"
+#include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr/util/box.h"
 #include "xdg-shell-protocol.h"
 
@@ -100,6 +102,9 @@ struct owl_server {
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
 
+  struct wlr_layer_shell_v1 *layer_shell;
+	struct wl_listener new_layer_surface;
+
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
 	struct wl_listener cursor_motion;
@@ -151,10 +156,27 @@ struct owl_output {
 	struct owl_server *server;
 	struct wlr_output *wlr_output;
   struct wl_list workspaces;
+  struct {
+    struct wl_list background;
+    struct wl_list bottom;
+    struct wl_list top;
+    struct wl_list overlay;
+  } layers;
   struct owl_workspace *active_workspace;
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
+};
+
+struct owl_layer_surface {
+  struct wl_list link;
+  struct owl_server *server;
+  struct wlr_layer_surface_v1 *wlr_layer_surface;
+  struct wlr_scene_layer_surface_v1 *scene_tree;
+  struct wl_listener map;
+  struct wl_listener unmap;
+  struct wl_listener commit;
+  struct wl_listener destroy;
 };
 
 struct owl_toplevel {
@@ -639,14 +661,8 @@ static void process_cursor_move(struct owl_server *server, uint32_t time) {
 
 static void process_cursor_resize(struct owl_server *server, uint32_t time) {
 	/*
-	 * Resizing the grabbed toplevel can be a little bit complicated, because we
-	 * could be resizing from any corner or edge. This not only resizes the
-	 * toplevel on one or two axes, but can also move the toplevel if you resize
-	 * from the top or left edges (or top-left corner).
-	 *
-	 * Note that some shortcuts are taken here. In a more fleshed-out
-	 * compositor, you'd wait for the client to prepare a buffer at the new
-	 * size, then commit any movement that was prepared.
+	 * TODO:  wait for the client to prepare a buffer at the new size, then commit
+   * any movement that was prepared.
 	 */
 	struct owl_toplevel *toplevel = server->grabbed_toplevel;
 
@@ -1043,6 +1059,11 @@ static void server_new_output(struct wl_listener *listener, void *data) {
     server->active_workspace = output->active_workspace;
   }
 
+  wl_list_init(&output->layers.background);
+  wl_list_init(&output->layers.bottom);
+  wl_list_init(&output->layers.top);
+  wl_list_init(&output->layers.overlay);
+
   wl_list_insert(&server->outputs, &output->link);
 
   struct wlr_output_layout_output *l_output;
@@ -1090,7 +1111,6 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
 
   struct owl_toplevel *master = workspace->master;
   if(master == NULL) return;
-  wlr_log(WLR_ERROR, "master nije null");
 
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
@@ -1755,6 +1775,7 @@ static void switch_focused_toplevel_state(struct owl_server *server, void *data)
     }
 
     place_tiled_toplevels(toplevel->workspace);
+    wlr_scene_node_lower_to_bottom(&toplevel->scene_tree->node);
     return;
   }
 
@@ -1792,6 +1813,100 @@ static void switch_focused_toplevel_state(struct owl_server *server, void *data)
   wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
 
   place_tiled_toplevels(toplevel->workspace);
+}
+
+static void handle_layer_surface_commit(struct wl_listener *listener, void *data) {
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
+
+
+  if (!layer_surface->wlr_layer_surface->initialized) {
+    return;
+  }
+
+  wlr_log(WLR_ERROR, "initial %d", layer_surface->wlr_layer_surface->initial_commit);
+
+  if(layer_surface->wlr_layer_surface->initial_commit) {
+    struct owl_output *output = layer_surface->server->active_workspace->output;
+
+    wlr_log(WLR_ERROR, "1");
+
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(output->server->output_layout,
+      output->wlr_output, &output_box);
+
+    wlr_log(WLR_ERROR, "2");
+
+		wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &output_box);
+  }
+
+  wlr_log(WLR_ERROR, "3");
+}
+
+static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
+  struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
+
+  wlr_log(WLR_ERROR, "map 1");
+  enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
+  struct owl_output *output = wlr_layer_surface->output->data;
+
+  switch (layer) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+      wl_list_insert(&output->layers.background, &layer_surface->link);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+      wl_list_insert(&output->layers.bottom, &layer_surface->link);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+      wl_list_insert(&output->layers.top, &layer_surface->link);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+      wl_list_insert(&output->layers.overlay, &layer_surface->link);
+      break;
+  }
+  wlr_log(WLR_ERROR, "map 2");
+}
+
+static void handle_layer_surface_unmap(struct wl_listener *listener, void *data) {
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, unmap);
+  struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
+
+  wl_list_remove(&layer_surface->link);
+}
+
+static void handle_layer_surface_destroy(struct wl_listener *listener, void *data) {
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, destroy);
+
+  wl_list_remove(&layer_surface->map.link);
+  wl_list_remove(&layer_surface->unmap.link);
+  wl_list_remove(&layer_surface->destroy.link);
+
+  free(layer_surface);
+}
+
+static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
+  struct owl_server *server = wl_container_of(listener, server, new_layer_surface);
+  struct wlr_layer_surface_v1 *wlr_layer_surface = data;
+
+  struct owl_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
+  layer_surface->wlr_layer_surface = wlr_layer_surface;
+  layer_surface->wlr_layer_surface->data = layer_surface;
+  layer_surface->server = server;
+
+  layer_surface->scene_tree =
+    wlr_scene_layer_surface_v1_create(&server->scene->tree, wlr_layer_surface);
+
+  layer_surface->map.notify = handle_layer_surface_map;
+  wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
+
+  layer_surface->unmap.notify = handle_layer_surface_unmap;
+  wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
+
+  layer_surface->destroy.notify = handle_layer_surface_destroy;
+  wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
+
+  layer_surface->commit.notify = handle_layer_surface_commit;
+  wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
 }
 
 static bool server_load_config(struct owl_server *server) {
@@ -2081,11 +2196,16 @@ int main(int argc, char *argv[]) {
 	 * used for application windows. For more detail on shells, refer to
 	 * https://drewdevault.com/2018/07/29/Wayland-shells.html.
 	 */
-	server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 3);
+	server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 6);
 	server.new_xdg_toplevel.notify = server_new_xdg_toplevel;
 	wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel);
 	server.new_xdg_popup.notify = server_new_xdg_popup;
 	wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_xdg_popup);
+
+  server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 5);
+  server.new_layer_surface.notify = handle_new_layer_surface;
+  server.layer_shell->data = &server;
+  wl_signal_add(&server.layer_shell->events.new_surface, &server.new_layer_surface);
 
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
