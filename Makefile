@@ -28,6 +28,6 @@ build/owl: build/owl.o
 	$(CC) $^ $> $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 
 clean:
-	rm -f build/*
+	rm -rf build/*
 
 .PHONY: all clean

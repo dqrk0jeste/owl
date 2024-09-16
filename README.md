@@ -1,2 +1,2 @@
 # owl
-a tiling wayland compositor based on wlroots.
+tiling wayland compositor based on wlroots.

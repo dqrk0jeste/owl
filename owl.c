@@ -33,7 +33,6 @@
 
 #include "util.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
-#include "wlr/util/box.h"
 #include "xdg-shell-protocol.h"
 
 enum owl_cursor_mode {
@@ -48,6 +47,7 @@ enum owl_direction {
   DOWN,
   LEFT,
 };
+
 
 struct owl_config {
   struct wl_list monitors;
@@ -168,6 +168,21 @@ struct owl_output {
 	struct wl_listener destroy;
 };
 
+enum owl_type {
+  OWL_TOPLEVEL,
+  OWL_POPUP,
+  OWL_LAYER_SURFACE,
+};
+
+struct owl_something {
+  enum owl_type type;
+  union {
+    struct owl_toplevel *toplevel;
+    struct owl_popup *popup;
+    struct owl_layer_surface *layer_surface;
+  };
+};
+
 struct owl_layer_surface {
   struct wl_list link;
   struct owl_server *server;
@@ -199,6 +214,7 @@ struct owl_toplevel {
 
 struct owl_popup {
 	struct wlr_xdg_popup *xdg_popup;
+	struct wlr_scene_tree *scene_tree;
 	struct wl_listener commit;
 	struct wl_listener destroy;
 };
@@ -624,13 +640,16 @@ static struct owl_toplevel *desktop_toplevel_at(
 	}
 
 	*surface = scene_surface->surface;
+  wlr_log(WLR_ERROR, "darko");
 	/* Find the node corresponding to the owl_toplevel at the root of this
 	 * surface tree, it is the only one for which we set the data field. */
 	struct wlr_scene_tree *tree = node->parent;
+  wlr_log(WLR_ERROR, "darko 1");
 	while (tree != NULL && tree->node.data == NULL) {
 		tree = tree->node.parent;
 	}
 
+  wlr_log(WLR_ERROR, "darko 2");
 	return tree->node.data;
 }
 
@@ -743,8 +762,10 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 	double sx, sy;
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *surface = NULL;
+  wlr_log(WLR_ERROR, "darko 0");
 	struct owl_toplevel *toplevel = desktop_toplevel_at(server,
 			server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+  wlr_log(WLR_ERROR, "darko 3");
 
 	if (!toplevel) {
 		/* If there's no toplevel under the cursor, set the cursor image to a
@@ -1323,6 +1344,8 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&toplevel->request_maximize.link);
 	wl_list_remove(&toplevel->request_fullscreen.link);
 
+  struct owl_something *something = toplevel->xdg_toplevel->base->data;
+  free(something->toplevel);
 	free(toplevel);
 }
 
@@ -1444,10 +1467,16 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
   toplevel->workspace = server->active_workspace;
 
 	toplevel->xdg_toplevel = xdg_toplevel;
+  
 	toplevel->scene_tree =
 		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
 	toplevel->scene_tree->node.data = toplevel;
-	xdg_toplevel->base->data = toplevel->scene_tree;
+
+	struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_TOPLEVEL;
+  something->toplevel = toplevel;
+
+	xdg_toplevel->base->data = something;
 
 	/* Listen to the various events it can emit */
 	toplevel->map.notify = xdg_toplevel_map;
@@ -1496,9 +1525,11 @@ static void xdg_popup_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&popup->commit.link);
 	wl_list_remove(&popup->destroy.link);
 
+  struct owl_something *something = popup->xdg_popup->base->data;
+  free(something->popup);
 	free(popup);
 }
-
+/* TODO: change this so it can work with layer shell */
 static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	/* This event is raised when a client creates a new popup. */
 	struct wlr_xdg_popup *xdg_popup = data;
@@ -1506,15 +1537,31 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	struct owl_popup *popup = calloc(1, sizeof(*popup));
 	popup->xdg_popup = xdg_popup;
 
-	/* We must add xdg popups to the scene graph so they get rendered. The
-	 * wlroots scene graph provides a helper for this, but to use it we must
-	 * provide the proper parent scene node of the xdg popup. To enable this,
-	 * we always set the user data field of xdg_surfaces to the corresponding
-	 * scene node. */
-	struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
-	assert(parent != NULL);
-	struct wlr_scene_tree *parent_tree = parent->data;
-	xdg_popup->base->data = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
+  popup->scene_tree = NULL;
+  if(xdg_popup->parent != NULL) {
+    struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
+    assert(parent != NULL);
+
+    struct owl_something *parent_something = parent->data;
+    switch (parent_something->type) {
+      case OWL_TOPLEVEL:
+        popup->scene_tree = 
+          wlr_scene_xdg_surface_create(parent_something->toplevel->scene_tree, xdg_popup->base);
+        break;
+      case OWL_POPUP:
+        popup->scene_tree = 
+          wlr_scene_xdg_surface_create(parent_something->popup->scene_tree, xdg_popup->base);
+        break;
+      case OWL_LAYER_SURFACE:
+        /* this should not be possible */
+        break;
+    }
+  }
+
+  struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_POPUP;
+  something->popup = popup;
+  xdg_popup->base->data = something;
 
 	popup->commit.notify = xdg_popup_commit;
 	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
@@ -1816,37 +1863,27 @@ static void switch_focused_toplevel_state(struct owl_server *server, void *data)
 }
 
 static void handle_layer_surface_commit(struct wl_listener *listener, void *data) {
-  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
-
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
 
   if (!layer_surface->wlr_layer_surface->initialized) {
     return;
   }
 
-  wlr_log(WLR_ERROR, "initial %d", layer_surface->wlr_layer_surface->initial_commit);
-
   if(layer_surface->wlr_layer_surface->initial_commit) {
-    struct owl_output *output = layer_surface->server->active_workspace->output;
-
-    wlr_log(WLR_ERROR, "1");
+    struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
 
     struct wlr_box output_box;
     wlr_output_layout_get_box(output->server->output_layout,
       output->wlr_output, &output_box);
 
-    wlr_log(WLR_ERROR, "2");
-
 		wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &output_box);
   }
-
-  wlr_log(WLR_ERROR, "3");
 }
 
 static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
   struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
 
-  wlr_log(WLR_ERROR, "map 1");
   enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
   struct owl_output *output = wlr_layer_surface->output->data;
 
@@ -1864,7 +1901,6 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
       wl_list_insert(&output->layers.overlay, &layer_surface->link);
       break;
   }
-  wlr_log(WLR_ERROR, "map 2");
 }
 
 static void handle_layer_surface_unmap(struct wl_listener *listener, void *data) {
@@ -1893,8 +1929,21 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
   layer_surface->wlr_layer_surface->data = layer_surface;
   layer_surface->server = server;
 
+	layer_surface->scene_tree =
+    wlr_scene_layer_surface_v1_create(&server->scene->tree, wlr_layer_surface);
+	toplevel->scene_tree->node.data = toplevel;
+	xdg_toplevel->base->data = toplevel->scene_tree;
+
+  if (layer_surface->wlr_layer_surface->output == NULL) {
+    struct owl_output *output = wl_container_of(server->outputs.next, output, link);
+    layer_surface->wlr_layer_surface->output = output->wlr_output;
+  }
+
   layer_surface->scene_tree =
     wlr_scene_layer_surface_v1_create(&server->scene->tree, wlr_layer_surface);
+
+  layer_surface->commit.notify = handle_layer_surface_commit;
+  wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
 
   layer_surface->map.notify = handle_layer_surface_map;
   wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
@@ -1904,9 +1953,6 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
 
   layer_surface->destroy.notify = handle_layer_surface_destroy;
   wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
-
-  layer_surface->commit.notify = handle_layer_surface_commit;
-  wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
 }
 
 static bool server_load_config(struct owl_server *server) {
