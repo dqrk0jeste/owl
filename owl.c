@@ -48,7 +48,6 @@ enum owl_direction {
   LEFT,
 };
 
-
 struct owl_config {
   struct wl_list monitors;
   struct wl_list keybinds;
@@ -237,16 +236,21 @@ static bool toplevel_dimensions_changed(struct owl_toplevel *toplevel,
 
 static bool toplevel_position_changed(struct owl_toplevel *toplevel, 
     uint32_t new_x, uint32_t new_y) {
-  return toplevel->scene_tree->node.x != new_x || toplevel->scene_tree->node.y != new_y;
+  return toplevel->scene_tree->node.x != new_x
+    || toplevel->scene_tree->node.y != new_y;
 }
 
 struct owl_output *get_output_relative(struct owl_server *server,
     struct owl_output *output, enum owl_direction direction) {
 
   struct wlr_box original_output_box;
-  wlr_output_layout_get_box(server->output_layout, output->wlr_output, &original_output_box);
-  uint32_t original_output_midpoint_x = original_output_box.x + original_output_box.width / 2;
-  uint32_t original_output_midpoint_y = original_output_box.y + original_output_box.height / 2;
+  wlr_output_layout_get_box(server->output_layout,
+    output->wlr_output, &original_output_box);
+
+  uint32_t original_output_midpoint_x =
+    original_output_box.x + original_output_box.width / 2;
+  uint32_t original_output_midpoint_y =
+    original_output_box.y + original_output_box.height / 2;
 
   struct owl_output *o;
   wl_list_for_each(o, &server->outputs, link) {
@@ -278,7 +282,7 @@ struct owl_output *get_output_relative(struct owl_server *server,
 
   return NULL;
 }
-
+/*TODOFIX*/
 static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
   struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
@@ -286,10 +290,14 @@ static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_s
     return NULL;
   }
   
-  /* according to docs we have to keep scene_tree in surface's data */
-  /* and we are keeping the toplevel in scene_tree->node->data */
-  struct wlr_scene_tree *tree = xdg_surface->data;
-	return tree->node.data;
+	struct wlr_scene_tree *tree = xdg_surface->data;
+  struct owl_something *something = tree->node.data;
+  while(something == NULL || something->type == OWL_POPUP) {
+    tree = tree->node.parent;
+    something = tree->node.data;
+  }
+
+  return something->toplevel;
 }
 
 static struct owl_toplevel *get_keyboard_focused_toplevel(struct owl_server *server) {
@@ -319,12 +327,7 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 	}
 
 	if(prev_toplevel != NULL) {
-		/*
-		 * Deactivate the previously focused surface. This lets the client know
-		 * it no longer has focus and the client will repaint accordingly, e.g.
-		 * stop displaying a caret.
-		 */
-
+		/* deactivate the previously focused surface */
 		wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
 
     /* paint its borders to inactive color */
@@ -342,7 +345,7 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 
   server->active_workspace = toplevel->workspace;
 
-	/* Activate the new surface */
+	/* activate the new surface */
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
 
   /* paint borders to active color */
@@ -371,7 +374,7 @@ static void cursor_jump_focused_toplevel(struct owl_server *server) {
     toplevel->scene_tree->node.x + geo_box.x + geo_box.width / 2.0,
     toplevel->scene_tree->node.y + geo_box.y + geo_box.height / 2.0);
 }
-
+/*TODOFIXLONG*/
 static void cursor_jump_workspace(struct owl_workspace *workspace) {
   struct owl_server *server = workspace->output->server;
 
@@ -400,12 +403,11 @@ static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) 
 	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
 		&keyboard->wlr_keyboard->modifiers);
 }
-
-
+/*TODOFIXMAYBE*/
 static bool handle_keybinds(struct owl_server *server, uint32_t modifiers,
     xkb_keysym_t sym, enum wl_keyboard_key_state state) {
 	/*
-	 * Here we handle compositor keybindings. This is when the compositor is
+	 * Here we handle compositor keybindins. This is when the compositor is
 	 * processing keys, rather than passing them on to the client for its own
 	 * processing.
 	 */
@@ -490,7 +492,6 @@ static void server_new_keyboard(struct owl_server *server,
 	xkb_keymap_unref(keymap);
 	xkb_context_unref(context);
 
-  /*TODO: add this as a config option*/
   uint32_t rate = server->config->keyboard_rate;
   uint32_t delay = server->config->keyboard_delay;
 	wlr_keyboard_set_repeat_info(wlr_keyboard, rate, delay);
@@ -533,11 +534,12 @@ static void server_new_input(struct wl_listener *listener, void *data) {
       server_new_pointer(server, device);
       break;
     default:
+      /* owl doesnt support touch devices, drawing tablets etc */
       break;
   }
 
-	/* We need to let the wlr_seat know what our capabilities are, which is
-	 * communiciated to the client. In owl we always have a cursor, even if
+	/* we need to let the wlr_seat know what our capabilities are, which is
+	 * communiciated to the client. we always have a cursor, even if
 	 * there are no pointer devices, so we always include that capability. */
 	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
 	if (!wl_list_empty(&server->keyboards)) {
@@ -561,7 +563,7 @@ static void seat_request_cursor(struct wl_listener *listener, void *data) {
 		 * on the output that it's currently on and continue to do so as the
 		 * cursor moves between outputs. */
 		wlr_cursor_set_surface(server->cursor, event->surface,
-				event->hotspot_x, event->hotspot_y);
+			event->hotspot_x, event->hotspot_y);
     server->client_cursor.surface = event->surface;
     server->client_cursor.hotspot_x = event->hotspot_x;
     server->client_cursor.hotspot_y = event->hotspot_y;
@@ -620,12 +622,10 @@ static void toplevel_create_or_update_borders(struct owl_toplevel *toplevel,
   wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
 }
 
-static struct owl_toplevel *desktop_toplevel_at(
+static struct owl_something *owl_something_at(
 		struct owl_server *server, double lx, double ly,
 		struct wlr_surface **surface, double *sx, double *sy) {
-	/* This returns the topmost node in the scene at the given layout coords.
-	 * We only care about surface nodes as we are specifically looking for a
-	 * surface in the surface tree of a owl_toplevel. */
+	/* This returns the topmost node in the scene at the given layout coords */
 	struct wlr_scene_node *node = wlr_scene_node_at(
 		&server->scene->tree.node, lx, ly, sx, sy);
 	if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
@@ -640,17 +640,15 @@ static struct owl_toplevel *desktop_toplevel_at(
 	}
 
 	*surface = scene_surface->surface;
-  wlr_log(WLR_ERROR, "darko");
-	/* Find the node corresponding to the owl_toplevel at the root of this
-	 * surface tree, it is the only one for which we set the data field. */
-	struct wlr_scene_tree *tree = node->parent;
-  wlr_log(WLR_ERROR, "darko 1");
-	while (tree != NULL && tree->node.data == NULL) {
-		tree = tree->node.parent;
-	}
 
-  wlr_log(WLR_ERROR, "darko 2");
-	return tree->node.data;
+  struct wlr_scene_tree *tree = node->parent;
+  struct owl_something *something = tree->node.data;
+  while(something == NULL || something->type == OWL_POPUP) {
+    tree = tree->node.parent;
+    something = tree->node.data;
+  }
+
+  return something;
 }
 
 static void reset_cursor_mode(struct owl_server *server) {
@@ -758,16 +756,20 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		return;
 	}
 
-	/* find the toplevel under the pointer and send the event along. */
+	/* find something under the pointer and send the event along. */
 	double sx, sy;
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *surface = NULL;
-  wlr_log(WLR_ERROR, "darko 0");
-	struct owl_toplevel *toplevel = desktop_toplevel_at(server,
-			server->cursor->x, server->cursor->y, &surface, &sx, &sy);
-  wlr_log(WLR_ERROR, "darko 3");
+	struct owl_something *something = owl_something_at(server,
+		server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
-	if (!toplevel) {
+  if(something == NULL) {
+    wlr_log(WLR_ERROR, "something je null");
+  } else {
+    wlr_log(WLR_ERROR, "something %u, %p", something->type, something->toplevel);
+  }
+
+	if (something == NULL) {
 		/* If there's no toplevel under the cursor, set the cursor image to a
 		 * default. This is what makes the cursor image appear when you move it
 		 * around the screen, not over any toplevels. */
@@ -776,23 +778,25 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		/* Clear pointer focus so future button events and such are not sent to
 		 * the last client to have the cursor over it. */
 		wlr_seat_pointer_clear_focus(seat);
-	} else {
-		/*
-		 * Send pointer enter and motion events.
-		 *
-		 * The enter event gives the surface "pointer focus", which is distinct
-		 * from keyboard focus. You get pointer focus by moving the pointer over
-		 * a window.
-		 *
-		 * Note that wlroots will avoid sending duplicate enter/motion events if
-		 * the surface has already has pointer focus or if the client is already
-		 * aware of the coordinates passed.
-		 */
-    focus_toplevel(toplevel);
-
-		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-		wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+    return;
 	}
+  /*
+     * Send pointer enter and motion events.
+     *
+     * The enter event gives the surface "pointer focus", which is distinct
+     * from keyboard focus. You get pointer focus by moving the pointer over
+     * a window.
+     *
+     * Note that wlroots will avoid sending duplicate enter/motion events if
+     * the surface has already has pointer focus or if the client is already
+     * aware of the coordinates passed.
+     */
+  if(something->type == OWL_TOPLEVEL) {
+    focus_toplevel(something->toplevel);
+  }
+
+  wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+  wlr_seat_pointer_notify_motion(seat, time, sx, sy);
 }
 
 static void server_cursor_motion(struct wl_listener *listener, void *data) {
@@ -1286,6 +1290,8 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 	/* Called when a new surface state is committed. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
+  if(!toplevel->xdg_toplevel->base->initialized) return;
+
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* When an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
@@ -1344,8 +1350,6 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&toplevel->request_maximize.link);
 	wl_list_remove(&toplevel->request_fullscreen.link);
 
-  struct owl_something *something = toplevel->xdg_toplevel->base->data;
-  free(something->toplevel);
 	free(toplevel);
 }
 
@@ -1469,14 +1473,19 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	toplevel->xdg_toplevel = xdg_toplevel;
   
 	toplevel->scene_tree =
-		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
-	toplevel->scene_tree->node.data = toplevel;
+		wlr_scene_xdg_surface_create(&server->scene->tree, xdg_toplevel->base);
+  /* we are keeping toplevels scene_tree in this free user data field, this is used in 
+   * assigning parents to popups */
+	xdg_toplevel->base->data = toplevel->scene_tree;
 
+  /* in a node we want to keep information what that node represents. we do that
+   * be keeping owl_something in user data field, which is a union of all possible
+   * 'things' we can have on the screen */
 	struct owl_something *something = calloc(1, sizeof(*something));
   something->type = OWL_TOPLEVEL;
   something->toplevel = toplevel;
 
-	xdg_toplevel->base->data = something;
+	toplevel->scene_tree->node.data = something;
 
 	/* Listen to the various events it can emit */
 	toplevel->map.notify = xdg_toplevel_map;
@@ -1508,6 +1517,8 @@ static void xdg_popup_commit(struct wl_listener *listener, void *data) {
 	/* Called when a new surface state is committed. */
 	struct owl_popup *popup = wl_container_of(listener, popup, commit);
 
+	if (!popup->xdg_popup->base->initialized) return;
+
 	if (popup->xdg_popup->base->initial_commit) {
 		/* When an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface.
@@ -1525,8 +1536,6 @@ static void xdg_popup_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&popup->commit.link);
 	wl_list_remove(&popup->destroy.link);
 
-  struct owl_something *something = popup->xdg_popup->base->data;
-  free(something->popup);
 	free(popup);
 }
 /* TODO: change this so it can work with layer shell */
@@ -1537,31 +1546,19 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	struct owl_popup *popup = calloc(1, sizeof(*popup));
 	popup->xdg_popup = xdg_popup;
 
-  popup->scene_tree = NULL;
   if(xdg_popup->parent != NULL) {
-    struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
+    struct wlr_xdg_surface *parent =
+      wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
     assert(parent != NULL);
+	  struct wlr_scene_tree *parent_tree = parent->data;
+    popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
 
-    struct owl_something *parent_something = parent->data;
-    switch (parent_something->type) {
-      case OWL_TOPLEVEL:
-        popup->scene_tree = 
-          wlr_scene_xdg_surface_create(parent_something->toplevel->scene_tree, xdg_popup->base);
-        break;
-      case OWL_POPUP:
-        popup->scene_tree = 
-          wlr_scene_xdg_surface_create(parent_something->popup->scene_tree, xdg_popup->base);
-        break;
-      case OWL_LAYER_SURFACE:
-        /* this should not be possible */
-        break;
-    }
+    xdg_popup->base->data = popup->scene_tree;
+    struct owl_something *something = calloc(1, sizeof(*something));
+    something->type = OWL_POPUP;
+    something->popup = popup;
+    popup->scene_tree->node.data = something;
   }
-
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_POPUP;
-  something->popup = popup;
-  xdg_popup->base->data = something;
 
 	popup->commit.notify = xdg_popup_commit;
 	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
@@ -1931,16 +1928,17 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
 
 	layer_surface->scene_tree =
     wlr_scene_layer_surface_v1_create(&server->scene->tree, wlr_layer_surface);
-	toplevel->scene_tree->node.data = toplevel;
-	xdg_toplevel->base->data = toplevel->scene_tree;
+
+	struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_LAYER_SURFACE;
+  something->layer_surface = layer_surface;
+
+	layer_surface->scene_tree->tree->node.data = something;
 
   if (layer_surface->wlr_layer_surface->output == NULL) {
     struct owl_output *output = wl_container_of(server->outputs.next, output, link);
     layer_surface->wlr_layer_surface->output = output->wlr_output;
   }
-
-  layer_surface->scene_tree =
-    wlr_scene_layer_surface_v1_create(&server->scene->tree, wlr_layer_surface);
 
   layer_surface->commit.notify = handle_layer_surface_commit;
   wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
