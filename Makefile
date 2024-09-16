@@ -21,13 +21,20 @@ build/protocols/wlr-layer-shell-unstable-v1-protocol.h: build/protocols
 	$(WAYLAND_SCANNER) server-header \
 		./protocols/wlr-layer-shell-unstable-v1.xml $@
 
-build/owl.o: owl.c build/protocols/xdg-shell-protocol.h build/protocols/wlr-layer-shell-unstable-v1-protocol.h
+build/protocols/xdg-output-unstable-v1-protocol.h: build/protocols
+	$(WAYLAND_SCANNER) server-header \
+		$(WAYLAND_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml $@
+
+build/owl.o: owl.c build/protocols/xdg-shell-protocol.h build/protocols/wlr-layer-shell-unstable-v1-protocol.h build/protocols/xdg-output-unstable-v1-protocol.h
 	$(CC) -c $< $(CFLAGS) -I. -DWLR_USE_UNSTABLE -o $@
 
 build/owl: build/owl.o
 	$(CC) $^ $> $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 
+install: build/owl
+	sudo cp build/owl /usr/bin/owl
+
 clean:
 	rm -rf build/*
 
-.PHONY: all clean
+.PHONY: all clean install

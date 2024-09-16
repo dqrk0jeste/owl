@@ -31,6 +31,7 @@
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 
 #include "util.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
@@ -135,6 +136,7 @@ struct owl_server {
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
 	struct wl_listener new_output;
+  struct wlr_xdg_output_manager_v1 *xdg_output_manager;
 
   struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
   struct wl_listener request_xdg_decoration;
@@ -157,6 +159,7 @@ struct owl_output {
 	struct owl_server *server;
 	struct wlr_output *wlr_output;
   struct wl_list workspaces;
+  struct wlr_box usable_area;
   struct {
     struct wl_list background;
     struct wl_list bottom;
@@ -931,6 +934,12 @@ static void output_request_state(struct wl_listener *listener, void *data) {
 	struct owl_output *output = wl_container_of(listener, output, request_state);
 	const struct wlr_output_event_request_state *event = data;
 	wlr_output_commit_state(output->wlr_output, event->state);
+  
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(output->server->output_layout,
+    output->wlr_output, &output_box);
+
+  output->usable_area = output_box;
 }
 
 /*TODO: this needs tweaking in the future, rn outputs are not removed from */
@@ -1128,6 +1137,11 @@ static void server_new_output(struct wl_listener *listener, void *data) {
     wlr_scene_output_create(server->scene, wlr_output);
 
   wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
+
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(output->server->output_layout,
+    wlr_output, &output_box);
+  output->usable_area = output_box;
 }
 
 static void clip_if_needed(struct owl_toplevel *toplevel, 
@@ -1149,9 +1163,7 @@ static void clip_if_needed(struct owl_toplevel *toplevel,
 static void place_tiled_toplevels(struct owl_workspace *workspace) {
   struct owl_server *server = workspace->output->server;
 
-  struct wlr_box output_box;
-  wlr_output_layout_get_box(server->output_layout,
-    workspace->output->wlr_output, &output_box);
+  struct wlr_box output_box = workspace->output->usable_area;
 
   struct owl_toplevel *master = workspace->master;
   if(master == NULL) return;
@@ -1191,7 +1203,7 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
     wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
     wlr_scene_node_set_position(&t->scene_tree->node,
       output_box.x + output_box.width * master_ratio + inner_gaps,
-      outer_gaps + i * (slave_height + inner_gaps * 2));
+      output_box.y + outer_gaps + i * (slave_height + inner_gaps * 2));
     toplevel_create_or_update_borders(t, slave_width, slave_height);
 
     clip_if_needed(t, slave_width, slave_height);
@@ -1229,9 +1241,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
   toplevel->floating = toplevel->xdg_toplevel->parent != NULL;
 
   struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
-  struct wlr_box output_box;
-  wlr_output_layout_get_box(server->output_layout,
-    toplevel->workspace->output->wlr_output, &output_box);
+  struct wlr_box output_box = toplevel->workspace->output->usable_area;
 
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
@@ -1265,9 +1275,7 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 		reset_cursor_mode(toplevel->server);
 	}
 
-  struct wlr_box output_box;
-  wlr_output_layout_get_box(server->output_layout,
-    toplevel->workspace->output->wlr_output, &output_box);
+  struct wlr_box output_box = toplevel->workspace->output->usable_area;
 
   if(toplevel->floating) {
 	  wl_list_remove(&toplevel->link);
@@ -1319,14 +1327,11 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
       return;
     }
 
-    struct wlr_box output_box;
+    struct wlr_box output_box = toplevel->workspace->output->usable_area;
     struct owl_server *server = toplevel->server;
     uint32_t outer_gaps = server->config->outer_gaps;
     uint32_t inner_gaps = server->config->inner_gaps;
     double master_ratio = server->config->master_ratio;
-
-    wlr_output_layout_get_box(toplevel->server->output_layout,
-      toplevel->workspace->output->wlr_output, &output_box);
 
     if(toplevel->workspace->master == NULL) {
 		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
@@ -1865,9 +1870,7 @@ static void switch_focused_toplevel_state(struct owl_server *server, void *data)
 
   toplevel_create_or_update_borders(toplevel, width, height);
 
-  struct wlr_box output_box;
-  wlr_output_layout_get_box(server->output_layout,
-    toplevel->workspace->output->wlr_output, &output_box);
+  struct wlr_box output_box = toplevel->workspace->output->usable_area;
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node,
     (output_box.width - width) / 2, (output_box.height - height) / 2);
@@ -1892,12 +1895,8 @@ static void handle_layer_surface_commit(struct wl_listener *listener, void *data
     wlr_output_layout_get_box(output->server->output_layout,
       output->wlr_output, &output_box);
 
-    struct wlr_box box = {
-      .width = layer_surface->wlr_layer_surface->current.desired_width,
-      .height = layer_surface->wlr_layer_surface->current.desired_height,
-    };
-
-		wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &box);
+    struct wlr_box temp = output->usable_area;
+		wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &output->usable_area);
   }
 }
 
@@ -1907,7 +1906,6 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
 
   enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
   struct owl_output *output = wlr_layer_surface->output->data;
-
   switch (layer) {
     case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
       wl_list_insert(&output->layers.background, &layer_surface->link);
@@ -1922,30 +1920,18 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
       wl_list_insert(&output->layers.overlay, &layer_surface->link);
       break;
   }
+
   int x, y;
   struct wlr_box output_box;
   wlr_output_layout_get_box(output->server->output_layout,
     output->wlr_output, &output_box);
-  struct wlr_layer_surface_v1_state state = layer_surface->wlr_layer_surface->current;
 
-  if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) {
-    x = state.margin.left;
-  } else if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) {
-    x = output_box.width - state.desired_width - state.margin.right;
-  } else {
-    x = (output_box.width - state.desired_width) / 2;
+  struct wlr_box temp = output->usable_area;
+  wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &output->usable_area);
+
+  if(temp.width != output->usable_area.width || temp.height != output->usable_area.height) {
+    place_tiled_toplevels(output->active_workspace);
   }
-
-  if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) {
-    y = state.margin.top;
-  } else if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) {
-    y = output_box.height - state.desired_height - state.margin.bottom;
-  } else {
-    y = (output_box.height - state.desired_height) / 2;
-  }
-
-  wlr_scene_node_set_position(&layer_surface->scene_tree->tree->node, x, y);
-
   focus_layer_surface(layer_surface);
 }
 
@@ -1965,6 +1951,7 @@ static void handle_layer_surface_destroy(struct wl_listener *listener, void *dat
 
   free(layer_surface);
 }
+/* TODO */
 static void handle_new_layer_surface_popup(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
   struct xdg_popup *popup = data;
@@ -1991,6 +1978,8 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
   if (layer_surface->wlr_layer_surface->output == NULL) {
     struct owl_output *output = wl_container_of(server->outputs.next, output, link);
     layer_surface->wlr_layer_surface->output = output->wlr_output;
+  } else {
+    wlr_log(WLR_ERROR, "%s", layer_surface->wlr_layer_surface->output->name);
   }
 
   layer_surface->commit.notify = handle_layer_surface_commit;
@@ -2282,6 +2271,9 @@ int main(int argc, char *argv[]) {
 	wl_list_init(&server.outputs);
 	server.new_output.notify = server_new_output;
 	wl_signal_add(&server.backend->events.new_output, &server.new_output);
+
+  /* create a manager used for comunicating with the clients */
+  server.xdg_output_manager = wlr_xdg_output_manager_v1_create(server.wl_display, server.output_layout);
 
 	/* Create a scene graph. This is a wlroots abstraction that handles all
 	 * rendering and damage tracking. All the compositor author needs to do
