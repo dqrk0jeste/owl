@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
@@ -103,6 +104,7 @@ struct owl_server {
 
   struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_layer_surface;
+  struct owl_layer_surface *layer_exlusive_keyboard;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -190,6 +192,7 @@ struct owl_layer_surface {
   struct wl_listener map;
   struct wl_listener unmap;
   struct wl_listener commit;
+  struct wl_listener new_popup;
   struct wl_listener destroy;
 };
 
@@ -282,6 +285,7 @@ struct owl_output *get_output_relative(struct owl_server *server,
 
   return NULL;
 }
+
 /*TODOFIX*/
 static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
@@ -364,6 +368,36 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 		wlr_seat_keyboard_notify_enter(seat, toplevel->xdg_toplevel->base->surface,
 			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
+}
+
+static void focus_layer_surface(struct owl_layer_surface *layer_surface) {
+  struct owl_server *server = layer_surface->server;
+
+  enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive =
+    layer_surface->wlr_layer_surface->current.keyboard_interactive;
+
+  switch (keyboard_interactive) {
+    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE:
+      return;
+    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE: {
+      server->layer_exlusive_keyboard = layer_surface;
+      struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+      if (keyboard != NULL) {
+        wlr_seat_keyboard_notify_enter(server->seat, layer_surface->wlr_layer_surface->surface,
+          keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+      }
+      return;
+    }
+    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND: {
+      if(server->layer_exlusive_keyboard != NULL) return;
+      struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+      if (keyboard != NULL) {
+        wlr_seat_keyboard_notify_enter(server->seat, layer_surface->wlr_layer_surface->surface,
+          keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+      }
+      return;
+    }
+  }
 }
 
 static void cursor_jump_focused_toplevel(struct owl_server *server) {
@@ -747,7 +781,6 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
   /* set global active workspace */
   server->active_workspace = output->active_workspace;
 
-	/* If the mode is non-passthrough, delegate to those functions. */
 	if (server->cursor_mode == OWL_CURSOR_MOVE) {
 		process_cursor_move(server, time);
 		return;
@@ -763,12 +796,6 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 	struct owl_something *something = owl_something_at(server,
 		server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
-  if(something == NULL) {
-    wlr_log(WLR_ERROR, "something je null");
-  } else {
-    wlr_log(WLR_ERROR, "something %u, %p", something->type, something->toplevel);
-  }
-
 	if (something == NULL) {
 		/* If there's no toplevel under the cursor, set the cursor image to a
 		 * default. This is what makes the cursor image appear when you move it
@@ -780,19 +807,11 @@ static void process_cursor_motion(struct owl_server *server, uint32_t time) {
 		wlr_seat_pointer_clear_focus(seat);
     return;
 	}
-  /*
-     * Send pointer enter and motion events.
-     *
-     * The enter event gives the surface "pointer focus", which is distinct
-     * from keyboard focus. You get pointer focus by moving the pointer over
-     * a window.
-     *
-     * Note that wlroots will avoid sending duplicate enter/motion events if
-     * the surface has already has pointer focus or if the client is already
-     * aware of the coordinates passed.
-     */
+
   if(something->type == OWL_TOPLEVEL) {
     focus_toplevel(something->toplevel);
+  } else {
+    focus_layer_surface(something->layer_surface);
   }
 
   wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
@@ -1873,7 +1892,12 @@ static void handle_layer_surface_commit(struct wl_listener *listener, void *data
     wlr_output_layout_get_box(output->server->output_layout,
       output->wlr_output, &output_box);
 
-		wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &output_box);
+    struct wlr_box box = {
+      .width = layer_surface->wlr_layer_surface->current.desired_width,
+      .height = layer_surface->wlr_layer_surface->current.desired_height,
+    };
+
+		wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &box);
   }
 }
 
@@ -1898,6 +1922,31 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
       wl_list_insert(&output->layers.overlay, &layer_surface->link);
       break;
   }
+  int x, y;
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(output->server->output_layout,
+    output->wlr_output, &output_box);
+  struct wlr_layer_surface_v1_state state = layer_surface->wlr_layer_surface->current;
+
+  if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) {
+    x = state.margin.left;
+  } else if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) {
+    x = output_box.width - state.desired_width - state.margin.right;
+  } else {
+    x = (output_box.width - state.desired_width) / 2;
+  }
+
+  if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) {
+    y = state.margin.top;
+  } else if (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) {
+    y = output_box.height - state.desired_height - state.margin.bottom;
+  } else {
+    y = (output_box.height - state.desired_height) / 2;
+  }
+
+  wlr_scene_node_set_position(&layer_surface->scene_tree->tree->node, x, y);
+
+  focus_layer_surface(layer_surface);
 }
 
 static void handle_layer_surface_unmap(struct wl_listener *listener, void *data) {
@@ -1915,6 +1964,10 @@ static void handle_layer_surface_destroy(struct wl_listener *listener, void *dat
   wl_list_remove(&layer_surface->destroy.link);
 
   free(layer_surface);
+}
+static void handle_new_layer_surface_popup(struct wl_listener *listener, void *data) {
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
+  struct xdg_popup *popup = data;
 }
 
 static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
@@ -1948,6 +2001,9 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
 
   layer_surface->unmap.notify = handle_layer_surface_unmap;
   wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
+
+  layer_surface->new_popup.notify = handle_new_layer_surface_popup;
+  wl_signal_add(&wlr_layer_surface->events.new_popup, &layer_surface->new_popup);
 
   layer_surface->destroy.notify = handle_layer_surface_destroy;
   wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
