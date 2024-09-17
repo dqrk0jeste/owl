@@ -27,6 +27,7 @@
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
@@ -103,6 +104,12 @@ struct owl_server {
 	struct wlr_scene *scene;
 	struct wlr_scene_output_layout *scene_layout;
 
+	struct wlr_scene_tree *toplevel_tree;
+	struct wlr_scene_tree *background_tree;
+	struct wlr_scene_tree *bottom_tree;
+	struct wlr_scene_tree *top_tree;
+	struct wlr_scene_tree *overlay_tree;
+
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
@@ -144,6 +151,8 @@ struct owl_server {
 
   struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
   struct wl_listener request_xdg_decoration;
+
+  struct wlr_viewporter *viewporter;
 
   struct owl_config *config;
   struct owl_workspace *active_workspace;
@@ -383,6 +392,28 @@ static void unfocus_focused_toplevel(struct owl_server *server) {
   wlr_seat_keyboard_clear_focus(server->seat);
 }
 
+static struct owl_layer_surface *find_bottomest_top_layer_surface(struct owl_output *output) {
+  if(!wl_list_empty(&output->layers.top)) {
+    struct owl_layer_surface *last = wl_container_of(&output->layers.top.prev, last, link);
+    return last;
+  } else if(!wl_list_empty(&output->layers.overlay)) {
+    struct owl_layer_surface *last = wl_container_of(&output->layers.overlay.prev, last, link);
+    return last;
+  }
+  return NULL;
+}
+
+static struct owl_layer_surface *find_toppest_bottom_layer_surface(struct owl_output *output) {
+  if(!wl_list_empty(&output->layers.bottom)) {
+    struct owl_layer_surface *first = wl_container_of(&output->layers.bottom.next, first, link);
+    return first;
+  } else if(!wl_list_empty(&output->layers.background)) {
+    struct owl_layer_surface *first = wl_container_of(&output->layers.background.prev, first, link);
+    return first;
+  }
+  return NULL;
+}
+
 static void focus_toplevel(struct owl_toplevel *toplevel) {
 	struct owl_server *server = toplevel->server;
 
@@ -390,10 +421,8 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 
 	struct wlr_seat *seat = server->seat;
   struct owl_toplevel *prev_toplevel = get_keyboard_focused_toplevel(server);
-	if(prev_toplevel == toplevel) {
-		/* Don't re-focus an already focused toplevel. */
-		return;
-	}
+
+	if(prev_toplevel == toplevel) return;
 
   unfocus_focused_toplevel(server);
 
@@ -401,12 +430,6 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
     wl_list_remove(&toplevel->link);
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
-  } else if(wl_list_empty(&toplevel->workspace->floating_toplevels)) {
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-  } else {
-    struct owl_toplevel *last_floating =
-      wl_container_of(toplevel->workspace->floating_toplevels.prev, last_floating, link);
-    wlr_scene_node_place_below(&toplevel->scene_tree->node, &last_floating->scene_tree->node);
   }
 
   server->active_workspace = toplevel->workspace;
@@ -1181,8 +1204,6 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
   struct owl_toplevel *master = workspace->master;
   if(master == NULL) return;
 
-  wlr_log(WLR_ERROR, "PLACING TOPLEVELS");
-
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
   double master_ratio = server->config->master_ratio;
@@ -1266,11 +1287,14 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
     struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
     toplevel_create_or_update_borders(toplevel, geo_box.width, geo_box.height);
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   } else if(toplevel->workspace->master == NULL) {
     toplevel->workspace->master = toplevel;
+    wlr_scene_node_lower_to_bottom(&toplevel->scene_tree->node);
     place_tiled_toplevels(toplevel->workspace);
   } else {
     wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
+    wlr_scene_node_lower_to_bottom(&toplevel->scene_tree->node);
     place_tiled_toplevels(toplevel->workspace);
   }
 
@@ -1329,6 +1353,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 	/* Called when a new surface state is committed. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
+  wlr_log(WLR_ERROR, "commited %s", toplevel->xdg_toplevel->title);
   if(!toplevel->xdg_toplevel->base->initialized) return;
 
 	if(toplevel->xdg_toplevel->base->initial_commit) {
@@ -1360,10 +1385,8 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
       slave_width = output_box.width * (1 - master_ratio) - outer_gaps - inner_gaps;
       slave_height = (output_box.height - 2 * outer_gaps
         - (number_of_slaves - 1) * inner_gaps * 2) / number_of_slaves;
-      wlr_log(WLR_ERROR, "%d px, %d px, %d", slave_width, slave_height, number_of_slaves);
 
-      /*wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, slave_width, slave_height);*/
-      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, slave_width, slave_height);
     }
     return;
   }
@@ -1511,7 +1534,7 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	toplevel->xdg_toplevel = xdg_toplevel;
   
 	toplevel->scene_tree =
-		wlr_scene_xdg_surface_create(&server->scene->tree, xdg_toplevel->base);
+		wlr_scene_xdg_surface_create(server->toplevel_tree, xdg_toplevel->base);
   /* we are keeping toplevels scene_tree in this free user data field, this is used in 
    * assigning parents to popups */
 	xdg_toplevel->base->data = toplevel->scene_tree;
@@ -1737,6 +1760,7 @@ try_monitor: {}
     get_output_relative(server, toplevel->workspace->output, direction);
   if(relative_output == NULL) return; 
   if(relative_output->active_workspace->master == NULL) {
+        place_tiled_toplevels(relative_output->active_workspace);
     server->active_workspace = relative_output->active_workspace;
     cursor_jump_output(relative_output);
     unfocus_focused_toplevel(server);
@@ -1868,7 +1892,6 @@ static void switch_focused_toplevel_state(struct owl_server *server, void *data)
     }
 
     place_tiled_toplevels(toplevel->workspace);
-    wlr_scene_node_lower_to_bottom(&toplevel->scene_tree->node);
     return;
   }
 
@@ -1900,9 +1923,8 @@ static void switch_focused_toplevel_state(struct owl_server *server, void *data)
   wlr_scene_node_set_position(&toplevel->scene_tree->node,
     (output_box.width - width) / 2, (output_box.height - height) / 2);
 
-  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
-
+  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   place_tiled_toplevels(toplevel->workspace);
 }
 
@@ -1931,6 +1953,9 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
 
   enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
   struct owl_output *output = wlr_layer_surface->output->data;
+
+  wlr_scene_node_raise_to_top(&layer_surface->scene_tree->tree->node);
+
   switch (layer) {
     case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
       wl_list_insert(&output->layers.background, &layer_surface->link);
@@ -1957,24 +1982,61 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
   if(temp.width != output->usable_area.width || temp.height != output->usable_area.height) {
     place_tiled_toplevels(output->active_workspace);
   }
+  unfocus_focused_toplevel(layer_surface->server);
   focus_layer_surface(layer_surface);
 }
 
 static void handle_layer_surface_unmap(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, unmap);
   struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
+  struct wlr_layer_surface_v1_state *state = &layer_surface->wlr_layer_surface->current;
   struct owl_server *server = layer_surface->server;
+  struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
 
   if(layer_surface == server->layer_exlusive_keyboard) {
-    layer_surface->server->layer_exlusive_keyboard = NULL;
-    /*struct owl_toplevel *focused_toplevel = get_keyboard_focused_toplevel(server);*/
-    /*struct owl_output *output = wlr_layer_surface->output->data;*/
-    /*if(focused_toplevel == NULL && output->active_workspace->master != NULL) {*/
-    /*  focus_toplevel(output->active_workspace->master);*/
-    /*}*/
+    server->layer_exlusive_keyboard = NULL;
+  }
+
+  if(layer_surface->wlr_layer_surface->current.exclusive_zone > 0) {
+    switch (state->anchor) {
+      case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
+      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+        // Anchor top
+        output->usable_area.y -= state->exclusive_zone + state->margin.top;
+        output->usable_area.height += state->exclusive_zone + state->margin.top;
+        break;
+      case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
+      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+        // Anchor bottom
+        output->usable_area.height += state->exclusive_zone + state->margin.bottom;
+        break;
+      case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
+      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT):
+        // Anchor left
+        output->usable_area.x -= state->exclusive_zone + state->margin.left;
+        output->usable_area.width += state->exclusive_zone + state->margin.left;
+        break;
+      case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
+      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
+        // Anchor right
+        output->usable_area.width += state->exclusive_zone + state->margin.right;
+        break;
+    }
+    place_tiled_toplevels(output->active_workspace);
   }
 
   wl_list_remove(&layer_surface->link);
+  if(output->active_workspace->master != NULL) {
+    focus_toplevel(output->active_workspace->master);
+  }
 }
 
 static void handle_layer_surface_destroy(struct wl_listener *listener, void *data) {
@@ -2001,8 +2063,25 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
   layer_surface->wlr_layer_surface->data = layer_surface;
   layer_surface->server = server;
 
-	layer_surface->scene_tree =
-    wlr_scene_layer_surface_v1_create(&server->scene->tree, wlr_layer_surface);
+  enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
+  switch (layer) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+      layer_surface->scene_tree =
+        wlr_scene_layer_surface_v1_create(server->background_tree, wlr_layer_surface);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+      layer_surface->scene_tree =
+        wlr_scene_layer_surface_v1_create(server->bottom_tree, wlr_layer_surface);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+      layer_surface->scene_tree =
+        wlr_scene_layer_surface_v1_create(server->top_tree, wlr_layer_surface);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+      layer_surface->scene_tree =
+        wlr_scene_layer_surface_v1_create(server->overlay_tree, wlr_layer_surface);
+      break;
+  }
 
 	struct owl_something *something = calloc(1, sizeof(*something));
   something->type = OWL_LAYER_SURFACE;
@@ -2013,8 +2092,6 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
   if (layer_surface->wlr_layer_surface->output == NULL) {
     struct owl_output *output = wl_container_of(server->outputs.next, output, link);
     layer_surface->wlr_layer_surface->output = output->wlr_output;
-  } else {
-    wlr_log(WLR_ERROR, "%s", layer_surface->wlr_layer_surface->output->name);
   }
 
   layer_surface->commit.notify = handle_layer_surface_commit;
@@ -2093,6 +2170,14 @@ static bool server_load_config(struct owl_server *server) {
   };
 
   struct keybind *run_kitty = calloc(1, sizeof(struct keybind));
+  *run_kitty = (struct keybind){
+    .modifiers = WLR_MODIFIER_LOGO,
+    .sym = XKB_KEY_t,
+    .action = run,
+    .args = "kitty",
+  };
+
+  struct keybind *run_rofi = calloc(1, sizeof(struct keybind));
   *run_kitty = (struct keybind){
     .modifiers = WLR_MODIFIER_LOGO,
     .sym = XKB_KEY_t,
@@ -2321,7 +2406,13 @@ int main(int argc, char *argv[]) {
 	server.scene = wlr_scene_create();
 	server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout);
 
-	/* Set up xdg-shell version 3. The xdg-shell is a Wayland protocol which is
+  server.background_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.bottom_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.toplevel_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.top_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.overlay_tree = wlr_scene_tree_create(&server.scene->tree);
+
+	/* Set up xdg-shell version 6. The xdg-shell is a Wayland protocol which is
 	 * used for application windows. For more detail on shells, refer to
 	 * https://drewdevault.com/2018/07/29/Wayland-shells.html.
 	 */
@@ -2395,7 +2486,9 @@ int main(int argc, char *argv[]) {
 
   server.request_xdg_decoration.notify = handle_request_xdg_decoration;
   wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
-                &server.request_xdg_decoration);
+    &server.request_xdg_decoration);
+
+  server.viewporter = wlr_viewporter_create(server.wl_display);
 
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(server.wl_display);
