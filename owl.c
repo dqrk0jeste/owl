@@ -1113,8 +1113,7 @@ static void change_workspace(struct owl_server *server, void *data) {
 static void server_new_output(struct wl_listener *listener, void *data) {
   /* This event is raised by the backend when a new output (aka a display or
    * monitor) becomes available. */
-  struct owl_server *server =
-    wl_container_of(listener, server, new_output);
+  struct owl_server *server = wl_container_of(listener, server, new_output);
   struct wlr_output *wlr_output = data;
 
   /* Configures the output created by the backend to use our allocator
@@ -1190,16 +1189,12 @@ static void server_new_output(struct wl_listener *listener, void *data) {
       output->active_workspace = workspace;
     }
 
-    /* these binds should also be specified in the config, TODO: */
-    struct keybind *change_workspace_i = calloc(1, sizeof(*change_workspace_i));
-    *change_workspace_i = (struct keybind) {
-      .modifiers = WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL,
-      .sym = XKB_KEY_1 + workspace->index - 1,
-      .action = change_workspace,
-      .args = workspace,
-    };
-
-    wl_list_insert(&server->config->keybinds, &change_workspace_i->link);
+    struct keybind *k;
+    wl_list_for_each(k, &server->config->keybinds, link) {
+      if(k->action == change_workspace && (uint32_t)k->args == workspace->index) {
+        k->args = workspace;
+      }
+    }
   }
   
   /* if first output then set server's active workspace to this one */
@@ -2346,6 +2341,15 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
 
     k->action = move_tiled_toplevel;
     k->args = (void*)direction;
+  } else if(strcmp(action, "workspace") == 0) {
+    wlr_log(WLR_ERROR, "found workspace");
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", action);
+      return false;
+    }
+    k->action = change_workspace;
+    /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
+    k->args = (void*)atoi(args[0]);
   } 
 
   wl_list_insert(&c->keybinds, &k->link);

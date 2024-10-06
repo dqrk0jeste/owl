@@ -1,5 +1,5 @@
 <div align="center">
-<h1>richfetch</h1>
+<h1>owl</h1>
 
 <img src="assets/logo.png" alt="logo" width="300">
 
@@ -8,14 +8,7 @@
 
 <br>
 
-[![Badge License]][License] 
-![Badge Language] 
-[![Badge Pull Requests]][Pull Requests] 
-[![Badge Issues]][Issues] 
-
-<br>
-
-## Features:
+## features:
 - switching between tiling and floating toplevels
 - multimonitor and workspaces support
 - easily configurable
@@ -23,7 +16,7 @@
 
 > owl is made as a fun side-project, implementing just enough for my needs. you are free to contribute to it, fork it and make it better, but if you are looking for something more feature-rich then take a look at Hyprland, sway or river. 
 
-## Building
+## building
 
 ### dependencies
 - wayland-protocols
@@ -62,7 +55,7 @@ configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl
 
 you can find the default config in the repo, as well as my personal config `example.conf`.
 
-every line is a config value made up from a keyword followed by one or more arguments, everything separated by spaces.
+every line is a config value made up from a keyword followed by one or more arguments, everything separated by spaces. if you need a space in an argument, use "".
 
 ## todo
 - there are some known issues that need fixing, see `known_issues.md`
@@ -71,6 +64,16 @@ every line is a config value made up from a keyword followed by one or more argu
 - animations
 - more configuration options, mainly when it comes to tiling capabilities and layouts.
 - mouse clicks in shortcuts
+
+## showcase
+
+<div align="center">
+
+<img src="assets/showcase-1.png" alt="logo" width="300">
+<img src="assets/showcase-2.png" alt="logo" width="300">
+<img src="assets/showcase-3.png" alt="logo" width="300">
+
+</div>
 
 ## special thanks to
 - Krasa, who made the cute owl
