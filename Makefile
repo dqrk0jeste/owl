@@ -8,9 +8,12 @@ CFLAGS+=$(CFLAGS_PKG_CONFIG)
 CFLAGS+=-Ibuild/protocols
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 
-all: build/owl
+all: build/owl build/default.conf
 
-build/protocols:
+build:
+	mkdir -p build
+
+build/protocols: build
 	mkdir -p build/protocols
 
 build/protocols/xdg-shell-protocol.h: build/protocols
@@ -31,10 +34,19 @@ build/owl.o: owl.c build/protocols/xdg-shell-protocol.h build/protocols/wlr-laye
 build/owl: build/owl.o
 	$(CC) $^ $> $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 
-install: build/owl
-	sudo cp build/owl /usr/bin/owl
+build/default.conf: build default.conf
+	cp default.conf build/default.conf
+
+install: build/owl build/default.conf
+	sudo cp build/owl /usr/bin/owl && \
+	sudo mkdir -p /usr/share/owl && \
+	sudo cp build/default.conf /usr/share/owl/default.conf
+
+uninstall:
+	sudo rm /usr/bin/owl 2>/dev/null && \
+	sudo rm -rf /usr/share/owl 2>/dev/null 
 
 clean:
-	rm -rf build/*
+	rm -rf build 2>/dev/null
 
-.PHONY: all clean install
+.PHONY: all clean install uninstall

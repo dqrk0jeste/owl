@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <ctype.h>
 #include <getopt.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -2434,40 +2433,8 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
   return true;
 }
 
-static void load_default_config(struct owl_config *c) {
-  c->min_toplevel_size = 100;
-  c->workspaces_per_monitor = 5;
-  c->cursor_theme = "Bibata-Modern-Ice";
-  c->keyboard_rate = 30;
-  c->keyboard_delay = 200;
-  c->natural_scroll = true;
-  c->tap_to_click = true;
-
-  float inactive_col[4] = { 1, 1, 1, 1 };
-  c->inactive_border_color[0] = inactive_col[0];
-  c->inactive_border_color[1] = inactive_col[1];
-  c->inactive_border_color[2] = inactive_col[2];
-  c->inactive_border_color[3] = inactive_col[3];
-
-  float active_col[4] = { 0, 0, 0, 1.0 };
-  c->active_border_color[0] = active_col[0];
-  c->active_border_color[1] = active_col[1];
-  c->active_border_color[2] = active_col[2];
-  c->active_border_color[3] = active_col[3];
-
-  c->border_width = 2;
-  c->outer_gaps = 32;
-  c->inner_gaps = 16;
-  c->master_ratio = 0.65;
-
-  wl_list_init(&c->monitors);
-  wl_list_init(&c->keybinds);
-}
-
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
-
-  load_default_config(c);
 
   char config_path[512];
   char *config_home = getenv("XDG_CONFIG_HOME");
@@ -2475,13 +2442,15 @@ static bool server_load_config(struct owl_server *server) {
     /* default to $HOME/.config if XDG_CONFIG_HOME is not set */
     char *home = getenv("HOME");
     if(home == NULL) {
-      wlr_log(WLR_ERROR, "couldn't open config file");
-      return false;
+      wlr_log(WLR_INFO, "couldn't open config file, backing to default config");
+      strcpy(config_path, "/usr/share/owl/default.conf");
+    } else {
+      snprintf(config_path, sizeof(config_path), "%s/.config/owl/owl.conf", home);
+      wlr_log(WLR_INFO, "found config file at %s", config_path);
     }
-
-    snprintf(config_path, sizeof(config_path), "%s/.config/owl/owl.conf", home);
   } else {
     snprintf(config_path, sizeof(config_path), "%s/owl/owl.conf", config_home);
+    wlr_log(WLR_INFO, "found config file at %s", config_path);
   }
 
   FILE *config_file = fopen(config_path, "r");
