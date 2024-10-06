@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <getopt.h>
+#include <sys/wait.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -75,6 +76,8 @@ struct owl_config {
   double master_ratio;
   bool natural_scroll;
   bool tap_to_click;
+  char *exec[64];
+  size_t exec_count;
 };
 
 struct monitor_config {
@@ -258,9 +261,51 @@ struct owl_keyboard {
 	struct wl_listener destroy;
 };
 
+void sigchld_handler(int signo) {
+  while(waitpid(-1, NULL, WNOHANG) > 0);
+}
 
 static int box_area(struct wlr_box *box) {
   return box->width * box->height;
+}
+
+static void calculate_masters_dimensions(struct owl_server *server, struct owl_output *output,
+    uint32_t number_of_slaves, uint32_t *width, uint32_t *height) {
+  uint32_t outer_gaps = server->config->outer_gaps;
+  uint32_t inner_gaps = server->config->inner_gaps;
+  double master_ratio = server->config->master_ratio;
+  double border_width = server->config->border_width;
+
+  struct wlr_box output_box = output->usable_area;
+
+  if(number_of_slaves > 0) {
+    *width = output_box.width * master_ratio
+      - outer_gaps - inner_gaps - 2 * border_width;
+    *height = output_box.height
+      - 2 * outer_gaps - 2 * border_width;
+  } else {
+    *width = output_box.width
+      - 2 * outer_gaps - 2 * border_width;
+    *height = output_box.height
+      - 2 * outer_gaps - 2 * border_width;
+  }
+}
+
+static void calculate_slaves_dimensions(struct owl_server *server, struct owl_output *output,
+    uint32_t number_of_slaves, uint32_t *width, uint32_t *height) {
+  uint32_t outer_gaps = server->config->outer_gaps;
+  uint32_t inner_gaps = server->config->inner_gaps;
+  double master_ratio = server->config->master_ratio;
+  double border_width = server->config->border_width;
+
+  struct wlr_box output_box = output->usable_area;
+
+  *width = output_box.width * (1 - master_ratio)
+    - outer_gaps - inner_gaps
+    - 2 * border_width;
+  *height = (output_box.height - 2 * outer_gaps
+    - (number_of_slaves - 1) * 2 * inner_gaps
+    - number_of_slaves * 2 * border_width) / number_of_slaves;
 }
 
 static bool toplevel_dimensions_changed(struct owl_toplevel *toplevel, 
@@ -1195,8 +1240,7 @@ static void clip_toplevel(struct owl_toplevel *toplevel,
 
 static void place_tiled_toplevels(struct owl_workspace *workspace) {
   struct owl_server *server = workspace->output->server;
-  struct wlr_box output_box = workspace->output->usable_area;
-
+  struct owl_output *output = workspace->output;
   struct owl_toplevel *master = workspace->master;
   if(master == NULL) return;
 
@@ -1205,16 +1249,11 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
   double master_ratio = server->config->master_ratio;
   double border_width = server->config->border_width;
 
-  uint32_t master_width, master_height;
   uint32_t number_of_slaves = wl_list_length(&workspace->slaves);
 
-  if(number_of_slaves > 0) {
-    master_width = output_box.width * master_ratio - outer_gaps - inner_gaps - 2 * border_width;
-    master_height = output_box.height - 2 * outer_gaps - 2 * border_width;
-  } else {
-    master_width = output_box.width  - 2 * outer_gaps - 2 * border_width;
-    master_height = output_box.height - 2 * outer_gaps - 2 * border_width;
-  }
+  uint32_t master_width, master_height;
+  calculate_masters_dimensions(server, output,
+    number_of_slaves, &master_width, &master_height);
 
   master->width = master_width;
   master->height = master_height;
@@ -1223,18 +1262,17 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
 
   wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
   wlr_scene_node_set_position(&master->scene_tree->node, 
-    output_box.x + outer_gaps + border_width, output_box.y + outer_gaps + border_width);
+    output->usable_area.x + outer_gaps + border_width,
+    output->usable_area.y + outer_gaps + border_width);
   toplevel_create_or_update_borders(master, master_width, master_height);
 
   if(number_of_slaves == 0) return;
 
   /* share the remaining space among slaves */
   struct owl_toplevel *t;
-  uint32_t slave_width = output_box.width * (1 - master_ratio)
-    - outer_gaps - inner_gaps - 2 * border_width;
-  uint32_t slave_height = (output_box.height - 2 * outer_gaps
-    - (number_of_slaves - 1) * inner_gaps * 2
-    - number_of_slaves * 2 * border_width) / number_of_slaves;
+  uint32_t slave_width, slave_height;
+  calculate_slaves_dimensions(server, workspace->output,
+    number_of_slaves, &slave_width, &slave_height);
 
   size_t i = 0;
   wl_list_for_each(t, &workspace->slaves, link) {
@@ -1243,9 +1281,11 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
     clip_toplevel(t, slave_width, slave_height);
     wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
     wlr_scene_node_set_position(&t->scene_tree->node,
-      output_box.x + output_box.width * master_ratio + inner_gaps + border_width,
-      output_box.y + outer_gaps + border_width
-        + i * (slave_height + inner_gaps * 2 + 2 * border_width));
+      output->usable_area.x + output->usable_area.width * master_ratio
+        + inner_gaps + border_width,
+      output->usable_area.y + outer_gaps
+        + i * (slave_height + inner_gaps * 2 + 2 * border_width)
+        + border_width);
     toplevel_create_or_update_borders(t, slave_width, slave_height);
     i++;
   }
@@ -1372,26 +1412,18 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
       return;
     }
 
-    struct wlr_box output_box = toplevel->workspace->output->usable_area;
+    struct owl_output *output = toplevel->workspace->output;
     struct owl_server *server = toplevel->server;
 
-    uint32_t outer_gaps = server->config->outer_gaps;
-    uint32_t inner_gaps = server->config->inner_gaps;
-    double master_ratio = server->config->master_ratio;
-
+    uint32_t width, height;
     if(toplevel->workspace->master == NULL) {
-		  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
-        output_box.width - 2 * outer_gaps, output_box.height - 2 * outer_gaps);
+      calculate_masters_dimensions(server, output, 0, &width, &height);
     } else {
-      uint32_t slave_width, slave_height;
       /* we add one (this one) to calculate what size should he take */
       uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves) + 1;
-      slave_width = output_box.width * (1 - master_ratio) - outer_gaps - inner_gaps;
-      slave_height = (output_box.height - 2 * outer_gaps
-        - (number_of_slaves - 1) * inner_gaps * 2) / number_of_slaves;
-
-      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, slave_width, slave_height);
+      calculate_slaves_dimensions(server, output, number_of_slaves, &width, &height);
     }
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
     return;
   }
 }
@@ -1676,16 +1708,14 @@ static void stop_server(struct owl_server *server, void *data) {
 	wl_display_terminate(server->wl_display);
 }
 
-static void exec(char *cmd) {
-  if (fork() == 0) {
-    execl("/bin/sh", "/bin/sh", "-c", cmd);
+static void exec_cmd(char *cmd) {
+  if(fork() == 0) {
+    execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
 	}
 }
 
 static void run(struct owl_server *server, void *data) {
-  if (fork() == 0) {
-    execl("/bin/sh", "/bin/sh", "-c", (char*)data, (void *)NULL);
-	}
+  exec_cmd(data);
 }
 
 static void resize_focused_toplevel(struct owl_server *server, void *data) {
@@ -2231,7 +2261,6 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     }
   }
 
-  /*wlr_log(WLR_ERROR, "keysym is %u", key_sym);*/
   struct keybind *k = calloc(1, sizeof(*k));
   *k = (struct keybind){
     .modifiers = modifiers_flag,
@@ -2418,7 +2447,9 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       return false;
     }
-    exec(args[0]);
+    if(c->exec_count >= 64) return false;
+    c->exec[c->exec_count] = args[0];
+    c->exec_count++;
   } else if(strcmp(keyword, "keybind") == 0) {
     if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2439,9 +2470,10 @@ static bool server_load_config(struct owl_server *server) {
   char config_path[512];
   char *config_home = getenv("XDG_CONFIG_HOME");
   if(config_home == NULL) {
-    /* default to $HOME/.config if XDG_CONFIG_HOME is not set */
+    /* try $HOME/.config if XDG_CONFIG_HOME is not set */
     char *home = getenv("HOME");
     if(home == NULL) {
+      /* try default config otherwise */
       wlr_log(WLR_INFO, "couldn't open config file, backing to default config");
       strcpy(config_path, "/usr/share/owl/default.conf");
     } else {
@@ -2456,8 +2488,12 @@ static bool server_load_config(struct owl_server *server) {
   FILE *config_file = fopen(config_path, "r");
   if(config_file == NULL) {
     wlr_log(WLR_ERROR, "couldn't open config file at %s", config_path);
+    free(c);
     return false;
   }
+
+  wl_list_init(&c->keybinds);
+  wl_list_init(&c->monitors);
   
   char line_buffer[1024] = {0};
   while(fgets(line_buffer, 1024, config_file)) {
@@ -2569,7 +2605,15 @@ static void server_destroy_config(struct owl_server *server) {
 }
 
 int main(int argc, char *argv[]) {
-	wlr_log_init(WLR_ERROR, NULL);
+  /* this is ripped straight from chatgpt, it prevents the creation of zombie processes. */
+  /* could've been done better probably, but i dont know how */
+  struct sigaction sa;
+  sa.sa_handler = sigchld_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+  sigaction(SIGCHLD, &sa, NULL);
+
+	wlr_log_init(WLR_DEBUG, NULL);
 
 	struct owl_server server = {0};
 
@@ -2758,6 +2802,11 @@ int main(int argc, char *argv[]) {
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate
 	 * frame events at the refresh rate, and so on. */
+
+  for(size_t i = 0; i < server.config->exec_count; i++) {
+    exec_cmd(server.config->exec[i]);
+  }
+  
 	wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
 			socket);
 	wl_display_run(server.wl_display);
