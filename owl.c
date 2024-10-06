@@ -126,6 +126,7 @@ struct owl_server {
   struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_layer_surface;
   struct owl_layer_surface *layer_exlusive_keyboard;
+  struct owl_toplevel *prev_focused;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -269,8 +270,10 @@ static int box_area(struct wlr_box *box) {
   return box->width * box->height;
 }
 
-static void calculate_masters_dimensions(struct owl_server *server, struct owl_output *output,
+static void calculate_masters_dimensions(struct owl_output *output,
     uint32_t number_of_slaves, uint32_t *width, uint32_t *height) {
+  struct owl_server *server = output->server;
+
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
   double master_ratio = server->config->master_ratio;
@@ -291,8 +294,10 @@ static void calculate_masters_dimensions(struct owl_server *server, struct owl_o
   }
 }
 
-static void calculate_slaves_dimensions(struct owl_server *server, struct owl_output *output,
+static void calculate_slaves_dimensions(struct owl_output *output,
     uint32_t number_of_slaves, uint32_t *width, uint32_t *height) {
+  struct owl_server *server = output->server;
+
   uint32_t outer_gaps = server->config->outer_gaps;
   uint32_t inner_gaps = server->config->inner_gaps;
   double master_ratio = server->config->master_ratio;
@@ -361,10 +366,10 @@ struct owl_output *get_output_relative(struct owl_server *server,
   return NULL;
 }
 
+/* TODO: return owl_something and check for layer_surfaces */
 static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
-  struct wlr_xdg_surface *xdg_surface =
-    wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
+  struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
   if(xdg_surface == NULL) {
     return NULL;
   }
@@ -379,6 +384,7 @@ static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_s
   return something->toplevel;
 }
 
+/* TODO: return owl_something and check for layer_surfaces */
 static struct owl_toplevel *get_keyboard_focused_toplevel(struct owl_server *server) {
   struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
   if(focused_surface == NULL) {
@@ -387,6 +393,7 @@ static struct owl_toplevel *get_keyboard_focused_toplevel(struct owl_server *ser
   return toplevel_parent_of_surface(focused_surface);
 }
 
+/* TODO: return owl_something and check for layer_surfaces */
 static struct owl_toplevel *get_pointer_focused_toplevel(struct owl_server *server) {
   struct wlr_surface *focused_surface = server->seat->pointer_state.focused_surface;
   if(focused_surface == NULL) {
@@ -420,8 +427,7 @@ static void cursor_jump_output(struct owl_output *output) {
 static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
 	/* This event is raised when a modifier key, such as shift or alt, is
 	 * pressed. We simply communicate this to the client. */
-	struct owl_keyboard *keyboard =
-		wl_container_of(listener, keyboard, modifiers);
+	struct owl_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
 	/*
 	 * A seat can only have one keyboard, but this is a limitation of the
 	 * Wayland protocol - not wlroots. We assign all connected keyboards to the
@@ -439,6 +445,8 @@ static void unfocus_focused_toplevel(struct owl_server *server) {
 
   struct owl_toplevel *toplevel = get_keyboard_focused_toplevel(server);
 	if(toplevel == NULL) return;
+
+  server->prev_focused = toplevel;
 
   /* deactivate the previously focused surface */
   wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, false);
@@ -491,7 +499,7 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 	}
 }
 
-static bool focus_layer_surface(struct owl_layer_surface *layer_surface) {
+static void focus_layer_surface(struct owl_layer_surface *layer_surface) {
   struct owl_server *server = layer_surface->server;
 
   enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive =
@@ -499,26 +507,29 @@ static bool focus_layer_surface(struct owl_layer_surface *layer_surface) {
 
   switch (keyboard_interactive) {
     case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE:
-      return false;
+      return;
     case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE: {
+      unfocus_focused_toplevel(server);
       server->layer_exlusive_keyboard = layer_surface;
       struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
       if (keyboard != NULL) {
         wlr_seat_keyboard_notify_enter(server->seat, layer_surface->wlr_layer_surface->surface,
           keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
       }
-      return true;
+      return;
     }
     case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND: {
-      if(server->layer_exlusive_keyboard != NULL) return false;
+      if(server->layer_exlusive_keyboard != NULL) return;
+      unfocus_focused_toplevel(server);
       struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
       if (keyboard != NULL) {
         wlr_seat_keyboard_notify_enter(server->seat, layer_surface->wlr_layer_surface->surface,
           keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
       }
-      return true;
+      return;
     }
   }
+
 }
 
 static bool handle_keybinds(struct owl_server *server, uint32_t modifiers,
@@ -1252,7 +1263,7 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
   uint32_t number_of_slaves = wl_list_length(&workspace->slaves);
 
   uint32_t master_width, master_height;
-  calculate_masters_dimensions(server, output,
+  calculate_masters_dimensions(output,
     number_of_slaves, &master_width, &master_height);
 
   master->width = master_width;
@@ -1271,7 +1282,7 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
   /* share the remaining space among slaves */
   struct owl_toplevel *t;
   uint32_t slave_width, slave_height;
-  calculate_slaves_dimensions(server, workspace->output,
+  calculate_slaves_dimensions(workspace->output,
     number_of_slaves, &slave_width, &slave_height);
 
   size_t i = 0;
@@ -1317,7 +1328,6 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
   struct owl_server *server = toplevel->server;
 
-  wlr_log(WLR_ERROR, "new toplevel mapped: %p, title: %s", toplevel, toplevel->xdg_toplevel->title);
   struct wlr_scene_tree *scene_tree = toplevel->scene_tree;
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
 
@@ -1417,11 +1427,11 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 
     uint32_t width, height;
     if(toplevel->workspace->master == NULL) {
-      calculate_masters_dimensions(server, output, 0, &width, &height);
+      calculate_masters_dimensions(output, 0, &width, &height);
     } else {
       /* we add one (this one) to calculate what size should he take */
       uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves) + 1;
-      calculate_slaves_dimensions(server, output, number_of_slaves, &width, &height);
+      calculate_slaves_dimensions(output, number_of_slaves, &width, &height);
     }
     wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
     return;
@@ -1667,8 +1677,6 @@ static void xdg_popup_destroy(struct wl_listener *listener, void *data) {
 static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	/* This event is raised when a client creates a new popup. */
 	struct wlr_xdg_popup *xdg_popup = data;
-
-  wlr_log(WLR_ERROR, "new popup");
 
 	struct owl_popup *popup = calloc(1, sizeof(*popup));
 	popup->xdg_popup = xdg_popup;
@@ -2063,8 +2071,7 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
 
   int x, y;
   struct wlr_box output_box;
-  wlr_output_layout_get_box(output->server->output_layout,
-    output->wlr_output, &output_box);
+  wlr_output_layout_get_box(output->server->output_layout, output->wlr_output, &output_box);
 
   struct wlr_box temp = output->usable_area;
   wlr_scene_layer_surface_v1_configure(layer_surface->scene_tree, &output_box, &output->usable_area);
@@ -2073,9 +2080,7 @@ static void handle_layer_surface_map(struct wl_listener *listener, void *data) {
     place_tiled_toplevels(output->active_workspace);
   }
 
-  if(focus_layer_surface(layer_surface)) {
-    unfocus_focused_toplevel(layer_surface->server);
-  }
+  focus_layer_surface(layer_surface);
 }
 
 static void handle_layer_surface_unmap(struct wl_listener *listener, void *data) {
@@ -2126,9 +2131,7 @@ static void handle_layer_surface_unmap(struct wl_listener *listener, void *data)
   }
 
   wl_list_remove(&layer_surface->link);
-  if(output->active_workspace->master != NULL) {
-    focus_toplevel(output->active_workspace->master);
-  }
+  focus_toplevel(server->prev_focused);
 }
 
 static void handle_layer_surface_destroy(struct wl_listener *listener, void *data) {
@@ -2150,6 +2153,14 @@ static void handle_new_layer_surface_popup(struct wl_listener *listener, void *d
 
   struct wlr_scene_tree *parent_tree = layer_surface->scene_tree->tree;
   popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
+
+  /* TODO: this is going to be used to get the layer surface from the popup */
+  struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_POPUP;
+  something->popup = popup;
+  popup->scene_tree->node.data = something;
+
+  popup->xdg_popup->base->data = popup->scene_tree;
 }
 
 static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
@@ -2187,9 +2198,8 @@ static void handle_new_layer_surface(struct wl_listener *listener, void *data) {
 
 	layer_surface->scene_tree->tree->node.data = something;
 
-  if (layer_surface->wlr_layer_surface->output == NULL) {
-    struct owl_output *output = wl_container_of(server->outputs.next, output, link);
-    layer_surface->wlr_layer_surface->output = output->wlr_output;
+  if(layer_surface->wlr_layer_surface->output == NULL) {
+    layer_surface->wlr_layer_surface->output = server->active_workspace->output->wlr_output;
   }
 
   layer_surface->commit.notify = handle_layer_surface_commit;
@@ -2464,32 +2474,38 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
   return true;
 }
 
+static FILE *try_open_config_file() {
+  char path[512];
+  char *config_home = getenv("XDG_CONFIG_HOME");
+  if(config_home != NULL) {
+    snprintf(path, sizeof(path), "%s/owl/owl.conf", config_home);
+  } else {
+    char *home = getenv("HOME");
+    if(home != NULL) {
+      snprintf(path, sizeof(path), "%s/.config/owl/owl.conf", home);
+    } else {
+      return NULL;
+    }
+  }
+
+  return fopen(path, "r");
+}
+
 static bool server_load_config(struct owl_server *server) {
   struct owl_config *c = calloc(1, sizeof(*c));
 
-  char config_path[512];
-  char *config_home = getenv("XDG_CONFIG_HOME");
-  if(config_home == NULL) {
-    /* try $HOME/.config if XDG_CONFIG_HOME is not set */
-    char *home = getenv("HOME");
-    if(home == NULL) {
-      /* try default config otherwise */
-      wlr_log(WLR_INFO, "couldn't open config file, backing to default config");
-      strcpy(config_path, "/usr/share/owl/default.conf");
+  FILE *config_file = try_open_config_file();
+  if(config_file == NULL) {
+    wlr_log(WLR_INFO, "couldn't open config file, backing to default config");
+    config_file = fopen("/usr/share/owl/default.conf", "r");
+    if(config_file == NULL) {
+      wlr_log(WLR_ERROR, "couldn't find default config file");
+      return false;
     } else {
-      snprintf(config_path, sizeof(config_path), "%s/.config/owl/owl.conf", home);
-      wlr_log(WLR_INFO, "found config file at %s", config_path);
+      wlr_log(WLR_INFO, "using default config");
     }
   } else {
-    snprintf(config_path, sizeof(config_path), "%s/owl/owl.conf", config_home);
-    wlr_log(WLR_INFO, "found config file at %s", config_path);
-  }
-
-  FILE *config_file = fopen(config_path, "r");
-  if(config_file == NULL) {
-    wlr_log(WLR_ERROR, "couldn't open config file at %s", config_path);
-    free(c);
-    return false;
+    wlr_log(WLR_INFO, "using custom config");
   }
 
   wl_list_init(&c->keybinds);
@@ -2497,16 +2513,15 @@ static bool server_load_config(struct owl_server *server) {
   
   char line_buffer[1024] = {0};
   while(fgets(line_buffer, 1024, config_file)) {
-    if(line_buffer[0] == '\n') {
+    char *p = line_buffer;
+    while(*p == ' ') p++;
+    if(*p == '\n') {
       continue; 
     }
 
     char keyword[64] = {0};
     char *args[8];
     uint32_t safe_counter = 0;
-
-    char *p = line_buffer;
-    while(*p == ' ') p++;
 
     char *q = keyword;
     while(*p != ' ') {
@@ -2566,42 +2581,9 @@ static bool server_load_config(struct owl_server *server) {
 
   fclose(config_file);
 
-  wlr_log(WLR_ERROR, "keyboard_rate %d", c->keyboard_rate);
-  wlr_log(WLR_ERROR, "keyboard_delay %d", c->keyboard_delay);
-  wlr_log(WLR_ERROR, "cursor_theme %s", c->cursor_theme);
-  wlr_log(WLR_ERROR, "workspaces_per_monitor %d", c->workspaces_per_monitor);
-  wlr_log(WLR_ERROR, "border_width %d", c->border_width);
-  wlr_log(WLR_ERROR, "outer_gaps %d", c->outer_gaps);
-  wlr_log(WLR_ERROR, "inner_gaps %d", c->inner_gaps);
-  wlr_log(WLR_ERROR, "master_ratio %.3lf", c->master_ratio);
-  wlr_log(WLR_ERROR, "natural_scroll %d", c->natural_scroll);
-  wlr_log(WLR_ERROR, "tap_to_click %d", c->tap_to_click);
-
   server->config = c;
 
   return true;
-}
-
-static void server_destroy_config(struct owl_server *server) {
-  struct monitor_config *m, *tmp_m;
-
-  wl_list_for_each_safe(m, tmp_m, &server->config->monitors, link) {
-    wl_list_remove(&m->link);
-    free(m);
-  }
-
-  assert(wl_list_empty(&server->config->monitors));
-
-  struct keybind *k, *tmp_k;
-
-  wl_list_for_each_safe(k, tmp_k, &server->config->keybinds, link) {
-    wl_list_remove(&k->link);
-    free(k);
-  }
-
-  assert(wl_list_empty(&server->config->keybinds));
-
-  free(server->config);
 }
 
 int main(int argc, char *argv[]) {
@@ -2613,13 +2595,13 @@ int main(int argc, char *argv[]) {
   sa.sa_flags = SA_RESTART;
   sigaction(SIGCHLD, &sa, NULL);
 
-	wlr_log_init(WLR_DEBUG, NULL);
+	wlr_log_init(WLR_INFO, NULL);
 
 	struct owl_server server = {0};
 
   bool valid_config = server_load_config(&server);
   if(!valid_config) {
-    wlr_log(WLR_ERROR, "invalid config");
+    wlr_log(WLR_ERROR, "config problem");
     return 1;
   }
 
@@ -2813,7 +2795,6 @@ int main(int argc, char *argv[]) {
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
 	 * server. */
-  server_destroy_config(&server);
 	wl_display_destroy_clients(server.wl_display);
 	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.cursor_mgr);

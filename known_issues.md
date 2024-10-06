@@ -1,3 +1,4 @@
-when a client requests a cursor it may render two cursors for some reason.
-hotpluging monitors does not work
-layer_surface takes focus from a toplevel, but does not return it
+- when a client requests a cursor it may render two cursors for some reason
+- hotpluging monitors does not work
+- multiple layer surfaces taking keyboard focus probably wont work as intended, as the second one will not get the focus after the first one unmaps; this is going to be fixed in a near future, as it is not that difficult to do
+- config arguments longer than 64 characters wont work. need to implement reallocating for such buffers.
