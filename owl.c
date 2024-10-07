@@ -1806,6 +1806,8 @@ static void close_keyboard_focused_toplevel(struct owl_server *server, void *dat
   xdg_toplevel_send_close(toplevel->xdg_toplevel->resource);
 }
 
+/* TODO: more natural moving when the cursor and keyboard focus are not on the
+ * same monitor */
 static void move_focus(struct owl_server *server, void *data) {
   uint32_t direction = (uint32_t)data;
 
