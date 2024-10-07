@@ -67,7 +67,8 @@ struct owl_config {
   struct wl_list keybinds;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
-  char* cursor_theme;
+  char *cursor_theme;
+  uint32_t cursor_size;
   uint32_t min_toplevel_size;
   uint32_t workspaces_per_monitor;
   float inactive_border_color[4];
@@ -1828,7 +1829,7 @@ static void move_focus(struct owl_server *server, void *data) {
     return;
   }
   
-  if(toplevel == server->active_workspace->master) {
+  if(toplevel == toplevel->workspace->output->active_workspace->master) {
     switch (direction) {
       case RIGHT: {}
         if(!wl_list_empty(&server->active_workspace->slaves)) {
@@ -2368,7 +2369,6 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     k->action = move_tiled_toplevel;
     k->args = (void*)direction;
   } else if(strcmp(action, "workspace") == 0) {
-    wlr_log(WLR_ERROR, "found workspace");
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", action);
       return false;
@@ -2449,6 +2449,12 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
       return false;
     }
     c->cursor_theme = args[0];
+  } else if(strcmp(keyword, "cursor_size") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      return false;
+    }
+    c->cursor_size = atoi(args[0]);
   } else if(strcmp(keyword, "inactive_border_color") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2581,7 +2587,7 @@ static bool server_load_config(struct owl_server *server) {
 
     size_t args_counter = 0;
     while(true) {
-      args[args_counter] = calloc(64, sizeof(char));
+      args[args_counter] = calloc(256, sizeof(char));
       q = args[args_counter];
 
       bool word = false;
@@ -2591,7 +2597,7 @@ static bool server_load_config(struct owl_server *server) {
       };
 
       while((word && *p != '\"') || (!word && *p != ' ' && *p != '\n')) {
-        if(safe_counter > 63) {
+        if(safe_counter > 256) {
           wlr_log(WLR_ERROR, "arg %s too long", args[args_counter]);
           return false;
         }
@@ -2618,7 +2624,6 @@ static bool server_load_config(struct owl_server *server) {
   fclose(config_file);
 
   server->config = c;
-
   return true;
 }
 
@@ -2743,7 +2748,7 @@ int main(int argc, char *argv[]) {
 	 * Xcursor themes to source cursor images from and makes sure that cursor
 	 * images are available at all scale factors on the screen (necessary for
 	 * HiDPI support). */
-	server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, 24);
+	server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
 
 	/*
 	 * wlr_cursor *only* displays an image on screen. It does not move around

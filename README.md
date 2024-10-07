@@ -3,7 +3,7 @@
 
 <img src="assets/logo.png" alt="logo" width="300">
 
-> owl is a tiling wayland compositor based on wlroots, focused on simplicity and minimalism.
+> owl is minimal tiling wayland compositor based on wlroots.
 </div>
 
 <br>
@@ -14,15 +14,17 @@
 - easily configurable
 - custom keybinds, monitor modes etc
 
-> owl is made as a fun side-project, implementing just enough for my needs. you are free to contribute to it, fork it and make it better, but if you are looking for something more feature-rich then take a look at Hyprland, sway or river. 
+> owl is made as a fun side-project, implementing just enough for my workflow. that means a lot of thing is just not there. if you are looking for something more feature-rich then take a look at hyprland, sway or river. 
 
 ## building
 
 ### dependencies
 - wayland-protocols
 - wayland-scanner
+- wayland-server
 - pixman
 - libdrm
+- libinput
 - xkbcommmon
 - wlroots >= 19.0 (git version on aur)
 
@@ -62,8 +64,8 @@ every line is a config value made up from a keyword followed by one or more argu
 - window rules for floating windows
 - opacity for windows
 - animations
-- more configuration options, mainly when it comes to tiling capabilities and layouts.
 - mouse clicks in shortcuts
+- more configuration options, mainly when it comes to tiling capabilities and layouts.
 
 ## showcase
 
