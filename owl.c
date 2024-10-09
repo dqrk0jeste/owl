@@ -117,6 +117,7 @@ struct owl_server {
 	struct wlr_scene_output_layout *scene_layout;
 
 	struct wlr_scene_tree *toplevel_tree;
+	struct wlr_scene_tree *fullscreen_tree;
 	struct wlr_scene_tree *background_tree;
 	struct wlr_scene_tree *bottom_tree;
 	struct wlr_scene_tree *top_tree;
@@ -1134,7 +1135,7 @@ static void server_new_output(struct wl_listener *listener, void *data) {
   struct monitor_config *m;
   wl_list_for_each(m, &server->config->monitors, link) {
     if(strcmp(m->name, wlr_output->name) == 0) {  
-      wlr_log(WLR_DEBUG, "found: %s, set mode: %dx%d@%dmHz",
+      wlr_log(WLR_INFO, "found: %s, set mode: %dx%d@%dmHz",
         m->name, m->width, m->height, m->refresh_rate);
       struct wlr_output_mode mode = {
         .width = m->width,
@@ -1565,12 +1566,26 @@ static void xdg_toplevel_request_maximize(
 
 static void xdg_toplevel_request_fullscreen(
 		struct wl_listener *listener, void *data) {
-	/* Just as with request_maximize, we must send a configure here. */
 	struct owl_toplevel *toplevel =
 		wl_container_of(listener, toplevel, request_fullscreen);
-	if (toplevel->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
-	}
+
+  wlr_log(WLR_ERROR, "toplevel %s requested fullscreen", toplevel->xdg_toplevel->title);
+  struct owl_output *output = toplevel->workspace->output;
+  struct wlr_box output_box;
+  wlr_output_layout_get_box(toplevel->server->output_layout,
+    output->wlr_output, &output_box);
+  if(toplevel->xdg_toplevel->requested.fullscreen) {
+    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, output_box.width, output_box.height);
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, toplevel->server->fullscreen_tree);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, output_box.x, output_box.y);
+    clip_toplevel(toplevel, UINT32_MAX, UINT32_MAX);
+  } else {
+    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 100, 100);
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, toplevel->server->toplevel_tree);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, 200, 200);
+  }
 }
 
 static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
@@ -2718,10 +2733,13 @@ int main(int argc, char *argv[]) {
 	server.scene = wlr_scene_create();
 	server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout);
 
+  /* create all the scenes in the correct order */
   server.background_tree = wlr_scene_tree_create(&server.scene->tree);
   server.bottom_tree = wlr_scene_tree_create(&server.scene->tree);
   server.toplevel_tree = wlr_scene_tree_create(&server.scene->tree);
   server.top_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.fullscreen_tree = wlr_scene_tree_create(&server.scene->tree);
+  wlr_scene_node_set_position(&server.fullscreen_tree->node, 0, 0);
   server.overlay_tree = wlr_scene_tree_create(&server.scene->tree);
 
 	/* Set up xdg-shell version 6. The xdg-shell is a Wayland protocol which is
