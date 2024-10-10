@@ -67,7 +67,7 @@ struct owl_config {
   struct wl_list keybinds;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
-  char *cursor_theme;
+  char cursor_theme[256];
   uint32_t cursor_size;
   uint32_t min_toplevel_size;
   uint32_t workspaces_per_monitor;
@@ -238,8 +238,7 @@ struct owl_toplevel {
 	struct wlr_scene_tree *scene_tree;
   struct owl_workspace *workspace;
   struct wlr_scene_rect *borders[4];
-  uint32_t width;
-  uint32_t height;
+  struct wlr_box prev_geometry;
   bool floating;
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 	struct wl_listener map;
@@ -322,7 +321,8 @@ static void calculate_slaves_dimensions(struct owl_output *output,
 
 static bool toplevel_dimensions_changed(struct owl_toplevel *toplevel, 
     uint32_t new_width, uint32_t new_height) {
-  return toplevel->width != new_width || toplevel->height != new_height;
+  return toplevel->xdg_toplevel->base->geometry.width != new_width
+  || toplevel->xdg_toplevel->base->geometry.height != new_height;
 }
 
 static bool toplevel_position_changed(struct owl_toplevel *toplevel, 
@@ -950,6 +950,40 @@ static void server_cursor_motion_absolute(
 	process_cursor_motion(server, event->time_msec);
 }
 
+static struct owl_output *toplevel_get_primary_output(struct owl_toplevel *toplevel) {
+  uint32_t toplevel_x =
+    toplevel->scene_tree->node.x +
+    toplevel->xdg_toplevel->base->geometry.x;
+  uint32_t toplevel_y =
+    toplevel->scene_tree->node.y +
+    toplevel->xdg_toplevel->base->geometry.y;
+
+  struct wlr_box toplevel_box = {
+    .x = toplevel_x,
+    .y = toplevel_y,
+    .width = toplevel->xdg_toplevel->base->geometry.width,
+    .height = toplevel->xdg_toplevel->base->geometry.height,
+  };
+
+  struct wlr_box intersection_box;
+  struct wlr_box output_box;
+  uint32_t max_area = 0;
+  struct owl_output *max_area_output = NULL;
+
+  struct owl_output *o;
+  wl_list_for_each(o, &toplevel->server->outputs, link) {
+    wlr_output_layout_get_box(toplevel->server->output_layout, o->wlr_output, &output_box);
+    bool intersects =
+      wlr_box_intersection(&intersection_box, &toplevel_box, &output_box);
+    if(intersects && box_area(&intersection_box) > max_area) {
+      max_area = box_area(&intersection_box);
+      max_area_output = o;
+    }
+  }
+
+  return max_area_output;
+}
+
 static void server_cursor_button(struct wl_listener *listener, void *data) {
 	/* This event is forwarded by the cursor when a pointer emits a button
 	 * event. */
@@ -961,29 +995,20 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 	wlr_seat_pointer_notify_button(server->seat,
 		event->time_msec, event->button, event->state);
 
-  /* TODOFIX */
 	if(event->state == WL_POINTER_BUTTON_STATE_RELEASED
     && server->cursor_mode != OWL_CURSOR_PASSTHROUGH) {
-    uint32_t grabbed_toplevel_x =
-      server->grabbed_toplevel->scene_tree->node.x +
-      server->grabbed_toplevel->xdg_toplevel->base->geometry.x;
-    uint32_t grabbed_toplevel_y =
-      server->grabbed_toplevel->scene_tree->node.y +
-      server->grabbed_toplevel->xdg_toplevel->base->geometry.y;
+    struct owl_output *primary_output = 
+      toplevel_get_primary_output(server->grabbed_toplevel);
 
-    struct wlr_output *wlr_output = wlr_output_layout_output_at(server->output_layout,
-      grabbed_toplevel_x, grabbed_toplevel_y);
-    struct owl_output *output = wlr_output->data;
-
-    if(output != server->grabbed_toplevel->workspace->output) {
-      server->grabbed_toplevel->workspace->output = output;
+    if(primary_output != server->grabbed_toplevel->workspace->output) {
+      server->grabbed_toplevel->workspace = primary_output->active_workspace;
       wl_list_remove(&server->grabbed_toplevel->link);
-      wl_list_insert(&output->active_workspace->floating_toplevels,
+      wl_list_insert(&primary_output->active_workspace->floating_toplevels,
         &server->grabbed_toplevel->link);
     }
+  }
 
-		reset_cursor_mode(server);
-	}
+  reset_cursor_mode(server);
 }
 
 static void server_cursor_axis(struct wl_listener *listener, void *data) {
@@ -1268,9 +1293,6 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
   calculate_masters_dimensions(output,
     number_of_slaves, &master_width, &master_height);
 
-  master->width = master_width;
-  master->height = master_height;
-
   clip_toplevel(master, master_width, master_height);
 
   wlr_xdg_toplevel_set_size(master->xdg_toplevel, master_width, master_height);
@@ -1289,8 +1311,6 @@ static void place_tiled_toplevels(struct owl_workspace *workspace) {
 
   size_t i = 0;
   wl_list_for_each(t, &workspace->slaves, link) {
-    t->width = slave_width;
-    t->height = slave_height;
     clip_toplevel(t, slave_width, slave_height);
     wlr_xdg_toplevel_set_size(t->xdg_toplevel, slave_width, slave_height);
     wlr_scene_node_set_position(&t->scene_tree->node,
@@ -1569,22 +1589,55 @@ static void xdg_toplevel_request_fullscreen(
 	struct owl_toplevel *toplevel =
 		wl_container_of(listener, toplevel, request_fullscreen);
 
-  wlr_log(WLR_ERROR, "toplevel %s requested fullscreen", toplevel->xdg_toplevel->title);
   struct owl_output *output = toplevel->workspace->output;
   struct wlr_box output_box;
   wlr_output_layout_get_box(toplevel->server->output_layout,
     output->wlr_output, &output_box);
   if(toplevel->xdg_toplevel->requested.fullscreen) {
+    toplevel->prev_geometry = (struct wlr_box){
+      .width = toplevel->xdg_toplevel->base->geometry.width,
+      .height = toplevel->xdg_toplevel->base->geometry.height,
+      .x = toplevel->scene_tree->node.x,
+      .y = toplevel->scene_tree->node.y,
+    };
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
     wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, output_box.width, output_box.height);
     wlr_scene_node_reparent(&toplevel->scene_tree->node, toplevel->server->fullscreen_tree);
     wlr_scene_node_set_position(&toplevel->scene_tree->node, output_box.x, output_box.y);
     clip_toplevel(toplevel, UINT32_MAX, UINT32_MAX);
+    wlr_scene_node_destroy(&toplevel->borders[0]->node);
+    wlr_scene_node_destroy(&toplevel->borders[1]->node);
+    wlr_scene_node_destroy(&toplevel->borders[2]->node);
+    wlr_scene_node_destroy(&toplevel->borders[3]->node);
+    toplevel->borders[0] = NULL;
+    toplevel->borders[1] = NULL;
+    toplevel->borders[2] = NULL;
+    toplevel->borders[3] = NULL;
+  } else if(toplevel->floating) {
+    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, toplevel->server->toplevel_tree);
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
+      toplevel->prev_geometry.width,
+      toplevel->prev_geometry.height);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+      toplevel->prev_geometry.x, toplevel->prev_geometry.y);
+
+    toplevel_create_or_update_borders(toplevel,
+      toplevel->prev_geometry.width + toplevel->xdg_toplevel->base->geometry.x,
+      toplevel->prev_geometry.height + toplevel->xdg_toplevel->base->geometry.y);
   } else {
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
-    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 100, 100);
     wlr_scene_node_reparent(&toplevel->scene_tree->node, toplevel->server->toplevel_tree);
-    wlr_scene_node_set_position(&toplevel->scene_tree->node, 200, 200);
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
+      toplevel->prev_geometry.width,
+      toplevel->prev_geometry.height);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+      toplevel->prev_geometry.x, toplevel->prev_geometry.y);
+    clip_toplevel(toplevel, toplevel->prev_geometry.width, toplevel->prev_geometry.height);
+
+    toplevel_create_or_update_borders(toplevel,
+      toplevel->prev_geometry.width + toplevel->xdg_toplevel->base->geometry.x,
+      toplevel->prev_geometry.height + toplevel->xdg_toplevel->base->geometry.y);
   }
 }
 
@@ -1640,40 +1693,6 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 
 	toplevel->request_fullscreen.notify = xdg_toplevel_request_fullscreen;
 	wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
-}
-
-static struct owl_output *toplevel_get_primary_output(struct owl_toplevel *toplevel) {
-  uint32_t toplevel_x =
-    toplevel->scene_tree->node.x +
-    toplevel->xdg_toplevel->base->geometry.x;
-  uint32_t toplevel_y =
-    toplevel->scene_tree->node.y +
-    toplevel->xdg_toplevel->base->geometry.y;
-
-  struct wlr_box toplevel_box = {
-    .x = toplevel_x,
-    .y = toplevel_y,
-    .width = toplevel->xdg_toplevel->base->geometry.width,
-    .height = toplevel->xdg_toplevel->base->geometry.height,
-  };
-
-  struct wlr_box intersection_box;
-  struct wlr_box output_box;
-  uint32_t max_area = 0;
-  struct owl_output *max_area_output = NULL;
-
-  struct owl_output *o;
-  wl_list_for_each(o, &toplevel->server->outputs, link) {
-    wlr_output_layout_get_box(toplevel->server->output_layout, o->wlr_output, &output_box);
-    bool intersects =
-      wlr_box_intersection(&intersection_box, &toplevel_box, &output_box);
-    if(intersects && box_area(&intersection_box) > max_area) {
-      max_area = box_area(&intersection_box);
-      max_area_output = o;
-    }
-  }
-
-  return max_area_output;
 }
 
 static void xdg_popup_commit(struct wl_listener *listener, void *data) {
@@ -2326,7 +2345,9 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     }
 
     k->action = run;
-    k->args = args[0];
+    char *args_0_copy = calloc(256, sizeof(char));
+    strncpy(args_0_copy, args[0], 256);
+    k->args = args_0_copy;
   } else if(strcmp(action, "kill_active") == 0) {
     k->action = close_keyboard_focused_toplevel;
   } else if(strcmp(action, "switch_floating_state") == 0) {
@@ -2399,82 +2420,101 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
   return true;
 }
 
+static void free_config_args(char **args, size_t arg_count) {
+  for(size_t i = 0; i < arg_count; i++) {
+    if(args[i] != NULL) free(args[i]);
+  }
+}
+
 static bool handle_config_value(struct owl_config *c, char* keyword, char **args, size_t arg_count) {
   if(strcmp(keyword, "min_toplevel_size") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->min_toplevel_size = atoi(args[0]);
   } else if(strcmp(keyword, "workspaces_per_monitor") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->workspaces_per_monitor = atoi(args[0]);
   } else if(strcmp(keyword, "keyboard_rate") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->keyboard_rate = atoi(args[0]);
   } else if(strcmp(keyword, "keyboard_delay") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->keyboard_delay = atoi(args[0]);
   } else if(strcmp(keyword, "natural_scroll") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->natural_scroll = atoi(args[0]);
   } else if(strcmp(keyword, "tap_to_click") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->tap_to_click = atoi(args[0]);
   } else if(strcmp(keyword, "border_width") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->border_width = atoi(args[0]);
   } else if(strcmp(keyword, "outer_gaps") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->outer_gaps = atoi(args[0]);
   } else if(strcmp(keyword, "inner_gaps") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->inner_gaps = atoi(args[0]);
   } else if(strcmp(keyword, "master_ratio") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->master_ratio = atof(args[0]);
   } else if(strcmp(keyword, "cursor_theme") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
-    c->cursor_theme = args[0];
+    strncpy(c->cursor_theme, args[0], sizeof(c->cursor_theme));
   } else if(strcmp(keyword, "cursor_size") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->cursor_size = atoi(args[0]);
   } else if(strcmp(keyword, "inactive_border_color") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->inactive_border_color[0] = atoi(args[0]) / 256.0;
@@ -2484,6 +2524,7 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
   } else if(strcmp(keyword, "active_border_color") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     c->active_border_color[0] = atoi(args[0]) / 256.0;
@@ -2493,11 +2534,14 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
   } else if(strcmp(keyword, "monitor") == 0) {
     if(arg_count < 6) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     struct monitor_config *m = calloc(1, sizeof(*m));
+    char *args_0_copy = calloc(256, sizeof(char));
+    strncpy(args_0_copy, args[0], 256);
     *m = (struct monitor_config){
-      .name = args[0],
+      .name = args_0_copy,
       .x = atoi(args[1]),
       .y = atoi(args[2]),
       .width = atoi(args[3]),
@@ -2508,28 +2552,35 @@ static bool handle_config_value(struct owl_config *c, char* keyword, char **args
   } else if(strcmp(keyword, "exec") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     if(c->exec_count >= 64) return false;
-    c->exec[c->exec_count] = args[0];
+    char *args_0_copy = calloc(256, sizeof(char));
+    strncpy(args_0_copy, args[0], 256);
+    c->exec[c->exec_count] = args_0_copy;
     c->exec_count++;
   } else if(strcmp(keyword, "keybind") == 0) {
     if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     config_add_keybind(c, args[0], args[1], args[2], &args[3], arg_count - 3);
   } else if(strcmp(keyword, "env") == 0) {
     if(arg_count < 2) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      free_config_args(args, arg_count);
       return false;
     }
     setenv(args[0], args[1], true);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
+    free_config_args(args, arg_count);
     return false;
   }
 
+  free_config_args(args, arg_count);
   return true;
 }
 
@@ -2653,7 +2704,7 @@ int main(int argc, char *argv[]) {
   sa.sa_flags = SA_RESTART;
   sigaction(SIGCHLD, &sa, NULL);
 
-	wlr_log_init(WLR_DEBUG, NULL);
+	wlr_log_init(WLR_ERROR, NULL);
 
 	struct owl_server server = {0};
 
