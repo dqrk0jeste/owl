@@ -113,7 +113,6 @@ struct owl_workspace {
   struct wl_list slaves;
   struct wl_list floating_toplevels;
   struct owl_toplevel *fullscreen_toplevel;
-  struct owl_toplevel *focused_toplevel;
 };
 
 struct owl_output {
@@ -128,6 +127,7 @@ struct owl_output {
     struct wl_list overlay;
   } layers;
   struct owl_workspace *active_workspace;
+
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
@@ -152,6 +152,7 @@ struct owl_layer_surface {
   struct wl_list link;
   struct wlr_layer_surface_v1 *wlr_layer_surface;
   struct wlr_scene_layer_surface_v1 *scene;
+
   struct wl_listener map;
   struct wl_listener unmap;
   struct wl_listener commit;
@@ -435,46 +436,39 @@ static void cursor_jump_focused_toplevel() {
 }
 
 static bool toplevel_is_focused(struct owl_toplevel *toplevel) {
-  return toplevel->workspace->focused_toplevel == toplevel;
+  return get_keyboard_focused_toplevel() == toplevel;
 }
 
 static void toplevel_create_or_update_borders(struct owl_toplevel *toplevel,
     uint32_t width, uint32_t height) {
   uint32_t border_width = server.config->border_width;
-  float color[4];
-  if(toplevel_is_focused(toplevel)) {
-    for(size_t i = 0; i < 4; i++) {
-      color[i] = server.config->active_border_color[i];
-    }
-  } else {
-    for(size_t i = 0; i < 4; i++) {
-      color[i] = server.config->inactive_border_color[i];
-    }
-  }
 
   if(toplevel->borders[0] == NULL) {
     toplevel->borders[0] = wlr_scene_rect_create(toplevel->scene_tree,
-      width + 2 * border_width, border_width, color);
+      width + 2 * border_width, border_width,
+      server.config->inactive_border_color);
     wlr_scene_node_set_position(&toplevel->borders[0]->node,
       -border_width, -border_width);
 
     toplevel->borders[1] = wlr_scene_rect_create(toplevel->scene_tree,
-      border_width, height, color);
+      border_width, height,
+      server.config->inactive_border_color);
     wlr_scene_node_set_position(&toplevel->borders[1]->node,
       width, 0);
 
     toplevel->borders[2] = wlr_scene_rect_create(toplevel->scene_tree,
-      width + 2 * border_width, border_width, color);
+      width + 2 * border_width, border_width,
+      server.config->inactive_border_color);
     wlr_scene_node_set_position(&toplevel->borders[2]->node,
       -border_width, height);
 
     toplevel->borders[3] = wlr_scene_rect_create(toplevel->scene_tree,
-      border_width, height, color);
+      border_width, height,
+      server.config->inactive_border_color);
     wlr_scene_node_set_position(&toplevel->borders[3]->node,
       -border_width, 0);
     return;
   }
-  
 
   wlr_scene_node_set_position(&toplevel->borders[1]->node, width, 0);
   wlr_scene_node_set_position(&toplevel->borders[2]->node, -border_width, height);
@@ -483,10 +477,6 @@ static void toplevel_create_or_update_borders(struct owl_toplevel *toplevel,
   wlr_scene_rect_set_size(toplevel->borders[1], border_width, height);
   wlr_scene_rect_set_size(toplevel->borders[2], width + 2 * border_width, border_width);
   wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
-
-  for(size_t i = 0; i < 4; i++) {
-    wlr_scene_rect_set_color(toplevel->borders[i], color);
-  }
 }
 
 static void toplevel_remove_borders(struct owl_toplevel *toplevel) {
@@ -504,8 +494,8 @@ static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
   toplevel->pending_y = y;
 
   /* if the size hasnt actually changed dont request it again */
-  if(toplevel->xdg_toplevel->current.width == width
-    && toplevel->xdg_toplevel->current.height == height) return;
+  /*if(toplevel->xdg_toplevel->current.width == width*/
+  /*  && toplevel->xdg_toplevel->current.height == height) return;*/
 
   wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 
@@ -531,7 +521,9 @@ static void unfocus_focused_toplevel() {
   struct owl_toplevel *toplevel = get_keyboard_focused_toplevel();
 	if(toplevel == NULL) return;
 
-  toplevel->workspace->focused_toplevel = NULL;
+  for(size_t i = 0; i < 4; i++) {
+    wlr_scene_rect_set_color(toplevel->borders[i], server.config->inactive_border_color);
+  }
 
   /* deactivate the previously focused surface */
   wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, false);
@@ -551,12 +543,14 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 
   unfocus_focused_toplevel();
 
-  toplevel->workspace->focused_toplevel = toplevel;
-
   if(toplevel->floating) {
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
     wl_list_remove(&toplevel->link);
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
+  }
+
+  for(size_t i = 0; i < 4; i++) {
+    wlr_scene_rect_set_color(toplevel->borders[i], server.config->inactive_border_color);
   }
 
 	/* activate the new surface */
@@ -645,7 +639,6 @@ static struct owl_output *toplevel_get_primary_output(struct owl_toplevel *tople
 static void toplevel_clip_size(struct owl_toplevel *toplevel, 
     uint32_t width, uint32_t height) {
   struct wlr_box clip = (struct wlr_box){
-    /* maybe use state current instead of geometry */
     .x = toplevel->xdg_toplevel->base->geometry.x,
     .y = toplevel->xdg_toplevel->base->geometry.y,
     .width = width,
@@ -699,8 +692,7 @@ static void layout_place_tiled_toplevels(struct owl_workspace *workspace) {
   uint32_t number_of_slaves = wl_list_length(&workspace->slaves);
 
   uint32_t master_width, master_height;
-  calculate_masters_dimensions(output,
-    number_of_slaves, &master_width, &master_height);
+  calculate_masters_dimensions(output, number_of_slaves, &master_width, &master_height);
 
   uint32_t master_x = output->usable_area.x + outer_gaps + border_width;
   uint32_t master_y = output->usable_area.y + outer_gaps + border_width;
@@ -727,8 +719,10 @@ static void layout_place_tiled_toplevels(struct owl_workspace *workspace) {
   }
 }
 
-/* this function assumes they are in the same workspace and that t2 comes after t1 in a list */
-static void layout_swap_tiled_toplevels(struct owl_toplevel *t1, struct owl_toplevel *t2) {
+/* this function assumes they are in the same workspace and
+ * that t2 comes after t1 in a list */
+static void layout_swap_tiled_toplevels(
+    struct owl_toplevel *t1, struct owl_toplevel *t2) {
   if(t1 == t1->workspace->master) {
     t1->workspace->master = t2;
     wl_list_insert(&t2->link, &t1->link);
@@ -1269,45 +1263,35 @@ static bool output_tiled_ready(struct owl_output *output) {
 
   if(workspace->master != NULL) {
     if(workspace->master->requested_size_change
-      && !workspace->master->responded_to_size_change) {
-      wlr_log(WLR_ERROR, "not ready");
-      return false;
-    }
+      && !workspace->master->responded_to_size_change) return false;
     struct owl_toplevel *t;
     wl_list_for_each(t, &workspace->slaves, link) {
-      if(t->requested_size_change && !t->responded_to_size_change) {
-        wlr_log(WLR_ERROR, "not ready");
-        return false;
-      }
+      if(t->requested_size_change && !t->responded_to_size_change) return false;
     }
   }
 
-  wlr_log(WLR_ERROR, "yes ready");
   return true;
 }
 
-static void output_render_floating(struct owl_output *output) {
-  struct owl_workspace *workspace = output->active_workspace;
+static void toplevel_render_floating(struct owl_toplevel *toplevel, bool initial) {
+  struct owl_workspace *workspace = toplevel->workspace;
   if(workspace->fullscreen_toplevel != NULL) return;
 
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->floating_toplevels, link) {
-    if(t->requested_size_change && !t->responded_to_size_change) return;
-    wlr_scene_node_set_position(&t->scene_tree->node, t->pending_x, t->pending_y);
-    /* if we render the new state then remove the flag */
-    t->requested_size_change = false;
-    toplevel_create_or_update_borders(t,
-      t->xdg_toplevel->current.width, t->xdg_toplevel->current.height);
-  }
+  if(toplevel->requested_size_change && !toplevel->responded_to_size_change) return;
+  wlr_scene_node_set_position(&toplevel->scene_tree->node,
+    toplevel->pending_x, toplevel->pending_y);
+  /* if we render the new state then remove the flag */
+  toplevel->requested_size_change = false;
+
+  toplevel_create_or_update_borders(toplevel,
+    toplevel->pending_width, toplevel->pending_height);
 }
 
-static void output_render_tiled(struct owl_output *output) {
+static void toplevel_render_tiled(struct owl_output *output) {
   struct owl_workspace *workspace = output->active_workspace;
   if(workspace->fullscreen_toplevel != NULL) return;
 
   if(workspace->master != NULL) {
-    uint32_t current_width = workspace->master->xdg_toplevel->current.width;
-    uint32_t current_height = workspace->master->xdg_toplevel->current.height;
     toplevel_clip_size(workspace->master,
       workspace->master->pending_width, workspace->master->pending_height);
 
@@ -1316,19 +1300,16 @@ static void output_render_tiled(struct owl_output *output) {
     workspace->master->requested_size_change = false;
 
     toplevel_create_or_update_borders(workspace->master,
-      workspace->master->xdg_toplevel->current.width, workspace->master->xdg_toplevel->current.height);
+      workspace->master->pending_width, workspace->master->pending_height);
 
     struct owl_toplevel *t;
     wl_list_for_each(t, &workspace->slaves, link) {
-      current_width = t->xdg_toplevel->current.width;
-      current_height = t->xdg_toplevel->current.height;
       toplevel_clip_size(t, t->pending_width, t->pending_height);
 
       wlr_scene_node_set_position(&t->scene_tree->node, t->pending_x, t->pending_y);
       t->requested_size_change = false;
 
-      toplevel_create_or_update_borders(t,
-        t->xdg_toplevel->current.width, t->xdg_toplevel->current.height);
+      toplevel_create_or_update_borders(t, t->pending_width, t->pending_height);
     }
   }
 }
@@ -1339,18 +1320,8 @@ static void output_handle_frame(struct wl_listener *listener, void *data) {
 	 * generally at the output's refresh rate (e.g. 60Hz). */
 	struct owl_output *output = wl_container_of(listener, output, frame);
 
-  wlr_log(WLR_ERROR, "new frame on %s", output->wlr_output->name);
-
 	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(
 		server.scene, output->wlr_output);
-
-	/* if all tiled toplevels are ready then render them */
-  if(output_tiled_ready(output)) {
-    output_render_tiled(output);
-  }
-  output_render_floating(output);
-
-  focus_toplevel(output->active_workspace->focused_toplevel);
 
 	wlr_scene_output_commit(scene_output, NULL);
 
