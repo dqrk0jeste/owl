@@ -14,7 +14,7 @@
 - easily configurable
 - custom keybinds, resolutions etc
 
-> owl is made mainly for myself, implementing just enough for my workflow. that means a lot of things is just not there. if you are looking for something more ready to use take a look at hyprland, sway or river. 
+> owl is made mainly for myself, implementing just enough for my workflow. that means a lot of things is just not there. if you are looking for something more mature take a look at hyprland, sway or river. 
 
 ## showcase
 
@@ -68,11 +68,11 @@ every line is a config value made up from a keyword followed by one or more argu
 
 ## todo
 - there are some known issues that need fixing, see `known_issues.md`
-- window rules for floating windows
+- move to workspace
 - opacity settings
 - animations
-- mouse clicks for shortcuts (moving and resizing toplevels for example)
-- more configuration options, mainly when it comes to tiling capabilities and layouts.
+- mouse clicks for keybinds (moving and resizing toplevels for example)
+- more configuration options
 
 ## special thanks to
 - Krasa, for making the cute owl

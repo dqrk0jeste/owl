@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <regex.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 #include <wayland-util.h>
@@ -62,9 +63,27 @@ enum owl_direction {
   LEFT,
 };
 
+struct window_rule_float {
+  regex_t regex;
+};
+
+struct window_rule_size {
+  regex_t regex;
+  bool relative_width;
+  uint32_t width;
+  bool relative_height;
+  uint32_t height;
+};
+
 struct owl_config {
   struct wl_list monitors;
   struct wl_list keybinds;
+  struct {
+    struct window_rule_float floating[64];
+    size_t floating_count;
+    struct window_rule_size size[64];
+    size_t size_count;
+  } window_rules;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
   char cursor_theme[256];
@@ -79,8 +98,8 @@ struct owl_config {
   double master_ratio;
   bool natural_scroll;
   bool tap_to_click;
-  char *exec[64];
-  size_t exec_count;
+  char *run[64];
+  size_t run_count;
 };
 
 struct monitor_config {
@@ -351,13 +370,48 @@ static bool toplevel_position_changed(struct owl_toplevel *toplevel,
     || toplevel->scene_tree->node.y != new_y;
 }
 
+static void toplevel_floating_size(struct owl_toplevel *toplevel,
+    uint32_t *width, uint32_t *height) {
+  for(size_t i = 0; i < server.config->window_rules.size_count; i++) {
+    if(regexec(&server.config->window_rules.size[i].regex,
+      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0) {
+      struct window_rule_size wr = server.config->window_rules.size[i];
+      if(wr.relative_width) {
+        *width = toplevel->workspace->output->usable_area.width * wr.width / 100;
+      } else {
+        *width = wr.width;
+      }
+
+      if(wr.relative_height) {
+        *height = toplevel->workspace->output->usable_area.height * wr.height / 100;
+      } else {
+        *height = wr.height;
+      }
+      return;
+    }
+  }
+
+  *width = toplevel->xdg_toplevel->current.width;
+  *height = toplevel->xdg_toplevel->current.height;
+}
+
 static bool toplevel_should_float(struct owl_toplevel *toplevel) {
   /* we make toplevels float if they have fixed size or are children of another toplevel */
-  return (toplevel->xdg_toplevel->current.max_height &&
+  bool natural = (toplevel->xdg_toplevel->current.max_height &&
     (toplevel->xdg_toplevel->current.max_height == toplevel->xdg_toplevel->current.min_height))
     || (toplevel->xdg_toplevel->current.max_width &&
       (toplevel->xdg_toplevel->current.max_width == toplevel->xdg_toplevel->current.min_width))
     || toplevel->xdg_toplevel->parent;
+  if(natural) return true;
+
+  for(size_t i = 0; i < server.config->window_rules.floating_count; i++) {
+    if(regexec(&server.config->window_rules.floating[i].regex,
+      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 struct owl_output *output_get_relative(struct owl_output *output,
@@ -402,7 +456,7 @@ struct owl_output *output_get_relative(struct owl_output *output,
   return NULL;
 }
 
-/* TODO: return owl_something and check for layer_surfaces */
+/* TODO: return owl_something and check for layer_surfaces as they can also have popups */
 static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
   struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
@@ -517,14 +571,18 @@ static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
   toplevel->pending_width = width;
   toplevel->pending_height = height;
 
-  /* we only request a state from a client it has changed to avoid waiting for a response,
-   * else we just update it immediately (or just dont set a flag for tiled toplevels)*/
-  if(toplevel->xdg_toplevel->current.width == width
+  /* because floating toplevels dont depend on other toplevels
+   * we only request a state from a client if its size has changed
+   * to avoid waiting for a response, else we just update it immediately.
+   * similar thing should be done for tiled toplevels,
+   * but then we have the issue that we need to 'poke' the toplevels 
+   * somehow as they are not going to commit if the two of the same sized
+   * (that is, slaves) are switched for example, or if master is moved
+   * to another monitor. */
+  if(toplevel->floating
+    && toplevel->xdg_toplevel->current.width == width
     && toplevel->xdg_toplevel->current.height == height) {
-    if(toplevel->floating) {
-      toplevel_render_floating(toplevel);
-    }
-    return;
+    toplevel_render_floating(toplevel);
   };
 
   wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
@@ -991,13 +1049,15 @@ static bool server_handle_keybinds(uint32_t modifiers, xkb_keysym_t sym,
     enum wl_keyboard_key_state state) {
   struct keybind *k;
   wl_list_for_each(k, &server.config->keybinds, link) {
-    if(k->active && k->stop && sym == k->sym && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+    if(k->active && k->stop && sym == k->sym
+      && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
       k->active = false;
       k->stop(k->args);
       return true;
     }
 
-    if(modifiers == k->modifiers && sym == k->sym && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+    if(modifiers == k->modifiers && sym == k->sym
+      && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
       k->active = true;
       k->action(k->args);
       return true;
@@ -1662,13 +1722,14 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
 	if(toplevel->xdg_toplevel->base->initial_commit) {
-		/* When an xdg_surface performs an initial commit, the compositor must
+		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
 
-    /* TODO: windowrules */
     toplevel->floating = toplevel_should_float(toplevel);
     if(toplevel->floating) {
-      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+      uint32_t width, height;
+      toplevel_floating_size(toplevel, &width, &height);
+      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
       return;
     }
 
@@ -1863,9 +1924,15 @@ static void xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
 		 * owl sends an empty configure. A more sophisticated compositor
 		 * might change an xdg_popup's geometry to ensure it's not positioned
 		 * off-screen, for example. */
-		wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
-    /* TODO: finish this */
-    /*wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup);*/
+    struct owl_toplevel *toplevel =
+      toplevel_parent_of_surface(popup->xdg_popup->base->surface);
+    /* i really should implement the thing commented before toplevel_parent_of_surface() */
+    if(toplevel != NULL) {
+      wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup,
+        &toplevel->workspace->output->usable_area);
+    } else {
+		  wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
+    }
 	}
 }
 
@@ -2114,14 +2181,14 @@ static void keybind_stop_server(void *data) {
 	wl_display_terminate(server.wl_display);
 }
 
-static void exec_cmd(char *cmd) {
+static void run_cmd(char *cmd) {
   if(fork() == 0) {
     execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
 	}
 }
 
 static void keybind_run(void *data) {
-  exec_cmd(data);
+  run_cmd(data);
 }
 
 static void keybind_change_workspace(void *data) {
@@ -2422,10 +2489,12 @@ static void keybind_switch_focused_toplevel_state(void *data) {
 
   struct wlr_box geometry = toplevel->xdg_toplevel->base->geometry;
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
+  uint32_t width, height;
+  toplevel_floating_size(toplevel, &width, &height);
   toplevel_set_pending_state(toplevel,
-    output_box.x + (output_box.width - geometry.width) / 2,
-    output_box.y + (output_box.height - geometry.height) / 2,
-    geometry.width, geometry.height);
+    output_box.x + (output_box.width - width) / 2,
+    output_box.y + (output_box.height - height) / 2,
+    width, height);
 
   wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
 
@@ -2434,10 +2503,54 @@ static void keybind_switch_focused_toplevel_state(void *data) {
 }
 
 static bool config_add_window_rule(struct owl_config *c, char *regex,
-    char *predicate, char **args, size_t args_count) {
-  if(strcmp(predicate, "float") == 0) {
-    
+    char *predicate, char **args, size_t arg_count) {
+  /* i dont think i will be freeing those,
+   * as they are needed for the whole runtime of the program */
+  regex_t compiled;
+  if(regcomp(&compiled, regex, REG_EXTENDED) != 0) {
+    wlr_log(WLR_ERROR, "%s is not a valid regex", regex);
+    regfree(&compiled);
+    return false;
   }
+
+  if(strcmp(predicate, "float") == 0) {
+    if(c->window_rules.floating_count >= 64) {
+      wlr_log(WLR_ERROR, "more than 64 window rules, i am lazy to reallocate");
+      return false;
+    }
+    /* get next position in the array, for convenience */
+    struct window_rule_float *wr =
+      &c->window_rules.floating[c->window_rules.floating_count];
+    wr->regex = compiled;
+    c->window_rules.floating_count++;
+  } else if(strcmp(predicate, "size") == 0) {
+    if(c->window_rules.size_count >= 64) {
+      wlr_log(WLR_ERROR, "more than 64 window rules, i am lazy to reallocate");
+      return false;
+    }
+    if(arg_count < 2) {
+      wlr_log(WLR_ERROR, "invalid args to window_rule %s", predicate);
+      return false;
+    }
+    struct window_rule_size *wr =
+      &c->window_rules.size[c->window_rules.size_count];
+    wr->regex = compiled;
+    /* handle relative values */
+    if(args[0][strlen(args[0]) - 1] == '%') {
+      args[0][strlen(args[0]) - 1] = 0;
+      wr->relative_width = true;
+    }
+    if(args[1][strlen(args[1]) - 1] == '%') {
+      args[1][strlen(args[1]) - 1] = 0;
+      wr->relative_height = true;
+    }
+
+    wr->width = atoi(args[0]);
+    wr->height = atoi(args[1]);
+    c->window_rules.size_count++;
+  }
+
+  return true;
 }
 
 static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
@@ -2467,11 +2580,6 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     if(*p == '+') {
       p++;
     }
-  }
-
-  if(modifiers_flag == 0) {
-    wlr_log(WLR_ERROR, "modifiers %s don't seem to match any known modifiers", modifiers);
-    return false;
   }
 
   uint32_t key_sym = 0;
@@ -2711,16 +2819,16 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       .refresh_rate = atoi(args[5]) * 1000,
     };
     wl_list_insert(&c->monitors, &m->link);
-  } else if(strcmp(keyword, "exec") == 0) {
+  } else if(strcmp(keyword, "run") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    if(c->exec_count >= 64) return false;
+    if(c->run_count >= 64) return false;
     char *args_0_copy = strdup(args[0]);
-    c->exec[c->exec_count] = args_0_copy;
-    c->exec_count++;
+    c->run[c->run_count] = args_0_copy;
+    c->run_count++;
   } else if(strcmp(keyword, "keybind") == 0) {
     if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2798,7 +2906,8 @@ static bool server_load_config() {
   while(fgets(line_buffer, 1024, config_file)) {
     char *p = line_buffer;
     while(*p == ' ') p++;
-    if(*p == '\n') {
+    /* if its an empty line or it starts with '-' (comment) skip */
+    if(*p == '\n' || *p == '-') {
       continue; 
     }
 
@@ -2881,7 +2990,7 @@ int main(int argc, char *argv[]) {
 
   bool valid_config = server_load_config();
   if(!valid_config) {
-    wlr_log(WLR_ERROR, "config problem");
+    wlr_log(WLR_ERROR, "there is a problem in the config, quiting");
     return 1;
   }
 
@@ -3070,8 +3179,8 @@ int main(int argc, char *argv[]) {
 	 * loop configuration to listen to libinput events, DRM events, generate
 	 * frame events at the refresh rate, and so on. */
 
-  for(size_t i = 0; i < server.config->exec_count; i++) {
-    exec_cmd(server.config->exec[i]);
+  for(size_t i = 0; i < server.config->run_count; i++) {
+    run_cmd(server.config->run[i]);
   }
   
 	wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
