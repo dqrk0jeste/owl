@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <getopt.h>
+#include <ctype.h>
 #include <sys/wait.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -311,8 +312,48 @@ struct owl_server {
 struct owl_server server;
 
 /* handles child processes */
-void sigchld_handler(int signo) {
+static void sigchld_handler(int signo) {
   while(waitpid(-1, NULL, WNOHANG) > 0);
+}
+
+/* this is needed for keybind, so the shift works properly */
+char unshift_keysym(xkb_keysym_t keysym) {
+  char buffer[8];
+  int size = xkb_keysym_to_utf8(keysym, buffer, sizeof(buffer));
+
+  if (size > 0) {
+    char ch = buffer[0];
+
+    if (isupper(ch)) {
+      return tolower(ch); // Convert uppercase letters to lowercase
+    }
+
+    switch (keysym) {
+      case XKB_KEY_exclam: return '1';
+      case XKB_KEY_at: return '2';
+      case XKB_KEY_numbersign: return '3';
+      case XKB_KEY_dollar: return '4';
+      case XKB_KEY_percent: return '5';
+      case XKB_KEY_asciicircum: return '6';
+      case XKB_KEY_ampersand: return '7';
+      case XKB_KEY_asterisk: return '8';
+      case XKB_KEY_parenleft: return '9';
+      case XKB_KEY_parenright: return '0';
+      case XKB_KEY_underscore: return '-';
+      case XKB_KEY_plus: return '=';
+      case XKB_KEY_braceleft: return '[';
+      case XKB_KEY_braceright: return ']';
+      case XKB_KEY_bar: return '\\';
+      case XKB_KEY_colon: return ';';
+      case XKB_KEY_quotedbl: return '\'';
+      case XKB_KEY_less: return ',';
+      case XKB_KEY_greater: return '.';
+      case XKB_KEY_question: return '/';
+      default: return ch;
+    }
+  }
+
+  return '\0'; // Return null character if conversion fails
 }
 
 /* these next few functions are some helpers */
@@ -990,6 +1031,45 @@ static void toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   layout_place_tiled_toplevels(workspace);
 }
 
+/* this does not update the scene, just the server state,
+ * as the affected workspace could be fullscreened for example */
+static void layout_remove_toplevel(struct owl_toplevel *toplevel) {
+  assert(toplevel != NULL && !toplevel->floating);
+
+  struct owl_workspace *workspace = toplevel->workspace;
+
+  if(toplevel_is_master(toplevel)) {
+    /* we need to update the layout; finding new master */
+    if(!wl_list_empty(&workspace->slaves)) {
+      struct owl_toplevel *first_slave =
+        wl_container_of(workspace->slaves.next, first_slave, link);
+      workspace->master = first_slave;
+      wl_list_remove(&first_slave->link);
+    } else {
+      workspace->master = NULL;
+    }
+    return;
+  }
+
+  /* otherwise he is a slave */
+  wl_list_remove(&toplevel->link);
+}
+
+/* this does not update the scene, just the server state,
+ * as the affected workspace could be fullscreened for example */
+static void layout_add_toplevel(struct owl_workspace *workspace,
+    struct owl_toplevel *toplevel) {
+  assert(toplevel != NULL && !toplevel->floating);
+
+  toplevel->workspace = workspace;
+
+  if(workspace->master == NULL) {
+    workspace->master = toplevel;
+  } else {
+    wl_list_insert(&workspace->slaves, &toplevel->link);
+  }
+}
+
 static void server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
   /* if it is the same as global active workspace, do nothing */
   if(server.active_workspace == workspace) return;
@@ -1046,6 +1126,87 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
   } else if(!keep_focus) {
     unfocus_focused_toplevel();
   }
+}
+
+static void toplevel_move_to_workspace(struct owl_toplevel *toplevel,
+    struct owl_workspace *workspace) {
+  assert(toplevel != NULL && workspace != NULL);
+  if(toplevel->workspace == workspace) return;
+
+  struct owl_workspace *old_workspace = toplevel->workspace;
+
+  /* handle server state; note: even tho fullscreen toplevel is handled differently
+   * we will still update its underlying type */
+  if(toplevel->floating) {
+    toplevel->workspace = workspace;
+    wl_list_remove(&toplevel->link);
+    wl_list_insert(&workspace->floating_toplevels, &toplevel->link);
+  } else {
+    layout_remove_toplevel(toplevel);
+    layout_add_toplevel(workspace, toplevel);
+  }
+
+  /* handle rendering */
+  if(toplevel->fullscreen) {
+    old_workspace->fullscreen_toplevel = NULL;
+    workspace->fullscreen_toplevel = toplevel;
+
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
+    toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
+      output_box.width, output_box.height);
+
+    if(toplevel->floating) {
+      /* calculate where the toplevel should be placed after exiting fullscreen,
+       * see note for floating bellow */
+      uint32_t old_output_relative_x =
+        toplevel->prev_geometry.x - old_workspace->output->usable_area.x;
+      double relative_x =
+        (double)old_output_relative_x / old_workspace->output->usable_area.width;
+
+      uint32_t old_output_relative_y =
+        toplevel->prev_geometry.y - old_workspace->output->usable_area.y;
+      double relative_y =
+        (double)old_output_relative_y / old_workspace->output->usable_area.height;
+
+      uint32_t new_output_x = workspace->output->usable_area.x
+        + relative_x * workspace->output->usable_area.width;
+      uint32_t new_output_y = workspace->output->usable_area.y
+        + relative_y * workspace->output->usable_area.height;
+
+      toplevel->prev_geometry.x = new_output_x;
+      toplevel->prev_geometry.y = new_output_y;
+    } else if(old_workspace->output != workspace->output) {
+    /* if the output is changed we want to update the old ones layout; only for tiled toplevel */
+      layout_place_tiled_toplevels(old_workspace);
+    }
+  } else if(toplevel->floating && old_workspace->output != workspace->output) {
+    /* we want to place the toplevel to the same relative coordinates,
+     * as the new output may have a different resolution
+     * note: pending here is the same as current x, y
+     * becuase we havent requested the new state yet*/
+    uint32_t old_output_relative_x =
+      toplevel->pending_x - old_workspace->output->usable_area.x;
+    double relative_x =
+      (double)old_output_relative_x / old_workspace->output->usable_area.width;
+
+    uint32_t old_output_relative_y =
+      toplevel->pending_y - old_workspace->output->usable_area.y;
+    double relative_y =
+      (double)old_output_relative_y / old_workspace->output->usable_area.height;
+
+    uint32_t new_output_x = workspace->output->usable_area.x + relative_x * workspace->output->usable_area.width;
+    uint32_t new_output_y = workspace->output->usable_area.y + relative_y * workspace->output->usable_area.height;
+
+    toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
+      toplevel->pending_width, toplevel->pending_height);
+  } else {
+    layout_place_tiled_toplevels(old_workspace);
+    layout_place_tiled_toplevels(workspace);
+  }
+
+  /* change active workspace */
+  server_change_workspace(workspace, true);
 }
 
 static struct owl_something *something_at(double lx, double ly,
@@ -1510,6 +1671,7 @@ static void output_handle_destroy(struct wl_listener *listener, void *data) {
 
 /* forward declaration so i can keep all keybind related stuff down there */
 static void keybind_change_workspace(void *data);
+static void keybind_move_to_workspace(void *data);
 
 static void server_handle_new_output(struct wl_listener *listener, void *data) {
   /* This event is raised by the backend when a new output (aka a display or
@@ -1594,6 +1756,8 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
       /* we didnt have information about what workspace this is going to be,
        * so we only kept an index. now we replace it with the actual workspace pointer */
       if(k->action == keybind_change_workspace && (uint32_t)k->args == workspace->index) {
+        k->args = workspace;
+      } else if(k->action == keybind_move_to_workspace && (uint32_t)k->args == workspace->index) {
         k->args = workspace;
       }
     }
@@ -2225,6 +2389,14 @@ static void keybind_change_workspace(void *data) {
   server_change_workspace(workspace, false);
 }
 
+static void keybind_move_to_workspace(void *data) {
+  struct owl_toplevel *toplevel = server.focused_toplevel;
+  if(toplevel == NULL) return;
+
+  struct owl_workspace *workspace = data;
+  toplevel_move_to_workspace(toplevel, workspace);
+}
+
 static void keybind_resize_focused_toplevel(void *data) {
   struct owl_toplevel *toplevel = get_pointer_focused_toplevel();
   if(toplevel == NULL || !toplevel->floating) return;
@@ -2305,6 +2477,7 @@ static void keybind_move_focus(void *data) {
       server.output_layout, server.cursor->x, server.cursor->y);
     struct owl_output *output = wlr_output->data;
     struct owl_output *relative_output = output_get_relative(output, direction);
+    if(relative_output == NULL) return;
     focus_output(relative_output);
     return;
   }
@@ -2379,125 +2552,6 @@ static void keybind_move_focus(void *data) {
   }
 }
 
-/* this does not update the scene, just the server state,
- * as the affected workspace could be fullscreened for example */
-static void layout_remove_toplevel(struct owl_toplevel *toplevel) {
-  assert(toplevel != NULL && !toplevel->floating);
-
-  struct owl_workspace *workspace = toplevel->workspace;
-
-  if(toplevel_is_master(toplevel)) {
-    /* we need to update the layout; finding new master */
-    if(!wl_list_empty(&workspace->slaves)) {
-      struct owl_toplevel *first_slave =
-        wl_container_of(workspace->slaves.next, first_slave, link);
-      workspace->master = first_slave;
-      wl_list_remove(&first_slave->link);
-    } else {
-      workspace->master = NULL;
-    }
-    return;
-  }
-
-  /* otherwise he is a slave */
-  wl_list_remove(&toplevel->link);
-}
-
-/* this does not update the scene, just the server state,
- * as the affected workspace could be fullscreened for example */
-static void layout_add_toplevel(struct owl_workspace *workspace,
-    struct owl_toplevel *toplevel) {
-  assert(toplevel != NULL && !toplevel->floating);
-
-  toplevel->workspace = workspace;
-
-  if(workspace->master == NULL) {
-    workspace->master = toplevel;
-  } else {
-    wl_list_insert(&workspace->slaves, &toplevel->link);
-  }
-}
-
-static void toplevel_move_to_workspace(struct owl_toplevel *toplevel,
-    struct owl_workspace *workspace) {
-  assert(toplevel != NULL && workspace != NULL);
-  if(toplevel->workspace == workspace) return;
-
-  struct owl_workspace *old_workspace = toplevel->workspace;
-
-  /* handle server state; note: even tho fullscreen toplevel is handled differently
-   * we will still update its underlying type */
-  if(toplevel->floating) {
-    toplevel->workspace = workspace;
-    wl_list_remove(&toplevel->link);
-    wl_list_insert(&workspace->floating_toplevels, &toplevel->link);
-  } else {
-    layout_remove_toplevel(toplevel);
-    layout_add_toplevel(workspace, toplevel);
-  }
-
-  /* handle rendering */
-  if(toplevel->fullscreen) {
-    old_workspace->fullscreen_toplevel = NULL;
-    workspace->fullscreen_toplevel = toplevel;
-
-    struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
-    toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
-      output_box.width, output_box.height);
-
-    if(toplevel->floating) {
-      /* calculate where the toplevel should be placed after exiting fullscreen,
-       * see note for floating bellow */
-      uint32_t old_output_relative_x =
-        toplevel->prev_geometry.x - old_workspace->output->usable_area.x;
-      double relative_x =
-        (double)old_output_relative_x / old_workspace->output->usable_area.width;
-
-      uint32_t old_output_relative_y =
-        toplevel->prev_geometry.y - old_workspace->output->usable_area.y;
-      double relative_y =
-        (double)old_output_relative_y / old_workspace->output->usable_area.height;
-
-      uint32_t new_output_x = workspace->output->usable_area.x
-        + relative_x * workspace->output->usable_area.width;
-      uint32_t new_output_y = workspace->output->usable_area.y
-        + relative_y * workspace->output->usable_area.height;
-
-      toplevel->prev_geometry.x = new_output_x;
-      toplevel->prev_geometry.y = new_output_y;
-    } else if(old_workspace->output != workspace->output) {
-    /* if the output is changed we want to update the old ones layout; only for tiled toplevel */
-      layout_place_tiled_toplevels(old_workspace);
-    }
-  } else if(toplevel->floating && old_workspace->output != workspace->output) {
-    /* we want to place the toplevel to the same relative coordinates,
-     * as the new output may have a different resolution
-     * note: pending here is the same as current x, y
-     * becuase we havent requested the new state yet*/
-    uint32_t old_output_relative_x =
-      toplevel->pending_x - old_workspace->output->usable_area.x;
-    double relative_x =
-      (double)old_output_relative_x / old_workspace->output->usable_area.width;
-
-    uint32_t old_output_relative_y =
-      toplevel->pending_y - old_workspace->output->usable_area.y;
-    double relative_y =
-      (double)old_output_relative_y / old_workspace->output->usable_area.height;
-
-    uint32_t new_output_x = workspace->output->usable_area.x + relative_x * workspace->output->usable_area.width;
-    uint32_t new_output_y = workspace->output->usable_area.y + relative_y * workspace->output->usable_area.height;
-
-    toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
-      toplevel->pending_width, toplevel->pending_height);
-  } else {
-    layout_place_tiled_toplevels(old_workspace);
-    layout_place_tiled_toplevels(workspace);
-  }
-
-  /* change active workspace */
-  server_change_workspace(workspace, true);
-}
 
 static void keybind_move_toplevel(void *data) {
   uint32_t direction = (uint32_t)data;
@@ -2807,12 +2861,26 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
   } else if(strcmp(action, "workspace") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", action);
+      free(k);
       return false;
     }
     k->action = keybind_change_workspace;
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
-  } 
+  } else if(strcmp(action, "move_to_workspace") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", action);
+      free(k);
+      return false;
+    }
+    k->action = keybind_move_to_workspace;
+    /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
+    k->args = (void*)atoi(args[0]);
+  } else {
+    wlr_log(WLR_ERROR, "invalid keybind action %s", action);
+    free(k);
+    return false;
+  }
 
   wl_list_insert(&c->keybinds, &k->link);
   return true;
