@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <getopt.h>
-#include <ctype.h>
 #include <sys/wait.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -316,44 +315,10 @@ static void sigchld_handler(int signo) {
   while(waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-/* this is needed for keybind, so the shift works properly */
-char unshift_keysym(xkb_keysym_t keysym) {
-  char buffer[8];
-  int size = xkb_keysym_to_utf8(keysym, buffer, sizeof(buffer));
-
-  if (size > 0) {
-    char ch = buffer[0];
-
-    if (isupper(ch)) {
-      return tolower(ch); // Convert uppercase letters to lowercase
-    }
-
-    switch (keysym) {
-      case XKB_KEY_exclam: return '1';
-      case XKB_KEY_at: return '2';
-      case XKB_KEY_numbersign: return '3';
-      case XKB_KEY_dollar: return '4';
-      case XKB_KEY_percent: return '5';
-      case XKB_KEY_asciicircum: return '6';
-      case XKB_KEY_ampersand: return '7';
-      case XKB_KEY_asterisk: return '8';
-      case XKB_KEY_parenleft: return '9';
-      case XKB_KEY_parenright: return '0';
-      case XKB_KEY_underscore: return '-';
-      case XKB_KEY_plus: return '=';
-      case XKB_KEY_braceleft: return '[';
-      case XKB_KEY_braceright: return ']';
-      case XKB_KEY_bar: return '\\';
-      case XKB_KEY_colon: return ';';
-      case XKB_KEY_quotedbl: return '\'';
-      case XKB_KEY_less: return ',';
-      case XKB_KEY_greater: return '.';
-      case XKB_KEY_question: return '/';
-      default: return ch;
-    }
-  }
-
-  return '\0'; // Return null character if conversion fails
+static void run_cmd(char *cmd) {
+  if(fork() == 0) {
+    execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
+	}
 }
 
 /* these next few functions are some helpers */
@@ -1237,8 +1202,21 @@ static struct owl_something *something_at(double lx, double ly,
   return something;
 }
 
-static bool server_handle_keybinds(uint32_t modifiers, xkb_keysym_t sym,
-    enum wl_keyboard_key_state state) {
+static bool server_handle_keybinds(struct owl_keyboard *keyboard,
+    uint32_t keycode, enum wl_keyboard_key_state state) {
+	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
+  /* we create new empty state so we can get raw, unmodified key.
+   * this is used becuase we already handle modifiers explicitly,
+   * and dont want them to interfiere. for example, shift would make it
+   * harder to write config file as we would have to write
+   *  keybind alt+shift # <do_something>
+   * instead of
+   *  alt+shift 3 <do_something>
+   * which is more natural */
+  struct xkb_state *empty = xkb_state_new(keyboard->wlr_keyboard->keymap);
+	xkb_keysym_t sym = xkb_state_key_get_one_sym(empty, keycode);
+  xkb_state_unref(empty);
+
   struct keybind *k;
   wl_list_for_each(k, &server.config->keybinds, link) {
     if(k->active && k->stop && sym == k->sym
@@ -1286,14 +1264,9 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
 
 	/* Get a list of keysyms based on the keymap for this keyboard */
 	const xkb_keysym_t *syms;
-	int nsyms = xkb_state_key_get_syms(
-	  keyboard->wlr_keyboard->xkb_state, keycode, &syms);
-	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
+	xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
 
-	bool handled = false;
-	for (int i = 0; i < nsyms; i++) {
-		handled = server_handle_keybinds(modifiers, syms[i], event->state);
-	}
+	bool handled = server_handle_keybinds(keyboard, keycode, event->state);
 
 	if (!handled) {
 		/* Otherwise, we pass it along to the client. */
@@ -1671,7 +1644,7 @@ static void output_handle_destroy(struct wl_listener *listener, void *data) {
 
 /* forward declaration so i can keep all keybind related stuff down there */
 static void keybind_change_workspace(void *data);
-static void keybind_move_to_workspace(void *data);
+static void keybind_move_focused_toplevel_to_workspace(void *data);
 
 static void server_handle_new_output(struct wl_listener *listener, void *data) {
   /* This event is raised by the backend when a new output (aka a display or
@@ -1757,7 +1730,8 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
        * so we only kept an index. now we replace it with the actual workspace pointer */
       if(k->action == keybind_change_workspace && (uint32_t)k->args == workspace->index) {
         k->args = workspace;
-      } else if(k->action == keybind_move_to_workspace && (uint32_t)k->args == workspace->index) {
+      } else if(k->action == keybind_move_focused_toplevel_to_workspace
+        && (uint32_t)k->args == workspace->index) {
         k->args = workspace;
       }
     }
@@ -2374,12 +2348,6 @@ static void keybind_stop_server(void *data) {
 	wl_display_terminate(server.wl_display);
 }
 
-static void run_cmd(char *cmd) {
-  if(fork() == 0) {
-    execl("/bin/sh", "/bin/sh", "-c", cmd, NULL);
-	}
-}
-
 static void keybind_run(void *data) {
   run_cmd(data);
 }
@@ -2389,7 +2357,7 @@ static void keybind_change_workspace(void *data) {
   server_change_workspace(workspace, false);
 }
 
-static void keybind_move_to_workspace(void *data) {
+static void keybind_move_focused_toplevel_to_workspace(void *data) {
   struct owl_toplevel *toplevel = server.focused_toplevel;
   if(toplevel == NULL) return;
 
@@ -2553,7 +2521,7 @@ static void keybind_move_focus(void *data) {
 }
 
 
-static void keybind_move_toplevel(void *data) {
+static void keybind_swap_focused_toplevel(void *data) {
   uint32_t direction = (uint32_t)data;
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
@@ -2562,12 +2530,12 @@ static void keybind_move_toplevel(void *data) {
 
   struct owl_workspace *workspace = toplevel->workspace;
 
-  if(toplevel->fullscreen && toplevel->workspace->fullscreen_toplevel != NULL) return;
 
   if(toplevel->floating || toplevel->fullscreen) {
     struct owl_output *relative_output =
       output_get_relative(workspace->output, direction);
     if(relative_output == NULL) return;
+    if(relative_output->active_workspace->fullscreen_toplevel != NULL) return;
     toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
     return;
   }
@@ -2587,6 +2555,7 @@ static void keybind_move_toplevel(void *data) {
         struct owl_output *relative_output =
           output_get_relative(workspace->output, direction);
         if(relative_output == NULL) return; 
+        if(relative_output->active_workspace->fullscreen_toplevel != NULL) return;
         toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         return;
       }
@@ -2602,6 +2571,7 @@ static void keybind_move_toplevel(void *data) {
       struct owl_output *relative_output =
         output_get_relative(workspace->output, direction);
       if(relative_output == NULL) return; 
+      if(relative_output->active_workspace->fullscreen_toplevel != NULL) return;
       toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
       return;
     }
@@ -2614,6 +2584,7 @@ static void keybind_move_toplevel(void *data) {
       struct owl_output *relative_output =
         output_get_relative(workspace->output, direction);
       if(relative_output == NULL) return; 
+      if(relative_output->active_workspace->fullscreen_toplevel != NULL) return;
       toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
       return;
     }
@@ -2626,6 +2597,7 @@ static void keybind_move_toplevel(void *data) {
       struct owl_output *relative_output =
         output_get_relative(workspace->output, direction);
       if(relative_output == NULL) return; 
+      if(relative_output->active_workspace->fullscreen_toplevel != NULL) return;
       toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
       return;
     }
@@ -2856,7 +2828,7 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
       return false;
     }
 
-    k->action = keybind_move_toplevel;
+    k->action = keybind_swap_focused_toplevel;
     k->args = (void*)direction;
   } else if(strcmp(action, "workspace") == 0) {
     if(arg_count < 1) {
@@ -2873,7 +2845,7 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
       free(k);
       return false;
     }
-    k->action = keybind_move_to_workspace;
+    k->action = keybind_move_focused_toplevel_to_workspace;
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
   } else {
