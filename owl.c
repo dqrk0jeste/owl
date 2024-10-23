@@ -187,6 +187,7 @@ struct owl_toplevel {
   struct wlr_scene_rect *borders[4];
 
   bool floating;
+  bool fullscreen;
   /* if a floating toplevel becomes fullscreen, we keep its previous state here */
   struct wlr_box prev_geometry;
 
@@ -368,6 +369,14 @@ static bool toplevel_position_changed(struct owl_toplevel *toplevel,
     uint32_t new_x, uint32_t new_y) {
   return toplevel->scene_tree->node.x != new_x
     || toplevel->scene_tree->node.y != new_y;
+}
+
+static bool toplevel_is_master(struct owl_toplevel *toplevel) {
+  return toplevel == toplevel->workspace->master;
+}
+
+static bool toplevel_is_slave(struct owl_toplevel *toplevel) {
+  return !toplevel->floating && toplevel != toplevel->workspace->master;
 }
 
 static void toplevel_floating_size(struct owl_toplevel *toplevel,
@@ -562,7 +571,7 @@ static void toplevel_remove_borders(struct owl_toplevel *toplevel) {
   }
 }
 
-static void toplevel_render_floating(struct owl_toplevel *toplevel);
+static void toplevel_render_single(struct owl_toplevel *toplevel);
 
 static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
     uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
@@ -579,10 +588,10 @@ static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
    * somehow as they are not going to commit if the two of the same sized
    * (that is, slaves) are switched for example, or if master is moved
    * to another monitor. */
-  if(toplevel->floating
+  if((toplevel->floating || toplevel->fullscreen)
     && toplevel->xdg_toplevel->current.width == width
     && toplevel->xdg_toplevel->current.height == height) {
-    toplevel_render_floating(toplevel);
+    toplevel_render_single(toplevel);
   };
 
   wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
@@ -619,8 +628,10 @@ static void unfocus_focused_toplevel() {
 static void focus_toplevel(struct owl_toplevel *toplevel) {
   if(toplevel == NULL) return;
 
-  if(server.layer_exclusive_keyboard != NULL
-    || toplevel->workspace->fullscreen_toplevel != NULL) return;
+  if(server.layer_exclusive_keyboard != NULL) return;
+
+  if(toplevel->workspace->fullscreen_toplevel != NULL
+    && toplevel != toplevel->workspace->fullscreen_toplevel) return;
 
   struct owl_toplevel *prev_toplevel = server.focused_toplevel;
 	if(prev_toplevel == toplevel) return;
@@ -649,6 +660,36 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 		wlr_seat_keyboard_notify_enter(seat, toplevel->xdg_toplevel->base->surface,
 			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
+}
+
+static void focus_output(struct owl_output *output) {
+  assert(output != NULL);
+
+  struct owl_toplevel *should_focus_next = NULL;
+  
+  if(output->active_workspace->fullscreen_toplevel != NULL) {
+    should_focus_next = output->active_workspace->fullscreen_toplevel;
+  } else if(output->active_workspace->master == NULL) {
+    if(!wl_list_empty(&output->active_workspace->floating_toplevels)) {
+      /* this is not particurarly natural becuause it doesnt respect
+       * spacial arrangement of toplevels, but its better then doing nothing i think */
+      should_focus_next = wl_container_of(
+        output->active_workspace->floating_toplevels.next, should_focus_next, link);
+      assert(should_focus_next != NULL);
+    }
+  } else {
+    should_focus_next = output->active_workspace->master;
+  }
+
+  server.active_workspace = output->active_workspace;
+
+  if(should_focus_next == NULL) {
+    unfocus_focused_toplevel();
+    cursor_jump_output(output);
+  } else {
+    focus_toplevel(should_focus_next);
+    cursor_jump_focused_toplevel();
+  }
 }
 
 static void focus_layer_surface(struct owl_layer_surface *layer_surface) {
@@ -773,25 +814,13 @@ static bool output_tiled_ready(struct owl_output *output) {
   return true;
 }
 
-/* this and next function could be merged into a single one really */
-static void toplevel_render_fullscreen(struct owl_toplevel *toplevel) {
-  if(toplevel->initial_render) {
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-    toplevel->initial_render = false;
-  }
+static void toplevel_render_single(struct owl_toplevel *toplevel) {
+  assert(toplevel->floating || toplevel->fullscreen);
 
-  toplevel_clip_size(toplevel, toplevel->pending_width, toplevel->pending_height);
-  wlr_scene_node_set_position(&toplevel->scene_tree->node,
-    toplevel->pending_x, toplevel->pending_y);
-
-  /* if we render the new state then remove the flag */
-  toplevel->requested_size_change = false;
-
-  toplevel_remove_borders(toplevel);
-}
-
-static void toplevel_render_floating(struct owl_toplevel *toplevel) {
-  if(toplevel->workspace->fullscreen_toplevel != NULL) return;
+  /* we are not goint to render it if there is a fullscreen toplevel
+   * thats not this one, because it wouldnt be seen */
+  if(toplevel->workspace->fullscreen_toplevel != NULL &&
+    toplevel != toplevel->workspace->fullscreen_toplevel) return;
 
   if(toplevel->requested_size_change && !toplevel->responded_to_size_change) return;
 
@@ -807,7 +836,11 @@ static void toplevel_render_floating(struct owl_toplevel *toplevel) {
   /* if we render the new state then remove the flag */
   toplevel->requested_size_change = false;
 
-  toplevel_create_or_update_borders(toplevel);
+  if(toplevel->fullscreen) {
+    toplevel_remove_borders(toplevel);
+  } else {
+    toplevel_create_or_update_borders(toplevel);
+  }
 }
 
 static void output_render_tiled(struct owl_output *output) {
@@ -913,11 +946,8 @@ static void layout_swap_tiled_toplevels(
   layout_place_tiled_toplevels(t1->workspace);
 }
 
-static bool toplevel_is_fullscreen(struct owl_toplevel *toplevel) {
-  return toplevel == toplevel->workspace->fullscreen_toplevel;
-}
-
 static void toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
+  if(toplevel->workspace->fullscreen_toplevel != NULL) return;
   struct owl_workspace *workspace = toplevel->workspace;
   struct owl_output *output = workspace->output;
 
@@ -933,6 +963,7 @@ static void toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   };
 
   workspace->fullscreen_toplevel = toplevel;
+  toplevel->fullscreen = true;
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
   toplevel_set_pending_state(toplevel, output_box.x, output_box.y, output_box.width, output_box.height);
@@ -946,6 +977,7 @@ static void toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   struct owl_output *output = workspace->output;
 
   workspace->fullscreen_toplevel = NULL;
+  toplevel->fullscreen = false;
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.toplevel_tree);
@@ -958,7 +990,7 @@ static void toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   layout_place_tiled_toplevels(workspace);
 }
 
-static void server_change_workspace(struct owl_workspace *workspace) {
+static void server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
   /* if it is the same as global active workspace, do nothing */
   if(server.active_workspace == workspace) return;
 
@@ -968,9 +1000,9 @@ static void server_change_workspace(struct owl_workspace *workspace) {
     if(workspace == o->active_workspace) {
       server.active_workspace = workspace;
       cursor_jump_output(o);
-      if(workspace->master != NULL) {
+      if(workspace->master != NULL && !keep_focus) {
         focus_toplevel(workspace->master);
-      } else {
+      } else if(!keep_focus) {
         unfocus_focused_toplevel();
       }
       return;
@@ -1009,13 +1041,12 @@ static void server_change_workspace(struct owl_workspace *workspace) {
 
   server.active_workspace = workspace;
   workspace->output->active_workspace = workspace;
-  if(workspace->master != NULL) {
+  if(workspace->master != NULL && !keep_focus) {
     focus_toplevel(workspace->master);
-  } else {
+  } else if(!keep_focus) {
     unfocus_focused_toplevel();
   }
 }
-
 
 static struct owl_something *something_at(double lx, double ly,
     struct wlr_surface **surface, double *sx, double *sy) {
@@ -1612,7 +1643,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
 
   uint32_t outer_gaps = server.config->outer_gaps;
   uint32_t inner_gaps = server.config->inner_gaps;
-
+  /* TODO: maybe toplevels can initialialy be fullscreened, check for that */
   if(toplevel->floating) {
 	  wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
@@ -1621,7 +1652,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
       output_box.x + (output_box.width - geometry.width) / 2,
       output_box.y + (output_box.height - geometry.height) / 2,
       geometry.width, geometry.height);
-    toplevel_render_floating(toplevel);
+    toplevel_render_single(toplevel);
   } else if(toplevel->workspace->master == NULL) {
     toplevel->workspace->master = toplevel;
     wlr_scene_node_lower_to_bottom(&toplevel->scene_tree->node);
@@ -1757,10 +1788,8 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
     toplevel->responded_to_size_change = true;
   }
 
-  if(toplevel_is_fullscreen(toplevel)) {
-    toplevel_render_fullscreen(toplevel);
-  } else if(toplevel->floating) {
-    toplevel_render_floating(toplevel);
+  if(toplevel->floating || toplevel->fullscreen) {
+    toplevel_render_single(toplevel);
   } else if(output_tiled_ready(toplevel->workspace->output)) {
     output_render_tiled(toplevel->workspace->output);
   }
@@ -2193,7 +2222,7 @@ static void keybind_run(void *data) {
 
 static void keybind_change_workspace(void *data) {
   struct owl_workspace *workspace = data;
-  server_change_workspace(workspace);
+  server_change_workspace(workspace, false);
 }
 
 static void keybind_resize_focused_toplevel(void *data) {
@@ -2236,7 +2265,7 @@ static void keybind_stop_resize_focused_toplevel(void *data) {
 
 static void keybind_move_focused_toplevel(void *data) {
   struct owl_toplevel *toplevel = get_pointer_focused_toplevel();
-  if(toplevel == NULL || !toplevel->floating) return;
+  if(toplevel == NULL || !toplevel->floating || toplevel->fullscreen) return;
 
   wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "hand1");
   server_start_toplevel_move_resize(toplevel, OWL_CURSOR_MOVE, 0);
@@ -2264,198 +2293,296 @@ static void keybind_close_keyboard_focused_toplevel(void *data) {
   xdg_toplevel_send_close(toplevel->xdg_toplevel->resource);
 }
 
-/* TODO: more natural moving when the cursor and keyboard focus are not on the
- * same monitor */
 static void keybind_move_focus(void *data) {
   uint32_t direction = (uint32_t)data;
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
 
-  if(toplevel == NULL || toplevel->floating) {
+  /* if no toplevel has keyboard focus then get the output
+   * the pointer is on and try from there */
+  if(toplevel == NULL) {
     struct wlr_output *wlr_output = wlr_output_layout_output_at(
       server.output_layout, server.cursor->x, server.cursor->y);
     struct owl_output *output = wlr_output->data;
     struct owl_output *relative_output = output_get_relative(output, direction);
-    if(relative_output == NULL) return; 
-    if(relative_output->active_workspace->master == NULL) {
-      unfocus_focused_toplevel();
-      server.active_workspace = relative_output->active_workspace;
-      cursor_jump_output(relative_output);
-      return;
-    }
-    server.active_workspace = relative_output->active_workspace;
-    focus_toplevel(relative_output->active_workspace->master);
-    cursor_jump_focused_toplevel();
+    focus_output(relative_output);
+    return;
+  }
+
+  /* get the toplevels output */
+  struct owl_output *output = toplevel->workspace->output;
+  struct owl_output *relative_output =
+    output_get_relative(toplevel->workspace->output, direction);
+
+  if(toplevel->floating || toplevel->fullscreen) {
+    struct owl_output *relative_output = output_get_relative(output, direction);
+    if(relative_output == NULL) return;
+    focus_output(relative_output);
     return;
   }
   
   if(toplevel == toplevel->workspace->output->active_workspace->master) {
     switch (direction) {
-      case RIGHT: {}
+      case RIGHT: {
         if(!wl_list_empty(&server.active_workspace->slaves)) {
           struct owl_toplevel *first_slave =
             wl_container_of(server.active_workspace->slaves.next, first_slave, link);
+          assert(first_slave != NULL);
           focus_toplevel(first_slave);
           cursor_jump_focused_toplevel();
           return;
         }
+      }
       /* fallthrough is interntional; if there are no slaves then try right monitor */
-      default: goto try_monitor;
+      default: {
+        if(relative_output == NULL) return;
+        focus_output(relative_output);
+        return;
+      }
     }
   }
-
+  
+  /* only case left is that the toplevel is a slave */
   switch (direction) {
-    case LEFT: {}
+    case LEFT: {
       focus_toplevel(server.active_workspace->master);
       cursor_jump_focused_toplevel();
       return;
-
-    case RIGHT: {}
-      goto try_monitor;
-
-    case UP: {}
+    }
+    case RIGHT: {
+      if(relative_output == NULL) return;
+      focus_output(relative_output);
+      return;
+    }
+    case UP: {
       struct owl_toplevel *above = wl_container_of(toplevel->link.prev, above, link);
       if(&above->link != &server.active_workspace->slaves) {
         focus_toplevel(above);
         cursor_jump_focused_toplevel();
         return;
       }
-      goto try_monitor;
-
-    case DOWN: {}
+      if(relative_output == NULL) return;
+      focus_output(relative_output);
+      return;
+    }
+    case DOWN: {
       struct owl_toplevel *bellow = wl_container_of(toplevel->link.next, bellow, link);
       if(&bellow->link != &server.active_workspace->slaves) {
         focus_toplevel(bellow);
         cursor_jump_focused_toplevel();
         return;
       }
-      goto try_monitor;
+      if(relative_output == NULL) return;
+      focus_output(relative_output);
+      return;
+    }
   }
-
-try_monitor: {}
-  struct owl_output *relative_output =
-    output_get_relative(toplevel->workspace->output, direction);
-  if(relative_output == NULL) return; 
-  if(relative_output->active_workspace->master == NULL) {
-    server.active_workspace = relative_output->active_workspace;
-    cursor_jump_output(relative_output);
-    unfocus_focused_toplevel();
-    return;
-  }
-  server.active_workspace = relative_output->active_workspace;
-  focus_toplevel(relative_output->active_workspace->master);
-  cursor_jump_focused_toplevel();
-  return;
 }
 
-static void keybind_move_tiled_toplevel(void *data) {
+/* this does not update the scene, just the server state,
+ * as the affected workspace could be fullscreened for example */
+static void layout_remove_toplevel(struct owl_toplevel *toplevel) {
+  assert(toplevel != NULL && !toplevel->floating);
+
+  struct owl_workspace *workspace = toplevel->workspace;
+
+  if(toplevel_is_master(toplevel)) {
+    /* we need to update the layout; finding new master */
+    if(!wl_list_empty(&workspace->slaves)) {
+      struct owl_toplevel *first_slave =
+        wl_container_of(workspace->slaves.next, first_slave, link);
+      workspace->master = first_slave;
+      wl_list_remove(&first_slave->link);
+    } else {
+      workspace->master = NULL;
+    }
+    return;
+  }
+
+  /* otherwise he is a slave */
+  wl_list_remove(&toplevel->link);
+}
+
+/* this does not update the scene, just the server state,
+ * as the affected workspace could be fullscreened for example */
+static void layout_add_toplevel(struct owl_workspace *workspace,
+    struct owl_toplevel *toplevel) {
+  assert(toplevel != NULL && !toplevel->floating);
+
+  toplevel->workspace = workspace;
+
+  if(workspace->master == NULL) {
+    workspace->master = toplevel;
+  } else {
+    wl_list_insert(&workspace->slaves, &toplevel->link);
+  }
+}
+
+static void toplevel_move_to_workspace(struct owl_toplevel *toplevel,
+    struct owl_workspace *workspace) {
+  assert(toplevel != NULL && workspace != NULL);
+  if(toplevel->workspace == workspace) return;
+
+  struct owl_workspace *old_workspace = toplevel->workspace;
+
+  /* handle server state; note: even tho fullscreen toplevel is handled differently
+   * we will still update its underlying type */
+  if(toplevel->floating) {
+    toplevel->workspace = workspace;
+    wl_list_remove(&toplevel->link);
+    wl_list_insert(&workspace->floating_toplevels, &toplevel->link);
+  } else {
+    layout_remove_toplevel(toplevel);
+    layout_add_toplevel(workspace, toplevel);
+  }
+
+  /* handle rendering */
+  if(toplevel->fullscreen) {
+    old_workspace->fullscreen_toplevel = NULL;
+    workspace->fullscreen_toplevel = toplevel;
+
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
+    toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
+      output_box.width, output_box.height);
+
+    if(toplevel->floating) {
+      /* calculate where the toplevel should be placed after exiting fullscreen,
+       * see note for floating bellow */
+      uint32_t old_output_relative_x =
+        toplevel->prev_geometry.x - old_workspace->output->usable_area.x;
+      double relative_x =
+        (double)old_output_relative_x / old_workspace->output->usable_area.width;
+
+      uint32_t old_output_relative_y =
+        toplevel->prev_geometry.y - old_workspace->output->usable_area.y;
+      double relative_y =
+        (double)old_output_relative_y / old_workspace->output->usable_area.height;
+
+      uint32_t new_output_x = workspace->output->usable_area.x
+        + relative_x * workspace->output->usable_area.width;
+      uint32_t new_output_y = workspace->output->usable_area.y
+        + relative_y * workspace->output->usable_area.height;
+
+      toplevel->prev_geometry.x = new_output_x;
+      toplevel->prev_geometry.y = new_output_y;
+    } else if(old_workspace->output != workspace->output) {
+    /* if the output is changed we want to update the old ones layout; only for tiled toplevel */
+      layout_place_tiled_toplevels(old_workspace);
+    }
+  } else if(toplevel->floating && old_workspace->output != workspace->output) {
+    /* we want to place the toplevel to the same relative coordinates,
+     * as the new output may have a different resolution
+     * note: pending here is the same as current x, y
+     * becuase we havent requested the new state yet*/
+    uint32_t old_output_relative_x =
+      toplevel->pending_x - old_workspace->output->usable_area.x;
+    double relative_x =
+      (double)old_output_relative_x / old_workspace->output->usable_area.width;
+
+    uint32_t old_output_relative_y =
+      toplevel->pending_y - old_workspace->output->usable_area.y;
+    double relative_y =
+      (double)old_output_relative_y / old_workspace->output->usable_area.height;
+
+    uint32_t new_output_x = workspace->output->usable_area.x + relative_x * workspace->output->usable_area.width;
+    uint32_t new_output_y = workspace->output->usable_area.y + relative_y * workspace->output->usable_area.height;
+
+    toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
+      toplevel->pending_width, toplevel->pending_height);
+  } else {
+    layout_place_tiled_toplevels(old_workspace);
+    layout_place_tiled_toplevels(workspace);
+  }
+
+  /* change active workspace */
+  server_change_workspace(workspace, true);
+}
+
+static void keybind_move_toplevel(void *data) {
   uint32_t direction = (uint32_t)data;
 
-  struct owl_toplevel *toplevel = 
-    server.focused_toplevel;
+  struct owl_toplevel *toplevel = server.focused_toplevel;
 
-  if(toplevel == NULL || toplevel->floating) return;
+  if(toplevel == NULL) return;
+
+  struct owl_workspace *workspace = toplevel->workspace;
+
+  if(toplevel->fullscreen && toplevel->workspace->fullscreen_toplevel != NULL) return;
+
+  if(toplevel->floating || toplevel->fullscreen) {
+    struct owl_output *relative_output =
+      output_get_relative(workspace->output, direction);
+    if(relative_output == NULL) return;
+    toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
+    return;
+  }
   
-  struct owl_workspace *active_workspace = server.active_workspace;
-  if(toplevel == active_workspace->master) {
+  if(toplevel_is_master(toplevel)) {
     switch (direction) {
-      case RIGHT: {}
-        if(!wl_list_empty(&active_workspace->slaves)) {
+      case RIGHT: {
+        if(!wl_list_empty(&workspace->slaves)) {
           struct owl_toplevel *first_slave =
-            wl_container_of(active_workspace->slaves.next, first_slave, link);
-          layout_swap_tiled_toplevels(first_slave, active_workspace->master);
+            wl_container_of(workspace->slaves.next, first_slave, link);
+          layout_swap_tiled_toplevels(first_slave, toplevel);
           return;
         }
+      }
       /* fallthrough is interntional; if there are no slaves then try right monitor */
-      default: {}
+      default: {
         struct owl_output *relative_output =
-          output_get_relative(active_workspace->output, direction);
+          output_get_relative(workspace->output, direction);
         if(relative_output == NULL) return; 
-
-        if(!wl_list_empty(&active_workspace->slaves)) {
-          struct owl_toplevel *first_slave =
-            wl_container_of(active_workspace->slaves.next, first_slave, link);
-          toplevel->workspace->master = first_slave;
-          wl_list_remove(&first_slave->link);
-        } else {
-          toplevel->workspace->master = NULL;
-        }
-
-        toplevel->workspace = relative_output->active_workspace;
-        if(relative_output->active_workspace->master == NULL) {
-          relative_output->active_workspace->master = toplevel;
-
-          layout_place_tiled_toplevels(relative_output->active_workspace);
-          layout_place_tiled_toplevels(active_workspace);
-
-          server.active_workspace = relative_output->active_workspace;
-          cursor_jump_focused_toplevel();
-          return;
-        }
-
-        wl_list_insert(&relative_output->active_workspace->slaves, &toplevel->link);
-
-        layout_place_tiled_toplevels(relative_output->active_workspace);
-        layout_place_tiled_toplevels(server.active_workspace);
-
-        server.active_workspace = relative_output->active_workspace;
-        cursor_jump_focused_toplevel();
+        toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         return;
+      }
     }
   }
 
   switch (direction) {
-    case LEFT: {}
+    case LEFT: {
       layout_swap_tiled_toplevels(toplevel, server.active_workspace->master);
       return;
-
-    case RIGHT: {}
-      goto try_monitor_for_slave;
-
-    case UP: {}
+    }
+    case RIGHT: {
+      struct owl_output *relative_output =
+        output_get_relative(workspace->output, direction);
+      if(relative_output == NULL) return; 
+      toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
+      return;
+    }
+    case UP: {
       struct owl_toplevel *above = wl_container_of(toplevel->link.prev, above, link);
       if(&above->link != &server.active_workspace->slaves) {
         layout_swap_tiled_toplevels(above, toplevel);
         return;
       }
-      goto try_monitor_for_slave;
-
-    case DOWN: {}
+      struct owl_output *relative_output =
+        output_get_relative(workspace->output, direction);
+      if(relative_output == NULL) return; 
+      toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
+      return;
+    }
+    case DOWN: {
       struct owl_toplevel *bellow = wl_container_of(toplevel->link.next, bellow, link);
       if(&bellow->link != &server.active_workspace->slaves) {
         layout_swap_tiled_toplevels(toplevel, bellow);
         return;
       }
-      goto try_monitor_for_slave;
+      struct owl_output *relative_output =
+        output_get_relative(workspace->output, direction);
+      if(relative_output == NULL) return; 
+      toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
+      return;
+    }
   }
-
-try_monitor_for_slave: {}
-  struct owl_output *relative_output =
-    output_get_relative(toplevel->workspace->output, direction);
-  if(relative_output == NULL) return; 
-  if(relative_output->active_workspace->master == NULL) {
-    wl_list_remove(&toplevel->link);
-    relative_output->active_workspace->master = toplevel;
-    toplevel->workspace = relative_output->active_workspace;
-
-    layout_place_tiled_toplevels(relative_output->active_workspace);
-    layout_place_tiled_toplevels(server.active_workspace);
-    server.active_workspace = relative_output->active_workspace;
-    return;
-  }
-  wl_list_remove(&toplevel->link);
-  wl_list_insert(&relative_output->active_workspace->slaves, &toplevel->link);
-  toplevel->workspace = relative_output->active_workspace;
-
-  layout_place_tiled_toplevels(relative_output->active_workspace);
-  layout_place_tiled_toplevels(server.active_workspace);
-  server.active_workspace = relative_output->active_workspace;
-  return;
 }
 
 static void keybind_switch_focused_toplevel_state(void *data) {
   struct owl_toplevel *toplevel = server.focused_toplevel;
   if(toplevel == NULL) return;
+
+  if(toplevel->fullscreen) return;
 
   if(toplevel->floating) {
     toplevel->floating = false;
@@ -2675,7 +2802,7 @@ static bool config_add_keybind(struct owl_config *c, char *modifiers, char *key,
       return false;
     }
 
-    k->action = keybind_move_tiled_toplevel;
+    k->action = keybind_move_toplevel;
     k->args = (void*)direction;
   } else if(strcmp(action, "workspace") == 0) {
     if(arg_count < 1) {
