@@ -6,9 +6,13 @@ PKGS="wlroots-0.19" wayland-server xkbcommon libinput
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 CFLAGS+=-Ibuild/protocols
+CFLAGS+=-Iinclude
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 
-all: build/owl build/default.conf
+SRC_FILES := $(wildcard src/*.c)
+OBJ_FILES := $(patsubst src/%.c, build/%.o, $(SRC_FILES))
+
+all: build/owl build/owl-ipc
 
 build:
 	mkdir -p build
@@ -28,22 +32,24 @@ build/protocols/xdg-output-unstable-v1-protocol.h: build/protocols
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml $@
 
-build/owl.o: owl.c build/protocols/xdg-shell-protocol.h build/protocols/wlr-layer-shell-unstable-v1-protocol.h build/protocols/xdg-output-unstable-v1-protocol.h
-	$(CC) -c $< $(CFLAGS) -I. -DWLR_USE_UNSTABLE -o $@
-
-build/owl: build/owl.o
+build/owl: $(OBJ_FILES)
 	$(CC) $^ $> $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 
-build/default.conf: build default.conf
-	cp default.conf build/default.conf
+build/%.o: src/%.c build build/protocols/xdg-shell-protocol.h build/protocols/wlr-layer-shell-unstable-v1-protocol.h build/protocols/xdg-output-unstable-v1-protocol.h
+	$(CC) -c $< $(CFLAGS) -DWLR_USE_UNSTABLE -o $@
 
-install: build/owl build/default.conf
-	sudo cp build/owl /usr/bin/owl && \
+build/owl: build/owl.o
+
+build/owl-ipc: owl-ipc/owl-ipc.c
+	$(CC) $< -o $@
+
+install: build/owl default.conf
+	sudo cp build/owl /usr/local/owl && \
 	sudo mkdir -p /usr/share/owl && \
-	sudo cp build/default.conf /usr/share/owl/default.conf
+	sudo cp default.conf /usr/share/owl/default.conf
 
 uninstall:
-	sudo rm /usr/bin/owl 2>/dev/null && \
+	sudo rm /usr/local/owl 2>/dev/null && \
 	sudo rm -rf /usr/share/owl 2>/dev/null 
 
 clean:

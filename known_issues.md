@@ -6,3 +6,4 @@
 - zen browser does not respect the initial size the compositor sends him, also kind of happens on hyprland
 - waybar rounded corners leave black background behind instead of being transparent
 - mpv gets black bars on top and bottom on hyprland, but not on owl, maybe a missing protocol?
+- crashes because of unused keybinds for workspaces

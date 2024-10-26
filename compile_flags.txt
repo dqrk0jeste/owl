@@ -2,9 +2,10 @@
 -I/usr/include/pixman-1
 -I/usr/include/libdrm
 
+-Iinclude
 -Ibuild/protocols
 
 -DWLR_USE_UNSTABLE
 
 -lwlroots-0.19
-
+-lpthreads
