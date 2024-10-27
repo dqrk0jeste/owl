@@ -22,7 +22,7 @@ static void ipc_create_message(enum ipc_event event, char *buffer, uint32_t leng
    * in order to prevent possible race conditions */
   switch(event) {
     case ACTIVE_WORKSPACE: {
-      snprintf(buffer, length, "active-workspace$%d$%s$\n",
+      snprintf(buffer, length, "active-workspace$%u$%s$\n",
         server.active_workspace->index, server.active_workspace->output->wlr_output->name);
       break;
     }

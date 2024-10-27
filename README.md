@@ -9,10 +9,12 @@
 <br>
 
 ## features
-- tiling and floating toplevels
+- both tiling and floating toplevels
+- keyboard focused workflow
 - multimonitor and workspaces support
-- easily configurable
-- custom keybinds, resolutions etc
+- easy configuration
+- custom keybinds, monitor layouts etc
+- ipc for communication
 
 > owl is made mainly for myself, implementing just enough for my workflow. that means a lot of things is just not there. if you are looking for something more mature take a look at hyprland, sway or river. 
 
@@ -54,21 +56,18 @@ build/owl
 
 > it is best to run it from a tty.
 
-it is recommended to install it by running `make install`, which will also load the default config. then you can run it with just `owl`
+## installation
+it is recommended to install `owl` by running `make install`. it will also load the default config. then you can run it with just `owl`.
 
 if you choose to unistall it you can do so with `make unistall`.
 
 ## configuration
-
 configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl.conf` or `$HOME/.config/owl/owl.conf`. if no config is found a default config will be used (only if `owl` is installed, see previous).
 
-you can find the default config in the repo, as well as my personal config `example.conf`.
-
-every line is a config value made up from a keyword followed by one or more arguments, everything separated by spaces. if you need a space in an argument, use quotes e.g. "something with spaces".
+for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
 ## todo
 - there are some known issues that need fixing, see `known_issues.md`
-- move to workspace
 - opacity settings
 - animations
 - mouse clicks for keybinds (moving and resizing toplevels for example)

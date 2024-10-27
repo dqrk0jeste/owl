@@ -103,11 +103,13 @@ struct keybind {
 struct workspace_config {
   uint32_t index;
   char *output;
+  struct wl_list link;
 };
 
 struct owl_config {
   struct wl_list outputs;
   struct wl_list keybinds;
+  struct wl_list workspaces;
   struct {
     struct window_rule_float floating[64];
     size_t floating_count;
@@ -119,7 +121,6 @@ struct owl_config {
   char cursor_theme[256];
   uint32_t cursor_size;
   uint32_t min_toplevel_size;
-  uint32_t workspaces_per_output;
   float inactive_border_color[4];
   float active_border_color[4];
   uint32_t border_width;

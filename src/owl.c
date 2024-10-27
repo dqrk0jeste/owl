@@ -1,6 +1,5 @@
 #include "owl.h"
 #include "ipc.h"
-#include <wayland-util.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -1409,33 +1408,55 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
 
   wl_list_init(&output->workspaces);
 
-  for(size_t i = 0; i < server.config->workspaces_per_output; i++) {
+  struct workspace_config *w;
+  wl_list_for_each_reverse(w, &server.config->workspaces, link) {
+    if(strcmp(w->output, wlr_output->name) == 0) {
+      struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
+      wl_list_init(&workspace->slaves);
+      wl_list_init(&workspace->floating_toplevels);
+      workspace->master = NULL;
+      workspace->output = output;
+      workspace->index = w->index;
+
+      wl_list_insert(&output->workspaces, &workspace->link);
+
+      /* if first then set it active */
+      if(output->active_workspace == NULL) {
+        output->active_workspace = workspace;
+      }
+
+      struct keybind *k;
+      wl_list_for_each(k, &server.config->keybinds, link) {
+        /* we didnt have information about what workspace this is going to be,
+         * so we only kept an index. now we replace it with
+         * the actual workspace pointer */
+        if(k->action == keybind_change_workspace
+          && (uint32_t)k->args == workspace->index) {
+          k->args = workspace;
+        } else if(k->action == keybind_move_focused_toplevel_to_workspace
+          && (uint32_t)k->args == workspace->index) {
+          k->args = workspace;
+        }
+      }
+    }
+  }
+
+  /* if we didnt find any workspace config, then we give it workspace with index 0 */
+  if(wl_list_empty(&output->workspaces)) {
+    wlr_log(WLR_ERROR, "no workspace config specified for output %s."
+      "using default workspace UINT32_MAX. please add a valid workspace config.",
+      wlr_output->name);
+
     struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
     wl_list_init(&workspace->slaves);
     wl_list_init(&workspace->floating_toplevels);
     workspace->master = NULL;
     workspace->output = output;
-    workspace->index =
-      wl_list_length(&server.outputs) * server.config->workspaces_per_output + i + 1;
+    workspace->index = UINT32_MAX;
 
     wl_list_insert(&output->workspaces, &workspace->link);
 
-    /* if first then set it active */
-    if(output->active_workspace == NULL) {
-      output->active_workspace = workspace;
-    }
-
-    struct keybind *k;
-    wl_list_for_each(k, &server.config->keybinds, link) {
-      /* we didnt have information about what workspace this is going to be,
-       * so we only kept an index. now we replace it with the actual workspace pointer */
-      if(k->action == keybind_change_workspace && (uint32_t)k->args == workspace->index) {
-        k->args = workspace;
-      } else if(k->action == keybind_move_focused_toplevel_to_workspace
-        && (uint32_t)k->args == workspace->index) {
-        k->args = workspace;
-      }
-    }
+    output->active_workspace = workspace;
   }
 
   wl_list_init(&output->layers.background);
@@ -1806,9 +1827,9 @@ static void xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
 	/* Called when a new surface state is committed. */
 	struct owl_popup *popup = wl_container_of(listener, popup, commit);
 
-	if (!popup->xdg_popup->base->initialized) return;
+	if(!popup->xdg_popup->base->initialized) return;
 
-	if (popup->xdg_popup->base->initial_commit) {
+	if(popup->xdg_popup->base->initial_commit) {
 		/* When an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface.
 		 * owl sends an empty configure. A more sophisticated compositor
@@ -2595,13 +2616,6 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       return false;
     }
     c->min_toplevel_size = atoi(args[0]);
-  } else if(strcmp(keyword, "workspaces_per_output") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
-    c->workspaces_per_output = atoi(args[0]);
   } else if(strcmp(keyword, "keyboard_rate") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2709,6 +2723,19 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       .refresh_rate = atoi(args[5]) * 1000,
     };
     wl_list_insert(&c->outputs, &m->link);
+  } else if(strcmp(keyword, "workspace") == 0) {
+    if(arg_count < 2) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    struct workspace_config *w = calloc(1, sizeof(*w));
+    char *args_1_copy = strdup(args[1]);
+    *w = (struct workspace_config){
+      .index = atoi(args[0]),
+      .output = args_1_copy,
+    };
+    wl_list_insert(&c->workspaces, &w->link);
   } else if(strcmp(keyword, "run") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2790,6 +2817,7 @@ static bool server_load_config() {
 
   wl_list_init(&c->keybinds);
   wl_list_init(&c->outputs);
+  wl_list_init(&c->workspaces);
   
   /* TODO: implement reallocing for strings */
   char line_buffer[1024] = {0};
