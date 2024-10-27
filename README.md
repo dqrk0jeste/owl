@@ -22,9 +22,9 @@
 
 <div align="center">
 
-<img src="assets/showcase-1.png" alt="logo" width="300">
-<img src="assets/showcase-2.png" alt="logo" width="300">
-<img src="assets/showcase-3.png" alt="logo" width="300">
+<img src="assets/showcase-1.png" alt="logo" width="500">
+<img src="assets/showcase-2.png" alt="logo" width="500">
+<img src="assets/showcase-3.png" alt="logo" width="500">
 
 </div>
 
@@ -59,7 +59,7 @@ build/owl
 ## installation
 it is recommended to install `owl` by running `make install`. it will also load the default config. then you can run it with just `owl`.
 
-if you choose to unistall it you can do so with `make unistall`.
+if you choose to uninstall it you can do so with `make unistall`.
 
 ## configuration
 configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl.conf` or `$HOME/.config/owl/owl.conf`. if no config is found a default config will be used (only if `owl` is installed, see previous).
