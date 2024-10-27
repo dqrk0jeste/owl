@@ -1,9 +1,10 @@
 #include "ipc.h"
+#include <stdio.h>
 
 extern struct owl_server server;
 
 /* global state that keeps track of connected clients */
-struct wl_list clients;
+static struct wl_list clients;
 
 static void sigpipe_handler(int signum) {
   /* dont panic if broken pipe */
@@ -14,33 +15,36 @@ static void ipc_create_message(enum ipc_event event, char *buffer, uint32_t leng
    * in order to prevent possible race conditions */
   switch(event) {
     case ACTIVE_WORKSPACE: {
-      snprintf(buffer, length, "active_workspace %d %s",
+      snprintf(buffer, length, "active-workspace$%d$%s$\n",
         server.active_workspace->index, server.active_workspace->output->wlr_output->name);
       break;
     }
     case ACTIVE_TOPLEVEL: {
-      snprintf(buffer, length, "active_toplevel %s %s",
-        server.focused_toplevel->xdg_toplevel->app_id,
-        server.focused_toplevel->xdg_toplevel->title);
+      if(server.focused_toplevel == NULL) {
+        snprintf(buffer, length, "active-toplevel$$$\n");
+      } else {
+        snprintf(buffer, length, "active-toplevel$%s$%s$\n",
+          server.focused_toplevel->xdg_toplevel->app_id,
+          server.focused_toplevel->xdg_toplevel->title);
+      }
       break;
     }
   }
 }
 
 void ipc_broadcast_message(enum ipc_event event) {
-  wlr_log(WLR_ERROR, "1");
   char message[512];
   ipc_create_message(event, message, sizeof(message));
-  wlr_log(WLR_ERROR, "2");
 
   struct ipc_client *c, *t;
   wl_list_for_each_safe(c, t, &clients, link) {
-    wlr_log(WLR_INFO, "writing the message to the client '%s'\n", c->name);
-    if(write(c->fd, message, strlen(message) + 1) == -1) {
+    if(write(c->fd, message, strlen(message)) == -1) {
       /* this should only fail because of a broken pipe,
        * so we assume the client has been closed */
-      wlr_log(WLR_ERROR, "failed to write to a pipe %s\n", c->name);
+      wlr_log(WLR_ERROR, "failed to write to a pipe %s, assuming closed\n", c->name);
       wl_list_remove(&c->link);
+      close(c->fd);
+      remove(c->name);
       free(c);
       continue;
     }
@@ -58,7 +62,7 @@ void *run_ipc(void *args) {
     return NULL;
   }
 
-  wlr_log(WLR_INFO, "starting ipc...\n");
+  wlr_log(WLR_INFO, "starting owl ipc...\n");
 
   remove(PIPE_NAME);
   if(mkfifo(PIPE_NAME, 0622) == -1) {
@@ -84,7 +88,10 @@ void *run_ipc(void *args) {
       goto clean;
     }
 
-    if(bytes_read == 0 || client_pipe_name[0] == 0) continue;
+    if(bytes_read == 0) {
+      usleep(100000);
+      continue;
+    }
 
     /* preventing overflow */
     client_pipe_name[bytes_read] = 0;
@@ -100,14 +107,17 @@ void *run_ipc(void *args) {
     if(client_pipe_fd == -1) {
       wlr_log(WLR_ERROR, "failed to open clients pipe");
       close(client_pipe_fd);
+      remove(client_pipe_name);
       continue;
     }
 
     struct ipc_client *c = calloc(1, sizeof(*c));
     c->fd = client_pipe_fd;
     strncpy(c->name, client_pipe_name, MAX_CLIENT_PIPE_NAME_LENGTH);
-
     wl_list_insert(&clients, &c->link);
+
+    ipc_broadcast_message(ACTIVE_TOPLEVEL);
+    ipc_broadcast_message(ACTIVE_WORKSPACE);
   }
 
 clean:

@@ -1,5 +1,6 @@
 #include "owl.h"
 #include "ipc.h"
+#include <wayland-util.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -747,7 +748,6 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
         unfocus_focused_toplevel();
       }
       ipc_broadcast_message(ACTIVE_WORKSPACE);
-      ipc_broadcast_message(ACTIVE_WORKSPACE);
 
       return;
     }
@@ -791,7 +791,6 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
     unfocus_focused_toplevel();
   }
 
-  ipc_broadcast_message(ACTIVE_WORKSPACE);
   ipc_broadcast_message(ACTIVE_WORKSPACE);
 }
 
@@ -1728,6 +1727,22 @@ static void xdg_toplevel_handle_request_fullscreen(
   }
 }
 
+static void xdg_toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
+	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
+
+  if(toplevel == server.focused_toplevel) {
+    ipc_broadcast_message(ACTIVE_TOPLEVEL);
+  }
+}
+
+static void xdg_toplevel_handle_set_title(struct wl_listener *listener, void *data) {
+	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
+
+  if(toplevel == server.focused_toplevel) {
+    ipc_broadcast_message(ACTIVE_TOPLEVEL);
+  }
+}
+
 static void server_handle_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	/* This event is raised when a client creates a new toplevel (application window). */
 	struct wlr_xdg_toplevel *xdg_toplevel = data;
@@ -1779,6 +1794,12 @@ static void server_handle_new_xdg_toplevel(struct wl_listener *listener, void *d
 
 	toplevel->request_fullscreen.notify = xdg_toplevel_handle_request_fullscreen;
 	wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
+
+	toplevel->set_app_id.notify = xdg_toplevel_handle_set_app_id;
+	wl_signal_add(&xdg_toplevel->events.set_app_id, &toplevel->set_app_id);
+
+	toplevel->set_title.notify = xdg_toplevel_handle_set_title;
+	wl_signal_add(&xdg_toplevel->events.set_title, &toplevel->set_title);
 }
 
 static void xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
@@ -3043,20 +3064,19 @@ int main(int argc, char *argv[]) {
 	/* Set the WAYLAND_DISPLAY environment variable to our socket */
 	setenv("WAYLAND_DISPLAY", socket, true);
 
-	/* Run the Wayland event loop. This does not return until you exit the
-	 * compositor. Starting the backend rigged up all of the necessary event
-	 * loop configuration to listen to libinput events, DRM events, generate
-	 * frame events at the refresh rate, and so on. */
+  /* creating a thread for the ipc to run on */
+  pthread_t thread_id;
+  pthread_create(&thread_id, NULL, run_ipc, NULL);
+
+  /* sleep a bit so the ipc starts, 0.1 seconds is probably enough */
+  usleep(100000);
 
   for(size_t i = 0; i < server.config->run_count; i++) {
     run_cmd(server.config->run[i]);
   }
-
-  /* creating a thread for the ipc to run on */
-  pthread_t thread_id;
-  pthread_create(&thread_id, NULL, run_ipc, NULL);
   
-	wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s", socket);
+	/* run the wayland event loop. */
+	wlr_log(WLR_INFO, "running owl on WAYLAND_DISPLAY=%s", socket);
 	wl_display_run(server.wl_display);
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the

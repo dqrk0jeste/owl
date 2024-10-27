@@ -1,6 +1,7 @@
 /* you are suppossed to use this client implementation (installed globally as `owl-ipc`)
- * to get ipc messages from the server. see examples/current-workspace.sh */
+ * to get ipc messages from the server. see examples/active-workspace.sh */
 #include <assert.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,7 +16,13 @@
 
 #define OWL_PIPE "/tmp/owl"
 
+static bool interupted = false;
 const char letters[] = "abcdefghijklmnopqrstuvwxyz";
+
+static void sigint_handler(int signum) {
+  /* dont panic if broken pipe */
+  interupted = true;
+}
 
 void generate_random_name(char *buffer, uint32_t length, uint32_t buffer_size) {
   assert(buffer_size >= 5 + length + 1);
@@ -28,18 +35,30 @@ void generate_random_name(char *buffer, uint32_t length, uint32_t buffer_size) {
 }
 
 int main(int argc, char **argv) {
-  srand(time(NULL));
+  struct sigaction sa;
+  sa.sa_handler = sigint_handler;
+  sa.sa_flags = 0;
+  sigemptyset(&sa.sa_mask);
+
+  if(sigaction(SIGINT, &sa, NULL) == -1) {
+    perror("error setting up sigint handler");
+    return 1;
+  }
+
+  /* using time(0) here caused really weird behaviour when multiple instances were run,
+   * and caused hours of debugging */
+  srand(getpid());
 
   int owl_fd = open(OWL_PIPE, O_WRONLY);
   if(owl_fd == -1) {
-    perror("failed to open fifo");
+    perror("failed to open pipe /tmp/owl");
     return 1;
   }
 
   char name[128];
   generate_random_name(name, 6, sizeof(name));
 
-  if(write(owl_fd, name, sizeof(name)) == -1) {
+  if(write(owl_fd, name, strlen(name)) == -1) {
     perror("failed to write to fifo");
     return 1;
   }
@@ -56,30 +75,43 @@ int main(int argc, char **argv) {
     goto clean;
   }
 
-  printf("successfully created a connection over pipe '%s'\n"
-         "waiting for events...\n", name);
+  /*printf("successfully created a connection over pipe '%s'\n"*/
+  /*       "waiting for events...\n", name);*/
 
   char buffer[128];
   int bytes_read;
-  uint32_t i = 1;
-  while(true) {
+  while(!interupted) {
     bytes_read = read(fd, buffer, sizeof(buffer) - 1);
     if(bytes_read == -1) {
       perror("failed to read from the pipe");
       goto clean;
     }
 
-    if(bytes_read == 0) continue;
+    if(bytes_read == 0) {
+      usleep(100000);
+      continue;
+    }
 
     /* preventing overflow */
     buffer[bytes_read] = 0;
 
-    printf("%d. received message: %s\n", i, buffer);
-    i++;
+    char message[512];
+    char *q = message;
+    for(size_t i = 0; i < bytes_read; i++) {
+      if(buffer[i] == '\n') {
+        *q = 0;
+        printf("%s\n", message);
+        fflush(stdout);
+        q = message;
+      } else {
+        *q = buffer[i];
+        q++;
+      }
+    }
   }
 
 clean:
   printf("closing...\n");
   close(fd);
-  return 1;
+  return !interupted;
 }

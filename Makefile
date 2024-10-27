@@ -43,14 +43,16 @@ build/owl: build/owl.o
 build/owl-ipc: owl-ipc/owl-ipc.c
 	$(CC) $< -o $@
 
-install: build/owl default.conf
-	sudo cp build/owl /usr/local/owl && \
-	sudo mkdir -p /usr/share/owl && \
+install: build/owl build/owl-ipc default.conf
+	sudo cp build/owl /usr/local/bin/owl; \
+	sudo cp build/owl-ipc /usr/local/bin/owl-ipc; \
+	sudo mkdir -p /usr/share/owl; \
 	sudo cp default.conf /usr/share/owl/default.conf
 
 uninstall:
-	sudo rm /usr/local/owl 2>/dev/null && \
-	sudo rm -rf /usr/share/owl 2>/dev/null 
+	sudo rm /usr/local/bin/owl; \
+	sudo rm /usr/local/bin/owl-ipc; \
+	sudo rm -rf /usr/share/owl
 
 clean:
 	rm -rf build 2>/dev/null
