@@ -78,34 +78,7 @@ struct window_rule_size {
   uint32_t height;
 };
 
-struct owl_config {
-  struct wl_list monitors;
-  struct wl_list keybinds;
-  struct {
-    struct window_rule_float floating[64];
-    size_t floating_count;
-    struct window_rule_size size[64];
-    size_t size_count;
-  } window_rules;
-  uint32_t keyboard_rate;
-  uint32_t keyboard_delay;
-  char cursor_theme[256];
-  uint32_t cursor_size;
-  uint32_t min_toplevel_size;
-  uint32_t workspaces_per_monitor;
-  float inactive_border_color[4];
-  float active_border_color[4];
-  uint32_t border_width;
-  uint32_t outer_gaps;
-  uint32_t inner_gaps;
-  double master_ratio;
-  bool natural_scroll;
-  bool tap_to_click;
-  char *run[64];
-  size_t run_count;
-};
-
-struct monitor_config {
+struct output_config {
   char *name;
   struct wl_list link;
   uint32_t width;
@@ -125,6 +98,38 @@ struct keybind {
   keybind_action_func_t stop;
   void *args;
   struct wl_list link;
+};
+
+struct workspace_config {
+  uint32_t index;
+  char *output;
+};
+
+struct owl_config {
+  struct wl_list outputs;
+  struct wl_list keybinds;
+  struct {
+    struct window_rule_float floating[64];
+    size_t floating_count;
+    struct window_rule_size size[64];
+    size_t size_count;
+  } window_rules;
+  uint32_t keyboard_rate;
+  uint32_t keyboard_delay;
+  char cursor_theme[256];
+  uint32_t cursor_size;
+  uint32_t min_toplevel_size;
+  uint32_t workspaces_per_output;
+  float inactive_border_color[4];
+  float active_border_color[4];
+  uint32_t border_width;
+  uint32_t outer_gaps;
+  uint32_t inner_gaps;
+  double master_ratio;
+  bool natural_scroll;
+  bool tap_to_click;
+  char *run[64];
+  size_t run_count;
 };
 
 struct owl_workspace {

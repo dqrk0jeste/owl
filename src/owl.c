@@ -288,7 +288,7 @@ static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
    * but then we have the issue that we need to 'poke' the toplevels 
    * somehow as they are not going to commit if the two of the same sized
    * (that is, slaves) are switched for example, or if master is moved
-   * to another monitor. */
+   * to another output. */
   if((toplevel->floating || toplevel->fullscreen)
     && toplevel->xdg_toplevel->current.width == width
     && toplevel->xdg_toplevel->current.height == height) {
@@ -736,7 +736,7 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
   /* if it is the same as global active workspace, do nothing */
   if(server.active_workspace == workspace) return;
 
-  /* if it is an already presented workspace on some other monitor, just switch to it */
+  /* if it is an already presented workspace on some other output, just switch to it */
   struct owl_output *o;
   wl_list_for_each(o, &server.outputs, link) {
     if(workspace == o->active_workspace) {
@@ -1349,7 +1349,7 @@ static void keybind_move_focused_toplevel_to_workspace(void *data);
 
 static void server_handle_new_output(struct wl_listener *listener, void *data) {
   /* This event is raised by the backend when a new output (aka a display or
-   * monitor) becomes available. */
+   * output) becomes available. */
   struct wlr_output *wlr_output = data;
 
   /* Configures the output created by the backend to use our allocator
@@ -1363,8 +1363,8 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
 
   /* TODO: investigate something here, as it doesnt work well */
   bool set = false;
-  struct monitor_config *m;
-  wl_list_for_each(m, &server.config->monitors, link) {
+  struct output_config *m;
+  wl_list_for_each(m, &server.config->outputs, link) {
     if(strcmp(m->name, wlr_output->name) == 0) {  
       wlr_log(WLR_INFO, "found: %s, set mode: %dx%d@%dmHz",
         m->name, m->width, m->height, m->refresh_rate);
@@ -1409,14 +1409,14 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
 
   wl_list_init(&output->workspaces);
 
-  for(size_t i = 0; i < server.config->workspaces_per_monitor; i++) {
+  for(size_t i = 0; i < server.config->workspaces_per_output; i++) {
     struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
     wl_list_init(&workspace->slaves);
     wl_list_init(&workspace->floating_toplevels);
     workspace->master = NULL;
     workspace->output = output;
     workspace->index =
-      wl_list_length(&server.outputs) * server.config->workspaces_per_monitor + i + 1;
+      wl_list_length(&server.outputs) * server.config->workspaces_per_output + i + 1;
 
     wl_list_insert(&output->workspaces, &workspace->link);
 
@@ -1447,7 +1447,7 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
 
   struct wlr_output_layout_output *l_output;
   set = false;
-  wl_list_for_each(m, &server.config->monitors, link) {
+  wl_list_for_each(m, &server.config->outputs, link) {
     if(strcmp(m->name, wlr_output->name) == 0) {  
       wlr_log(WLR_INFO, "found: %s, set position: %d, %d", m->name, m->x, m->y);
       l_output = wlr_output_layout_add(server.output_layout, wlr_output, m->x, m->y);
@@ -2197,7 +2197,7 @@ static void keybind_move_focus(void *data) {
           return;
         }
       }
-      /* fallthrough is interntional; if there are no slaves then try right monitor */
+      /* fallthrough is interntional; if there are no slaves then try right output */
       default: {
         if(relative_output == NULL) return;
         focus_output(relative_output);
@@ -2273,7 +2273,7 @@ static void keybind_swap_focused_toplevel(void *data) {
           return;
         }
       }
-      /* fallthrough is interntional; if there are no slaves then try right monitor */
+      /* fallthrough is interntional; if there are no slaves then try right output */
       default: {
         struct owl_output *relative_output =
           output_get_relative(workspace->output, direction);
@@ -2595,13 +2595,13 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       return false;
     }
     c->min_toplevel_size = atoi(args[0]);
-  } else if(strcmp(keyword, "workspaces_per_monitor") == 0) {
+  } else if(strcmp(keyword, "workspaces_per_output") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->workspaces_per_monitor = atoi(args[0]);
+    c->workspaces_per_output = atoi(args[0]);
   } else if(strcmp(keyword, "keyboard_rate") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2692,15 +2692,15 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
     c->active_border_color[1] = atoi(args[1]) / 256.0;
     c->active_border_color[2] = atoi(args[2]) / 256.0;
     c->active_border_color[3] = atoi(args[3]) / 256.0;
-  } else if(strcmp(keyword, "monitor") == 0) {
+  } else if(strcmp(keyword, "output") == 0) {
     if(arg_count < 6) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    struct monitor_config *m = calloc(1, sizeof(*m));
+    struct output_config *m = calloc(1, sizeof(*m));
     char *args_0_copy = strdup(args[0]);
-    *m = (struct monitor_config){
+    *m = (struct output_config){
       .name = args_0_copy,
       .x = atoi(args[1]),
       .y = atoi(args[2]),
@@ -2708,7 +2708,7 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       .height = atoi(args[4]),
       .refresh_rate = atoi(args[5]) * 1000,
     };
-    wl_list_insert(&c->monitors, &m->link);
+    wl_list_insert(&c->outputs, &m->link);
   } else if(strcmp(keyword, "run") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2789,7 +2789,7 @@ static bool server_load_config() {
   }
 
   wl_list_init(&c->keybinds);
-  wl_list_init(&c->monitors);
+  wl_list_init(&c->outputs);
   
   /* TODO: implement reallocing for strings */
   char line_buffer[1024] = {0};
@@ -2892,8 +2892,9 @@ int main(int argc, char *argv[]) {
 	 * output hardware. The autocreate option will choose the most suitable
 	 * backend based on the current environment, such as opening an X11 window
 	 * if an X11 server is running. */
-	server.backend = wlr_backend_autocreate(wl_display_get_event_loop(server.wl_display), NULL);
-	if (server.backend == NULL) {
+	server.backend =
+    wlr_backend_autocreate(wl_display_get_event_loop(server.wl_display), NULL);
+	if(server.backend == NULL) {
 		wlr_log(WLR_ERROR, "failed to create wlr_backend");
 		return 1;
 	}
@@ -2903,7 +2904,7 @@ int main(int argc, char *argv[]) {
 	 * The renderer is responsible for defining the various pixel formats it
 	 * supports for shared memory, this configures that for clients. */
 	server.renderer = wlr_renderer_autocreate(server.backend);
-	if (server.renderer == NULL) {
+	if(server.renderer == NULL) {
 		wlr_log(WLR_ERROR, "failed to create wlr_renderer");
 		return 1;
 	}
@@ -2916,7 +2917,7 @@ int main(int argc, char *argv[]) {
 	 * screen */
 	server.allocator = wlr_allocator_autocreate(server.backend,
 		server.renderer);
-	if (server.allocator == NULL) {
+	if(server.allocator == NULL) {
 		wlr_log(WLR_ERROR, "failed to create wlr_allocator");
 		return 1;
 	}
@@ -3035,7 +3036,8 @@ int main(int argc, char *argv[]) {
   server.data_control_manager = wlr_data_control_manager_v1_create(server.wl_display);
 
   /* configures decorations */
-  server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.wl_display);
+  server.xdg_decoration_manager =
+    wlr_xdg_decoration_manager_v1_create(server.wl_display);
 
   server.request_xdg_decoration.notify = server_handle_request_xdg_decoration;
   wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
@@ -3044,7 +3046,8 @@ int main(int argc, char *argv[]) {
   server.viewporter = wlr_viewporter_create(server.wl_display);
 
   server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
-  server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);
+  server.foreign_toplevel_manager =
+    wlr_foreign_toplevel_manager_v1_create(server.wl_display);
 
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(server.wl_display);
@@ -3055,7 +3058,7 @@ int main(int argc, char *argv[]) {
 
 	/* Start the backend. This will enumerate outputs and inputs, become the DRM
 	 * master, etc */
-	if (!wlr_backend_start(server.backend)) {
+	if(!wlr_backend_start(server.backend)) {
 		wlr_backend_destroy(server.backend);
 		wl_display_destroy(server.wl_display);
 		return 1;
