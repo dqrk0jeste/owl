@@ -19,7 +19,6 @@
 > owl is made mainly for myself, implementing just enough for my workflow. that means a lot of things is just not there. if you are looking for something more mature take a look at hyprland, sway or river. 
 
 ## showcase
-
 <div align="center">
 
 <img src="assets/showcase-1.png" alt="logo" width="500">
@@ -40,8 +39,9 @@
 
 if you are already using a wayland compositor you probably have those installed already.
 
-## building
+> you can use an older wlroots version, 19.0 is just what i have used for development. to use an older version you only need to change line 5 in the makefile.
 
+## building
 ```bash
 git clone https://github.com/dqrk0jeste/owl
 cd owl
