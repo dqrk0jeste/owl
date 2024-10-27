@@ -1,4 +1,5 @@
-/* you are suppossed to use this client implementation (installed globally as `owl-ipc`)
+/* although you can crate your own ipc-client implementation,
+ * you are highly advised to use this one (installed globally as `owl-ipc`)
  * to get ipc messages from the server. see examples/active-workspace.sh */
 #include <assert.h>
 #include <signal.h>
@@ -45,8 +46,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  /* using time(0) here caused really weird behaviour when multiple instances were run,
-   * and caused hours of debugging */
+  /* using time(0) here caused really weird behaviour when multiple instances were run
+   * at the same time, and caused hours of debugging */
   srand(getpid());
 
   int owl_fd = open(OWL_PIPE, O_WRONLY);
@@ -58,22 +59,27 @@ int main(int argc, char **argv) {
   char name[128];
   generate_random_name(name, 6, sizeof(name));
 
-  if(write(owl_fd, name, strlen(name)) == -1) {
+  if(mkfifo(name, 0622) == -1) {
+    perror("failed to create a pipe");
+    return 1;
+  }
+
+  char message_to_server[128];
+  snprintf(message_to_server, sizeof(message_to_server), "%s$", name);
+  if(write(owl_fd, message_to_server, strlen(message_to_server)) == -1) {
     perror("failed to write to fifo");
     return 1;
   }
 
-  /* we wont use this pipe anymore */
-  close(owl_fd);
-
-  /* wait for the server to open the requested pipe */
-  sleep(1);
-
+  /* we immediately open so the server does not wait */
   int fd = open(name, O_RDONLY);
   if(fd == -1) {
     perror("failed to open pipe");
     goto clean;
   }
+
+  /* we wont use the main pipe anymore */
+  close(owl_fd);
 
   /*printf("successfully created a connection over pipe '%s'\n"*/
   /*       "waiting for events...\n", name);*/
@@ -113,5 +119,6 @@ int main(int argc, char **argv) {
 clean:
   printf("closing...\n");
   close(fd);
+  remove(name);
   return !interupted;
 }

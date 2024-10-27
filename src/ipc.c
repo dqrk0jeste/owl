@@ -1,5 +1,12 @@
 #include "ipc.h"
-#include <stdio.h>
+#include <unistd.h>
+
+/* here is the ipc protocol implemented in this file(server) and owl-ipc(client):
+ *  - there is a pipe called PIPE_NAME opened by the server
+ *  - clients who want to subscribe to the ipc to receive events should open another pipe,
+ *    and then send the new pipes name to PIPE_NAME and add $ to the end to signalize end of message
+ *  - server will then open the new pipe and start sending down all the events
+ *  - if a client wants to stop receiving events it just needs to close the file descriptor */
 
 extern struct owl_server server;
 
@@ -7,7 +14,7 @@ extern struct owl_server server;
 static struct wl_list clients;
 
 static void sigpipe_handler(int signum) {
-  /* dont panic if broken pipe */
+  /* dont exit if broken pipe */
 }
 
 static void ipc_create_message(enum ipc_event event, char *buffer, uint32_t length) {
@@ -78,11 +85,11 @@ void *run_ipc(void *args) {
     goto clean;
   }
  
-  char client_pipe_name[128];
+  char buffer[512];
 
   int bytes_read;
   while(true) {
-    bytes_read = read(fifo_fd, client_pipe_name, sizeof(client_pipe_name) - 1);
+    bytes_read = read(fifo_fd, buffer, sizeof(buffer) - 1);
     if(bytes_read == -1) {
       wlr_log(WLR_ERROR, "failed read from the pipe");
       goto clean;
@@ -94,30 +101,39 @@ void *run_ipc(void *args) {
     }
 
     /* preventing overflow */
-    client_pipe_name[bytes_read] = 0;
+    buffer[bytes_read] = 0;
+    
+    /* we sleep a bit so clients can create their pipes */
+    usleep(100000);
 
-    wlr_log(WLR_INFO, "new client subscribed on pipe '%s'\n", client_pipe_name);
+    char name[512];
+    char *q = name;
+    for(size_t i = 0; i < bytes_read; i++) {
+      if(buffer[i] == '$') {
+        *q = 0;
 
-    if(mkfifo(client_pipe_name, 0644) == -1) {
-      wlr_log(WLR_ERROR, "failed to create a pipe");
-      continue;
+        int client_pipe_fd = open(name, O_WRONLY | O_NONBLOCK);
+        if(client_pipe_fd == -1) {
+          wlr_log(WLR_ERROR, "failed to open clients pipe");
+          continue;
+        }
+
+        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'\n", name);
+
+        struct ipc_client *c = calloc(1, sizeof(*c));
+        c->fd = client_pipe_fd;
+        strncpy(c->name, name, MAX_CLIENT_PIPE_NAME_LENGTH);
+        wl_list_insert(&clients, &c->link);
+
+        ipc_broadcast_message(ACTIVE_TOPLEVEL);
+        ipc_broadcast_message(ACTIVE_WORKSPACE);
+        q = name;
+      } else {
+        *q = buffer[i];
+        q++;
+      }
     }
 
-    int client_pipe_fd = open(client_pipe_name, O_WRONLY);
-    if(client_pipe_fd == -1) {
-      wlr_log(WLR_ERROR, "failed to open clients pipe");
-      close(client_pipe_fd);
-      remove(client_pipe_name);
-      continue;
-    }
-
-    struct ipc_client *c = calloc(1, sizeof(*c));
-    c->fd = client_pipe_fd;
-    strncpy(c->name, client_pipe_name, MAX_CLIENT_PIPE_NAME_LENGTH);
-    wl_list_insert(&clients, &c->link);
-
-    ipc_broadcast_message(ACTIVE_TOPLEVEL);
-    ipc_broadcast_message(ACTIVE_WORKSPACE);
   }
 
 clean:
