@@ -1905,8 +1905,7 @@ static void layer_surface_handle_commit(struct wl_listener *listener, void *data
     struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
 
     struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout,
-      output->wlr_output, &output_box);
+    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
     struct wlr_box temp = output->usable_area;
 		wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);

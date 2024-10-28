@@ -68,6 +68,8 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 
 ## todo
 - there are some known issues that need fixing, see `known_issues.md`
+- more natural (output layout aware) output switching, rn it just focuses master even if the focus came from the right side
+- make it so the focus is given to some toplevel everytime its possible
 - opacity settings
 - animations
 - mouse clicks for keybinds (moving and resizing toplevels for example)
