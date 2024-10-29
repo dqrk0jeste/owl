@@ -1839,8 +1839,12 @@ static void xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_parent_of_surface(popup->xdg_popup->base->surface);
     /* i really should implement the thing commented before toplevel_parent_of_surface() */
     if(toplevel != NULL) {
-      wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup,
-        &toplevel->workspace->output->usable_area);
+      struct wlr_box output_box = toplevel->workspace->output->usable_area;
+
+      output_box.x -= toplevel->scene_tree->node.x;
+      output_box.y -= toplevel->scene_tree->node.y;
+
+      wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &output_box);
     } else {
 		  wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
     }
@@ -1897,7 +1901,7 @@ static void server_handle_request_xdg_decoration(struct wl_listener *listener, v
 static void layer_surface_handle_commit(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
 
-  if (!layer_surface->wlr_layer_surface->initialized) {
+  if(!layer_surface->wlr_layer_surface->initialized) {
     return;
   }
 
