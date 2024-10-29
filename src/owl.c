@@ -341,10 +341,11 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
   server.focused_toplevel = toplevel;
 
   if(toplevel->floating) {
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
     wl_list_remove(&toplevel->link);
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
   }
+
+  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
 	/* activate the new surface */
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
@@ -682,11 +683,13 @@ static void toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   toplevel->fullscreen = false;
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
-  wlr_scene_node_reparent(&toplevel->scene_tree->node, server.toplevel_tree);
 
   if(toplevel->floating) {
     toplevel_set_pending_state(toplevel, toplevel->prev_geometry.x,
       toplevel->prev_geometry.y, toplevel->prev_geometry.width, toplevel->prev_geometry.height);
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
+  } else {
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
   }
   
   layout_place_tiled_toplevels(workspace);
@@ -1609,33 +1612,50 @@ static void xdg_toplevel_handle_unmap(struct wl_listener *listener, void *data) 
 }
 
 static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data) {
-	/* Called when a new surface state is committed. */
+	/* called when a new surface state is committed */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
-
     toplevel->floating = toplevel_should_float(toplevel);
-    if(toplevel->floating) {
-      uint32_t width, height;
-      toplevel_floating_size(toplevel, &width, &height);
-      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
-      return;
-    }
 
     struct owl_output *output = toplevel->workspace->output;
 
     uint32_t width, height;
-    if(toplevel->workspace->master == NULL) {
+    struct wlr_scene_tree *tree;
+    if(toplevel->floating) {
+      toplevel_floating_size(toplevel, &width, &height);
+      tree = server.floating_tree;
+    } else if(toplevel->workspace->master == NULL) {
       calculate_masters_dimensions(output, 0, &width, &height);
+      tree = server.tiled_tree;
     } else {
       /* we add one (this one) to calculate what size should he take */
       uint32_t number_of_slaves = wl_list_length(&toplevel->workspace->slaves) + 1;
       calculate_slaves_dimensions(output, number_of_slaves, &width, &height);
+      tree = server.tiled_tree;
     }
 
     wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+
+    /* add this toplevel to the scene tree */
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(tree, toplevel->xdg_toplevel->base);
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+    toplevel->initial_render = true;
+
+    /* we are keeping toplevels scene_tree in this free user data field, this is used in 
+     * assigning parents to popups */
+    toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
+
+    /* in a node we want to keep information what that node represents. we do that
+     * be keeping owl_something in user data field, which is a union of all possible
+     * 'things' we can have on the screen */
+    struct owl_something *something = calloc(1, sizeof(*something));
+    something->type = OWL_TOPLEVEL;
+    something->toplevel = toplevel;
+
+    toplevel->scene_tree->node.data = something;
     return;
   }
 
@@ -1773,23 +1793,6 @@ static void server_handle_new_xdg_toplevel(struct wl_listener *listener, void *d
 
   toplevel->workspace = server.active_workspace;
 	toplevel->xdg_toplevel = xdg_toplevel;
-	toplevel->scene_tree =
-		wlr_scene_xdg_surface_create(server.toplevel_tree, xdg_toplevel->base);
-  wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
-  toplevel->initial_render = true;
-
-  /* we are keeping toplevels scene_tree in this free user data field, this is used in 
-   * assigning parents to popups */
-	xdg_toplevel->base->data = toplevel->scene_tree;
-
-  /* in a node we want to keep information what that node represents. we do that
-   * be keeping owl_something in user data field, which is a union of all possible
-   * 'things' we can have on the screen */
-	struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_TOPLEVEL;
-  something->toplevel = toplevel;
-
-	toplevel->scene_tree->node.data = something;
 
 	/* Listen to the various events it can emit */
 	toplevel->map.notify = xdg_toplevel_handle_map;
@@ -2367,7 +2370,8 @@ static void keybind_switch_focused_toplevel_state(void *data) {
       wl_list_insert(&toplevel->workspace->slaves, &toplevel->link);
     }
 
-    wlr_scene_node_lower_to_bottom(&toplevel->scene_tree->node);
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
     layout_place_tiled_toplevels(toplevel->workspace);
     return;
   }
@@ -2398,6 +2402,7 @@ static void keybind_switch_focused_toplevel_state(void *data) {
 
   wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
 
+  wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   layout_place_tiled_toplevels(toplevel->workspace);
 }
@@ -2989,7 +2994,8 @@ int main(int argc, char *argv[]) {
   /* create all the scenes in the correct order */
   server.background_tree = wlr_scene_tree_create(&server.scene->tree);
   server.bottom_tree = wlr_scene_tree_create(&server.scene->tree);
-  server.toplevel_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.tiled_tree = wlr_scene_tree_create(&server.scene->tree);
+  server.floating_tree = wlr_scene_tree_create(&server.scene->tree);
   server.top_tree = wlr_scene_tree_create(&server.scene->tree);
   server.fullscreen_tree = wlr_scene_tree_create(&server.scene->tree);
   server.overlay_tree = wlr_scene_tree_create(&server.scene->tree);
