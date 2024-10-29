@@ -28,6 +28,7 @@
 </div>
 
 ## dependencies
+- make
 - wayland-protocols
 - wayland-scanner
 - wayland-server
@@ -67,7 +68,7 @@ configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
 ## todo
-- there are some known issues that need fixing, see `known_issues.md`
+- there are some known issues that need fixing, see `known-issues.md`
 - more natural (output layout aware) output switching, rn it just focuses master even if the focus came from the right side
 - make it so the focus is given to some toplevel everytime its possible
 - opacity settings
@@ -76,4 +77,3 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 - more configuration options
 
 ## special thanks to
-- Krasa, for making the cute owl

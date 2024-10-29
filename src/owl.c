@@ -165,22 +165,29 @@ struct owl_output *output_get_relative(struct owl_output *output,
   return NULL;
 }
 
-/* TODO: return owl_something and check for layer_surfaces as they can also have popups */
-static struct owl_toplevel *toplevel_parent_of_surface(struct wlr_surface *wlr_surface) {
+static struct owl_something *root_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface = wlr_surface_get_root_surface(wlr_surface);
   struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_wlr_surface);
-  if(xdg_surface == NULL) {
-    return NULL;
+
+	struct wlr_scene_tree *tree;
+  if(xdg_surface != NULL) {
+    tree = xdg_surface->data;
+  } else {
+    struct wlr_layer_surface_v1 *layer_surface =
+      wlr_layer_surface_v1_try_from_wlr_surface(root_wlr_surface);
+    if(layer_surface == NULL) {
+      return NULL;
+    }
+    tree = xdg_surface->data;
   }
   
-	struct wlr_scene_tree *tree = xdg_surface->data;
   struct owl_something *something = tree->node.data;
   while(something == NULL || something->type == OWL_POPUP) {
     tree = tree->node.parent;
     something = tree->node.data;
   }
 
-  return something->toplevel;
+  return something;
 }
 
 /* TODO: return owl_something and check for layer_surfaces */
@@ -189,8 +196,13 @@ static struct owl_toplevel *get_pointer_focused_toplevel() {
   if(focused_surface == NULL) {
     return NULL;
   }
+  
+  struct owl_something *something = root_parent_of_surface(focused_surface);
+  if(something->type == OWL_TOPLEVEL) {
+    return something->toplevel;
+  }
 
-  return toplevel_parent_of_surface(focused_surface);
+  return NULL;
 }
 
 static void cursor_jump_focused_toplevel() {
@@ -1838,18 +1850,28 @@ static void xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
 		 * owl sends an empty configure. A more sophisticated compositor
 		 * might change an xdg_popup's geometry to ensure it's not positioned
 		 * off-screen, for example. */
-    struct owl_toplevel *toplevel =
-      toplevel_parent_of_surface(popup->xdg_popup->base->surface);
-    /* i really should implement the thing commented before toplevel_parent_of_surface() */
-    if(toplevel != NULL) {
-      struct wlr_box output_box = toplevel->workspace->output->usable_area;
+    struct owl_something *root = root_parent_of_surface(popup->xdg_popup->base->surface);
 
-      output_box.x -= toplevel->scene_tree->node.x;
-      output_box.y -= toplevel->scene_tree->node.y;
+    if(root == NULL) {
+		  wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
+    } else if(root->type == OWL_TOPLEVEL) {
+      struct wlr_box output_box = root->toplevel->workspace->output->usable_area;
+
+      output_box.x -= root->toplevel->scene_tree->node.x;
+      output_box.y -= root->toplevel->scene_tree->node.y;
 
       wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &output_box);
     } else {
-		  wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
+      struct owl_layer_surface *layer_surface= root->layer_surface;
+      struct wlr_output *wlr_output = layer_surface->wlr_layer_surface->output;
+
+      struct wlr_box output_box;
+      wlr_output_layout_get_box(server.output_layout, wlr_output, &output_box);
+
+      output_box.x -= layer_surface->scene->tree->node.x;
+      output_box.y -= layer_surface->scene->tree->node.y;
+
+      wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &output_box);
     }
 	}
 }

@@ -4,6 +4,7 @@
 - config arguments longer than 256 characters wont work. need to implement reallocating for such buffers.
 - if owl is run after some other compositor monitors work, but if it is the first one to be run one monitor just stays in tty, but is able to be hovered over, placed toplevels on etc. does not happen with default config tho, so the problem is somewhere in the server_handle_new_output() (mode selection probably)
 - zen browser does not respect the initial size the compositor sends him, also kind of happens on hyprland
-- waybar rounded corners leave black background behind instead of being transparent
+- waybar rounded corners leave black background behind instead of being transparent. maybe caused because of exclusive area?
 - mpv gets black bars on top and bottom on hyprland, but not on owl, maybe a missing protocol?
-- crashes because of unused keybinds for workspaces
+- crashes caused by unused keybinds for workspaces
+- dunst notification becomes stuck when it should be replaced by another. surely an issue on our part.
