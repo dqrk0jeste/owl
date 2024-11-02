@@ -2921,6 +2921,20 @@ static bool server_load_config() {
 
   fclose(config_file);
 
+  /* as we are initializing config with calloc, some fields that are necessary in order
+   * for owl to not crash may be not specified in the config.
+   * we set their values to some default value.*/
+  if(c->keyboard_rate == 0) c->keyboard_rate = 150;
+  wlr_log(WLR_INFO, "keyboard_rate not specified. using default %d", c->keyboard_rate);
+  if(c->keyboard_delay == 0) c->keyboard_delay = 50;
+  wlr_log(WLR_INFO, "keyboard_delay not specified. using default %d", c->keyboard_delay);
+  if(c->master_ratio == 0) c->master_ratio = 0.5;
+  wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
+  if(c->cursor_size == 0) c->cursor_size = 24;
+  wlr_log(WLR_INFO, "cursor_size not specified. using default %d", c->cursor_size);
+  if(c->min_toplevel_size == 0) c->min_toplevel_size = 10;
+  wlr_log(WLR_INFO, "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
+
   server.config = c;
   return true;
 }
