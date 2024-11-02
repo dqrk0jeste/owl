@@ -27,8 +27,8 @@ struct ipc_client {
 };
 
 enum ipc_event {
-  ACTIVE_WORKSPACE,
-  ACTIVE_TOPLEVEL,
+  IPC_ACTIVE_WORKSPACE,
+  IPC_ACTIVE_TOPLEVEL,
 };
 
 void ipc_broadcast_message(enum ipc_event event);

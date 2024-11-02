@@ -126,6 +126,7 @@ struct owl_config {
   uint32_t border_width;
   uint32_t outer_gaps;
   uint32_t inner_gaps;
+  double master_count;
   double master_ratio;
   bool natural_scroll;
   bool tap_to_click;
@@ -137,8 +138,7 @@ struct owl_workspace {
   struct wl_list link;
   struct owl_output *output;
   uint32_t index;
-  struct owl_toplevel *master;
-  struct wl_list slaves;
+  struct wl_list tiled_toplevels;
   struct wl_list floating_toplevels;
   struct owl_toplevel *fullscreen_toplevel;
 };
@@ -195,14 +195,14 @@ struct owl_toplevel {
 	struct wlr_scene_tree *scene_tree;
   struct wlr_scene_rect *borders[4];
 
-  bool floating;
-  bool fullscreen;
   /* if a floating toplevel becomes fullscreen, we keep its previous state here */
   struct wlr_box prev_geometry;
 
   /* tiled toplevels would flash when they are created.
    * we want to not show them until they are appropriatly placed. */
   bool initial_render;
+  /* if the toplevel should float on map */
+  bool initial_float;
 
   /* these are going to be used in the next output frame to draw the thing */
   bool requested_size_change;

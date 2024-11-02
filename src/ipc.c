@@ -21,12 +21,12 @@ static void ipc_create_message(enum ipc_event event, char *buffer, uint32_t leng
   /* TODO: it would be a good idea to add a server mutex
    * in order to prevent possible race conditions */
   switch(event) {
-    case ACTIVE_WORKSPACE: {
+    case IPC_ACTIVE_WORKSPACE: {
       snprintf(buffer, length, "active-workspace$%u$%s$\n",
         server.active_workspace->index, server.active_workspace->output->wlr_output->name);
       break;
     }
-    case ACTIVE_TOPLEVEL: {
+    case IPC_ACTIVE_TOPLEVEL: {
       if(server.focused_toplevel == NULL) {
         snprintf(buffer, length, "active-toplevel$$$\n");
       } else {
@@ -69,7 +69,7 @@ void *run_ipc(void *args) {
     return NULL;
   }
 
-  wlr_log(WLR_INFO, "starting owl ipc...\n");
+  wlr_log(WLR_INFO, "starting owl ipc...");
 
   remove(PIPE_NAME);
   if(mkfifo(PIPE_NAME, 0622) == -1) {
@@ -118,15 +118,15 @@ void *run_ipc(void *args) {
           continue;
         }
 
-        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'\n", name);
+        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'", name);
 
         struct ipc_client *c = calloc(1, sizeof(*c));
         c->fd = client_pipe_fd;
         strncpy(c->name, name, MAX_CLIENT_PIPE_NAME_LENGTH);
         wl_list_insert(&clients, &c->link);
 
-        ipc_broadcast_message(ACTIVE_TOPLEVEL);
-        ipc_broadcast_message(ACTIVE_WORKSPACE);
+        ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+        ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
         q = name;
       } else {
         *q = buffer[i];
