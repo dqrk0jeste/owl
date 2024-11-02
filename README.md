@@ -35,7 +35,7 @@ owl is a minimal tiling wayland compositor based on wlroots.
 - xkbcommmon
 - wlroots >= 19.0 (git version on aur)
 
-if you are already using a wayland compositor you probably have those installed already.
+if you are using a wayland compositor you probably have those installed already.
 
 > you can use an older wlroots version, 19.0 is just what i have used for development. to use an older version you only need to change line 5 in the makefile.
 
