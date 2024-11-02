@@ -46,9 +46,7 @@
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 
-#include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr/util/box.h"
-#include "xdg-shell-protocol.h"
 
 #define max(a, b) (a) > (b) ? (a) : (b)
 #define min(a, b) (a) < (b) ? (a) : (b)

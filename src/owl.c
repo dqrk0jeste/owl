@@ -1,6 +1,9 @@
 #include "owl.h"
 #include "ipc.h"
 
+#include "wlr-layer-shell-unstable-v1-protocol.h"
+#include "xdg-shell-protocol.h"
+
 /* we initialize an instance of our global state */
 struct owl_server server;
 

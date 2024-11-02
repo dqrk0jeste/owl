@@ -1,13 +1,13 @@
 #include "ipc.h"
 #include <unistd.h>
 
-/* here is the ipc protocol implemented in this file(server) and owl-ipc(client):
- *  - there is a pipe called PIPE_NAME opened by the server
- *  - clients who want to subscribe to the ipc to receive events should open another pipe,
- *    and then send the new pipes name to PIPE_NAME and add $ to the end to signalize end of message
- *  - server will then open the new pipe and start sending down all the events
- *  - if a client wants to stop receiving events it just needs to close the file descriptor */
+#include <signal.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
+#include "wlr/util/log.h"
+#include "owl.h"
 extern struct owl_server server;
 
 /* global state that keeps track of connected clients */
