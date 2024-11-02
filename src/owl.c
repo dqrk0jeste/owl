@@ -120,11 +120,11 @@ static bool toplevel_should_float(struct owl_toplevel *toplevel) {
   if(natural) return true;
 
   for(size_t i = 0; i < server.config->window_rules.floating_count; i++) {
-    bool matches_app_id = regexec(&server.config->window_rules.size[i].app_id_regex,
+    bool matches_app_id = regexec(&server.config->window_rules.floating[i].app_id_regex,
       toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
-    /*bool matches_title = regexec(&server.config->window_rules.size[i].title_regex,*/
-    /*  toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;*/
-    if(matches_app_id) {
+    bool matches_title = regexec(&server.config->window_rules.floating[i].title_regex,
+      toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
+    if(matches_app_id && matches_title) {
       return true;
     }
   }
