@@ -65,11 +65,13 @@ enum owl_direction {
 };
 
 struct window_rule_float {
-  regex_t regex;
+  regex_t app_id_regex;
+  regex_t title_regex;
 };
 
 struct window_rule_size {
-  regex_t regex;
+  regex_t app_id_regex;
+  regex_t title_regex;
   bool relative_width;
   uint32_t width;
   bool relative_height;

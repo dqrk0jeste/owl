@@ -85,8 +85,11 @@ static bool toplevel_is_slave(struct owl_toplevel *toplevel) {
 static void toplevel_floating_size(struct owl_toplevel *toplevel,
     uint32_t *width, uint32_t *height) {
   for(size_t i = 0; i < server.config->window_rules.size_count; i++) {
-    if(regexec(&server.config->window_rules.size[i].regex,
-      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0) {
+    bool matches_app_id = regexec(&server.config->window_rules.size[i].app_id_regex,
+      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
+    bool matches_title = regexec(&server.config->window_rules.size[i].title_regex,
+      toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
+    if(matches_app_id && matches_title) {
       struct window_rule_size wr = server.config->window_rules.size[i];
       if(wr.relative_width) {
         *width = toplevel->workspace->output->usable_area.width * wr.width / 100;
@@ -117,8 +120,11 @@ static bool toplevel_should_float(struct owl_toplevel *toplevel) {
   if(natural) return true;
 
   for(size_t i = 0; i < server.config->window_rules.floating_count; i++) {
-    if(regexec(&server.config->window_rules.floating[i].regex,
-      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0) {
+    bool matches_app_id = regexec(&server.config->window_rules.size[i].app_id_regex,
+      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
+    /*bool matches_title = regexec(&server.config->window_rules.size[i].title_regex,*/
+    /*  toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;*/
+    if(matches_app_id) {
       return true;
     }
   }
@@ -2432,14 +2438,21 @@ static void keybind_switch_focused_toplevel_state(void *data) {
   layout_place_tiled_toplevels(toplevel->workspace);
 }
 
-static bool config_add_window_rule(struct owl_config *c, char *regex,
+static bool config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_regex,
     char *predicate, char **args, size_t arg_count) {
   /* i dont think i will be freeing those,
    * as they are needed for the whole runtime of the program */
-  regex_t compiled;
-  if(regcomp(&compiled, regex, REG_EXTENDED) != 0) {
-    wlr_log(WLR_ERROR, "%s is not a valid regex", regex);
-    regfree(&compiled);
+  regex_t app_id_compiled;
+  if(regcomp(&app_id_compiled, app_id_regex, REG_EXTENDED) != 0) {
+    wlr_log(WLR_ERROR, "%s is not a valid regex", app_id_regex);
+    regfree(&app_id_compiled);
+    return false;
+  }
+
+  regex_t title_compiled;
+  if(regcomp(&title_compiled, title_regex, REG_EXTENDED) != 0) {
+    wlr_log(WLR_ERROR, "%s is not a valid regex", title_regex);
+    regfree(&title_compiled);
     return false;
   }
 
@@ -2451,7 +2464,8 @@ static bool config_add_window_rule(struct owl_config *c, char *regex,
     /* get next position in the array, for convenience */
     struct window_rule_float *wr =
       &c->window_rules.floating[c->window_rules.floating_count];
-    wr->regex = compiled;
+    wr->app_id_regex = app_id_compiled;
+    wr->title_regex = title_compiled;
     c->window_rules.floating_count++;
   } else if(strcmp(predicate, "size") == 0) {
     if(c->window_rules.size_count >= 64) {
@@ -2464,7 +2478,8 @@ static bool config_add_window_rule(struct owl_config *c, char *regex,
     }
     struct window_rule_size *wr =
       &c->window_rules.size[c->window_rules.size_count];
-    wr->regex = compiled;
+    wr->app_id_regex = app_id_compiled;
+    wr->title_regex = title_compiled;
     /* handle relative values */
     if(args[0][strlen(args[0]) - 1] == '%') {
       args[0][strlen(args[0]) - 1] = 0;
@@ -2798,12 +2813,12 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
      * predicates:*
      *   float(no args),*
      *   size(two args: width, height) */
-    if(arg_count < 2) {
+    if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    config_add_window_rule(c, args[0], args[1], &args[2], arg_count - 2);
+    config_add_window_rule(c, args[0], args[1], args[2], &args[3], arg_count - 3);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);
@@ -2927,16 +2942,26 @@ static bool server_load_config() {
   /* as we are initializing config with calloc, some fields that are necessary in order
    * for owl to not crash may be not specified in the config.
    * we set their values to some default value.*/
-  if(c->keyboard_rate == 0) c->keyboard_rate = 150;
-  wlr_log(WLR_INFO, "keyboard_rate not specified. using default %d", c->keyboard_rate);
-  if(c->keyboard_delay == 0) c->keyboard_delay = 50;
-  wlr_log(WLR_INFO, "keyboard_delay not specified. using default %d", c->keyboard_delay);
-  if(c->master_ratio == 0) c->master_ratio = 0.5;
-  wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
-  if(c->cursor_size == 0) c->cursor_size = 24;
-  wlr_log(WLR_INFO, "cursor_size not specified. using default %d", c->cursor_size);
-  if(c->min_toplevel_size == 0) c->min_toplevel_size = 10;
-  wlr_log(WLR_INFO, "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
+  if(c->keyboard_rate == 0) {
+    c->keyboard_rate = 150;
+    wlr_log(WLR_INFO, "keyboard_rate not specified. using default %d", c->keyboard_rate);
+  } 
+  if(c->keyboard_delay == 0) {
+    c->keyboard_delay = 50;
+    wlr_log(WLR_INFO, "keyboard_delay not specified. using default %d", c->keyboard_delay);
+  }
+  if(c->master_ratio == 0) {
+    c->master_ratio = 0.5;
+    wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
+  }
+  if(c->cursor_size == 0) {
+    c->cursor_size = 24;
+    wlr_log(WLR_INFO, "cursor_size not specified. using default %d", c->cursor_size);
+  }
+  if(c->min_toplevel_size == 0) {
+    c->min_toplevel_size = 10;
+    wlr_log(WLR_INFO, "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
+  }
 
   server.config = c;
   return true;
