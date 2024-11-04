@@ -126,6 +126,7 @@ struct owl_config {
   uint32_t border_width;
   uint32_t outer_gaps;
   uint32_t inner_gaps;
+  uint32_t master_count;
   double master_ratio;
   bool natural_scroll;
   bool tap_to_click;
@@ -137,7 +138,7 @@ struct owl_workspace {
   struct wl_list link;
   struct owl_output *output;
   uint32_t index;
-  struct owl_toplevel *master;
+  struct wl_list masters;
   struct wl_list slaves;
   struct wl_list floating_toplevels;
   struct owl_toplevel *fullscreen_toplevel;
