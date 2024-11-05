@@ -201,10 +201,6 @@ struct owl_toplevel {
   /* if a floating toplevel becomes fullscreen, we keep its previous state here */
   struct wlr_box prev_geometry;
 
-  /* tiled toplevels would flash when they are created.
-   * we want to not show them until they are appropriatly placed. */
-  bool initial_render;
-
   /* these are going to be used in the next output frame to draw the thing */
   bool requested_size_change;
   bool responded_to_size_change;
