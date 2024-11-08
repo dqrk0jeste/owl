@@ -196,6 +196,7 @@ struct owl_toplevel {
 	struct wlr_scene_tree *scene_tree;
   struct wlr_scene_rect *borders[4];
 
+  bool mapped;
   bool floating;
   bool fullscreen;
   /* if a floating toplevel becomes fullscreen, we keep its previous state here */
