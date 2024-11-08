@@ -244,7 +244,7 @@ static void cursor_jump_focused_toplevel() {
     toplevel->scene_tree->node.y + geo_box.y + geo_box.height / 2.0);
 }
 
-static void toplevel_create_borders(struct owl_toplevel *toplevel, bool active) {
+static void toplevel_create_borders(struct owl_toplevel *toplevel) {
   assert(toplevel->borders[0] == NULL);
 
   uint32_t width = toplevel->xdg_toplevel->current.width;
@@ -253,14 +253,8 @@ static void toplevel_create_borders(struct owl_toplevel *toplevel, bool active) 
   uint32_t border_width = server.config->border_width;
 
   float border_color[4];
-  if(active) {
-    for(size_t i = 0; i < 4; i++) {
-      border_color[i] = server.config->active_border_color[i];
-    }
-  } else {
-    for(size_t i = 0; i < 4; i++) {
-      border_color[i] = server.config->inactive_border_color[i];
-    }
+  for(size_t i = 0; i < 4; i++) {
+    border_color[i] = server.config->inactive_border_color[i];
   }
   
   toplevel->borders[0] = wlr_scene_rect_create(toplevel->scene_tree,
@@ -302,7 +296,7 @@ static void toplevel_update_borders_size(struct owl_toplevel *toplevel) {
 }
 
 static void toplevel_remove_borders(struct owl_toplevel *toplevel) {
-  assert(toplevel->borders[0] != NULL);
+  if(toplevel->borders[0] == NULL) return;
 
   for(size_t i = 0; i < 4; i++) {
     wlr_scene_node_destroy(&toplevel->borders[i]->node);
@@ -516,14 +510,17 @@ static void toplevel_clip_size(
   uint32_t width,
   uint32_t height
 ) {
+  wlr_log(WLR_ERROR, "c");
   struct wlr_box clip = (struct wlr_box){
-    .x = toplevel->xdg_toplevel->base->geometry.x,
-    .y = toplevel->xdg_toplevel->base->geometry.y,
-    .width = width,
-    .height = height,
+    .x = 0,
+    .y = 0,
+    .width = width + toplevel->xdg_toplevel->base->geometry.x,
+    .height = height + toplevel->xdg_toplevel->base->geometry.y,
   };
 
-  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip);
+  wlr_log(WLR_ERROR, "d");
+  /*wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip);*/
+  wlr_log(WLR_ERROR, "e");
 }
 
 static uint32_t toplevel_get_closest_corner(
@@ -556,6 +553,7 @@ static uint32_t toplevel_get_closest_corner(
 }
 
 static bool output_tiled_ready(struct owl_output *output) {
+  wlr_log(WLR_ERROR, "poceo ready");
   struct owl_workspace *workspace = output->active_workspace;
 
   struct owl_toplevel *t;
@@ -566,6 +564,7 @@ static bool output_tiled_ready(struct owl_output *output) {
     if(t->requested_size_change && !t->responded_to_size_change) return false;
   }
 
+  wlr_log(WLR_ERROR, "zavrsio ready");
   return true;
 }
 
@@ -589,28 +588,34 @@ static void toplevel_render_single(struct owl_toplevel *toplevel) {
   if(toplevel->fullscreen && toplevel->borders[0] == NULL) {
     toplevel_remove_borders(toplevel);
   } else if(toplevel->borders[0] == NULL) {
-    toplevel_create_borders(toplevel, false);
+    toplevel_create_borders(toplevel);
   } else {
     toplevel_update_borders_size(toplevel);
   }
 }
 
 static void output_render_tiled(struct owl_output *output) {
+  wlr_log(WLR_ERROR, "poceo render");
   struct owl_workspace *workspace = output->active_workspace;
   if(workspace->fullscreen_toplevel != NULL) return;
 
+  wlr_log(WLR_ERROR, "pre t");
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
+    wlr_log(WLR_ERROR, "a");
     toplevel_clip_size(t, t->pending_width, t->pending_height);
 
+    wlr_log(WLR_ERROR, "b");
     wlr_scene_node_set_position(&t->scene_tree->node, t->pending_x, t->pending_y);
     t->requested_size_change = false;
     
+    wlr_log(WLR_ERROR, "border");
     if(t->borders[0] == NULL) {
-      toplevel_create_borders(t, false);
+      toplevel_create_borders(t);
     } else {
       toplevel_update_borders_size(t);
     }
+    wlr_log(WLR_ERROR, "posle border");
   }
 
   wl_list_for_each(t, &workspace->slaves, link) {
@@ -620,11 +625,12 @@ static void output_render_tiled(struct owl_output *output) {
     t->requested_size_change = false;
 
     if(t->borders[0] == NULL) {
-      toplevel_create_borders(t, false);
+      toplevel_create_borders(t);
     } else {
       toplevel_update_borders_size(t);
     }
   }
+  wlr_log(WLR_ERROR, "zavrsio render");
 }
 
 static void layout_configure_tiled_toplevels(struct owl_workspace *workspace) {
@@ -699,6 +705,7 @@ static void layout_swap_tiled_toplevels(
 
 static void toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   if(toplevel->workspace->fullscreen_toplevel != NULL) return;
+
   struct owl_workspace *workspace = toplevel->workspace;
   struct owl_output *output = workspace->output;
 
@@ -716,6 +723,8 @@ static void toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   workspace->fullscreen_toplevel = toplevel;
   toplevel->fullscreen = true;
 
+  toplevel_remove_borders(toplevel);
+
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
   toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
     output_box.width, output_box.height);
@@ -732,6 +741,11 @@ static void toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   toplevel->fullscreen = false;
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
+
+  if(server.focused_toplevel == toplevel) {
+    toplevel_create_borders(toplevel);
+    toplevel_borders_set_active(toplevel, true);
+  }
 
   if(toplevel->floating) {
     toplevel_set_pending_state(toplevel,
@@ -968,14 +982,14 @@ static bool server_handle_keybinds(
   struct keybind *k;
   wl_list_for_each(k, &server.config->keybinds, link) {
     if(k->active && k->stop && sym == k->sym
-      && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+        && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
       k->active = false;
       k->stop(k->args);
       return true;
     }
 
     if(modifiers == k->modifiers && sym == k->sym
-      && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
       k->active = true;
       k->action(k->args);
       return true;
@@ -1218,6 +1232,7 @@ static void process_cursor_motion(uint32_t time) {
   /* set global active workspace */
   if(output->active_workspace != server.active_workspace) {
     server.active_workspace = output->active_workspace;
+    ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
   }
 
 	if(server.cursor_mode == OWL_CURSOR_MOVE) {
@@ -1495,6 +1510,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
 	/* called when the surface is mapped, or ready to display on-screen. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
+  wlr_log(WLR_ERROR, "6");
   /* add this toplevel to the scene tree */
   if(toplevel->floating) {
     toplevel->scene_tree =
@@ -1503,6 +1519,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel->scene_tree =
       wlr_scene_xdg_surface_create(server.tiled_tree, toplevel->xdg_toplevel->base);
   }
+  wlr_log(WLR_ERROR, "7");
   /* but we disable it since it still doesnt have a buffer */
   /*wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);*/
   /*toplevel->initial_render = true;*/
@@ -1521,7 +1538,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
   toplevel->scene_tree->node.data = something;
 
   /* TODO: toplevels can be initialialy fullscreened, check for that */
-  toplevel_create_borders(toplevel, true);
+  toplevel_create_borders(toplevel);
   focus_toplevel(toplevel);
 
   /* do the thing for foreign_toplevel_manager */
@@ -1531,6 +1548,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
   wlr_foreign_toplevel_handle_v1_set_app_id(
     toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->app_id);
+  wlr_log(WLR_ERROR, "8");
 }
 
 static void xdg_toplevel_handle_unmap(struct wl_listener *listener, void *data) {
@@ -1633,13 +1651,14 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 	/* called when a new surface state is committed */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
-
+  wlr_log(WLR_ERROR, "1");
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
     toplevel->workspace = server.active_workspace;
     toplevel->floating = toplevel_should_float(toplevel);
 
+    wlr_log(WLR_ERROR, "2");
     struct owl_output *output = toplevel->workspace->output;
 
     if(toplevel->floating) {
@@ -1660,8 +1679,22 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
       wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
       layout_configure_tiled_toplevels(toplevel->workspace);
     }
+    wlr_log(WLR_ERROR, "3");
     return;
   }
+
+  /*struct wlr_fbox toplevel_box;*/
+  /*wlr_surface_get_buffer_source_box(toplevel->xdg_toplevel->base->surface, &toplevel_box);*/
+  /**/
+  /*wlr_log(WLR_ERROR, "toplevel: %s, buffer_width: %lf, buffer_height: %lf, pending_width: %d, pending_height: %d",*/
+  /*  toplevel->xdg_toplevel->title, toplevel_box.width, toplevel_box.height, toplevel->pending_width, toplevel->pending_height);*/
+  /**/
+  /*if(toplevel->pending_width != (uint32_t)toplevel_box.width*/
+  /*    || toplevel->pending_height != (uint32_t)toplevel_box.height) {*/
+  /*  toplevel_set_pending_state(toplevel, toplevel->pending_x, toplevel->pending_y,*/
+  /*    toplevel->pending_width, toplevel->pending_height);*/
+  /*  return;*/
+  /*}*/
 
   /* TODO: maybe check this out in the future:
    * this can cause a problem as the right size may not actually be applied by the client.
@@ -1671,11 +1704,13 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
     toplevel->responded_to_size_change = true;
   }
 
+  wlr_log(WLR_ERROR, "4");
   if(toplevel->floating || toplevel->fullscreen) {
     toplevel_render_single(toplevel);
   } else if(output_tiled_ready(toplevel->workspace->output)) {
     output_render_tiled(toplevel->workspace->output);
   }
+  wlr_log(WLR_ERROR, "5");
 }
 
 static void xdg_toplevel_handle_destroy(struct wl_listener *listener, void *data) {
@@ -2994,8 +3029,13 @@ static bool server_load_config() {
     c->keyboard_delay = 50;
     wlr_log(WLR_INFO, "keyboard_delay not specified. using default %d", c->keyboard_delay);
   }
+  if(c->master_count == 0) {
+    c->master_count = 1;
+    wlr_log(WLR_INFO, "master_count not specified. using default %lf", c->master_ratio);
+  }
   if(c->master_ratio == 0) {
-    c->master_ratio = 0.5;
+    /* here we evenly space toplevels if there is no master_ratio specified */
+    c->master_ratio = c->master_count / (double)(c->master_count + 1);
     wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
   }
   if(c->cursor_size == 0) {

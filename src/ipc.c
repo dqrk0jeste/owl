@@ -8,6 +8,7 @@
 
 #include "wlr/util/log.h"
 #include "owl.h"
+
 extern struct owl_server server;
 
 /* global state that keeps track of connected clients */
@@ -48,7 +49,7 @@ void ipc_broadcast_message(enum ipc_event event) {
     if(write(c->fd, message, strlen(message)) == -1) {
       /* this should only fail because of a broken pipe,
        * so we assume the client has been closed */
-      wlr_log(WLR_ERROR, "failed to write to a pipe %s, assuming closed\n", c->name);
+      wlr_log(WLR_ERROR, "failed to write to a pipe %s, assuming closed", c->name);
       wl_list_remove(&c->link);
       close(c->fd);
       remove(c->name);
@@ -69,7 +70,7 @@ void *run_ipc(void *args) {
     return NULL;
   }
 
-  wlr_log(WLR_INFO, "starting owl ipc...\n");
+  wlr_log(WLR_INFO, "starting owl ipc...");
 
   remove(PIPE_NAME);
   if(mkfifo(PIPE_NAME, 0622) == -1) {
@@ -118,7 +119,7 @@ void *run_ipc(void *args) {
           continue;
         }
 
-        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'\n", name);
+        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'", name);
 
         struct ipc_client *c = calloc(1, sizeof(*c));
         c->fd = client_pipe_fd;

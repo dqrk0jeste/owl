@@ -1,7 +1,8 @@
 #!/bin/bash
 
 owl-ipc | while read -r line; do
-  title=$(echo "$line" | awk '$1 == "active-toplevel" {print $3}')
-
-  printf "{\"text\": \"$title\", \"alt\": \"\", \"tooltip\": \"\", \"class\": \"\", \"percentage\": 0}\n"
+  if [[ "$line" == active-toplevel\$* ]]; then
+    title=$(echo "$line" | cut -d'$' -f3)
+    echo "$title"
+  fi
 done
