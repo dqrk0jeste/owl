@@ -68,9 +68,9 @@ configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
 ## todo
+- monitor hotplugging
 - there are some known issues that need fixing, see `known-issues.md`
-- more natural (output layout aware) output switching, rn it just focuses master even if the focus came from the right side
+- more natural (output layout aware) output switching, rn it just focuses master even if the focus came from the right side for example
+- mouse clicks for keybinds (for moving and resizing toplevels)
 - opacity settings
 - animations
-- mouse clicks for keybinds (for moving and resizing toplevels)
-- more configuration options

@@ -550,9 +550,7 @@ static uint32_t toplevel_get_closest_corner(
   return edges;
 }
 
-static bool output_tiled_ready(struct owl_output *output) {
-  struct owl_workspace *workspace = output->active_workspace;
-
+static bool layout_tiled_ready(struct owl_workspace *workspace) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
     if(t->requested_size_change && !t->responded_to_size_change) return false;
@@ -590,8 +588,7 @@ static void toplevel_render_single(struct owl_toplevel *toplevel) {
   }
 }
 
-static void output_render_tiled(struct owl_output *output) {
-  struct owl_workspace *workspace = output->active_workspace;
+static void layout_render(struct owl_workspace *workspace) {
   if(workspace->fullscreen_toplevel != NULL) return;
 
   struct owl_toplevel *t;
@@ -757,9 +754,11 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
     server.active_workspace = workspace;
     cursor_jump_output(workspace->output);
     ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-    if(keep_focus) return;
+    /* we dont want to keep focus only if he is going to be under a fullscreen toplevel */
     if(workspace->fullscreen_toplevel != NULL) {
       focus_toplevel(workspace->fullscreen_toplevel);
+    } else if(keep_focus) {
+      return;
     } else if(!wl_list_empty(&workspace->masters)) {
       struct owl_toplevel *t = wl_container_of(workspace->masters.next, t, link);
       focus_toplevel(t);
@@ -804,9 +803,12 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
 
   ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
 
-  if(keep_focus) return;
-
-  if(!wl_list_empty(&workspace->masters)) {
+  /* same as above */
+  if(workspace->fullscreen_toplevel != NULL) {
+    focus_toplevel(workspace->fullscreen_toplevel);
+  } else if(keep_focus) {
+    return;
+  } else if(!wl_list_empty(&workspace->masters)) {
     struct owl_toplevel *t = wl_container_of(workspace->masters.next, t, link);
     focus_toplevel(t);
   } else if(!wl_list_empty(&workspace->floating_toplevels)) {
@@ -887,8 +889,7 @@ static void toplevel_move_to_workspace(
 
       toplevel->prev_geometry.x = new_output_x;
       toplevel->prev_geometry.y = new_output_y;
-    } else if(old_workspace->output != workspace->output) {
-    /* if the output is changed we want to update the old ones layout to show tiled toplevels */
+    } else {
       layout_configure_tiled_toplevels(old_workspace);
     }
   } else if(toplevel->floating && old_workspace->output != workspace->output) {
@@ -1530,6 +1531,14 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
   toplevel_create_borders(toplevel);
   focus_toplevel(toplevel);
 
+  /* we render the scene if possible */
+  toplevel->responded_to_size_change = true;
+  if(toplevel->floating || toplevel->fullscreen) {
+    toplevel_render_single(toplevel);
+  } else if(layout_tiled_ready(toplevel->workspace)) {
+    layout_render(toplevel->workspace);
+  }
+
   /* do the thing for foreign_toplevel_manager */
   toplevel->foreign_toplevel_handle
     = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
@@ -1542,6 +1551,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
 static void xdg_toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 	/* called when the surface is unmapped, and should no longer be shown. */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
+  struct owl_workspace *workspace = toplevel->workspace;
 
 	/* reset the cursor mode if the grabbed toplevel was unmapped. */
 	if(toplevel == server.grabbed_toplevel) {
@@ -1553,7 +1563,9 @@ static void xdg_toplevel_handle_unmap(struct wl_listener *listener, void *data) 
     server.prev_focused = NULL;
 	}
 
-  struct owl_workspace *workspace = toplevel->workspace;
+  if(toplevel == workspace->fullscreen_toplevel) {
+    workspace->fullscreen_toplevel = NULL;
+  }
 
   if(toplevel->floating) {
     if(server.focused_toplevel == toplevel) {
@@ -1686,8 +1698,8 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 
   if(toplevel->floating || toplevel->fullscreen) {
     toplevel_render_single(toplevel);
-  } else if(output_tiled_ready(toplevel->workspace->output)) {
-    output_render_tiled(toplevel->workspace->output);
+  } else if(layout_tiled_ready(toplevel->workspace)) {
+    layout_render(toplevel->workspace);
   }
 }
 

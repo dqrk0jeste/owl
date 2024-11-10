@@ -1,10 +1,10 @@
 - when a client requests a cursor it may render two cursors for some reason
 - hotpluging monitors does not work
 - multiple layer surfaces taking keyboard focus probably wont work as intended, as the second one will not get the focus after the first one unmaps; this is going to be fixed in a near future, as it is not that difficult to do
-- config arguments longer than 256 characters wont work. need to implement reallocating for such buffers.
+- config arguments longer than 256 characters wont work. need to implement reallocating for such buffers. also strncpy is bad, need to fix it.
 - if owl is run after some other compositor monitors work, but if it is the first one to be run one monitor just stays in tty, but is able to be hovered over, placed toplevels on etc. does not happen with default config tho, so the problem is somewhere in the server_handle_new_output() (mode selection probably)
-- zen browser does not respect the initial size the compositor sends him, also kind of happens on hyprland
-- waybar rounded corners leave black background behind instead of being transparent. maybe caused because of exclusive area?
-- mpv gets black bars on top and bottom on hyprland, but not on owl, maybe a missing protocol?
-- crashes caused by unused keybinds for workspaces
+- zen browser does not respect the initial size the compositor sends him, checking for the actual size will fix
+- waybar rounded corners leave black background behind instead of being transparent. maybe caused by exclusive area?
+- mpv gets black bars on top and bottom on hyprland, but not on owl, missing protocol?
+- crash caused by unused keybinds for workspaces, there is really not an efficient way to fix it
 - dunst notification becomes stuck when it should be replaced by another. surely an issue on our part.
