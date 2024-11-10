@@ -8,4 +8,4 @@
 -DWLR_USE_UNSTABLE
 
 -lwlroots-0.19
--lpthreads
+

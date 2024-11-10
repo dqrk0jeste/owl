@@ -37,8 +37,6 @@ owl is a minimal tiling wayland compositor based on wlroots.
 
 if you are using a wayland compositor you probably have those installed already.
 
-> you can use an older wlroots version, 19.0 is just what i have used for development. to use an older version you only need to change line 5 in the makefile.
-
 ## building
 ```bash
 git clone https://github.com/dqrk0jeste/owl
