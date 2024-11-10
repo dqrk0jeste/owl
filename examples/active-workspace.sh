@@ -1,9 +1,8 @@
 #!/bin/bash
 
 owl-ipc | while read -r line; do
-  number=$(echo "$line" | awk '$1 == "active-workspace" {print $2}')
-
-  if [[ -n $number ]]; then
-    echo $number
+  if [[ "$line" == active-workspace\$* ]]; then
+    number=$(echo "$line" | cut -d'$' -f2)
+    echo "workspace $number"
   fi
 done
