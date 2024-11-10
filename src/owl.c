@@ -1,11 +1,12 @@
+#include <pthread.h>
+#include <stdint.h>
+#include <wayland-util.h>
+
 #include "owl.h"
 #include "ipc.h"
 
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "xdg-shell-protocol.h"
-#include <pthread.h>
-#include <stdint.h>
-#include <wayland-util.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -757,7 +758,9 @@ static void server_change_workspace(struct owl_workspace *workspace, bool keep_f
     cursor_jump_output(workspace->output);
     ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
     if(keep_focus) return;
-    if(!wl_list_empty(&workspace->masters)) {
+    if(workspace->fullscreen_toplevel != NULL) {
+      focus_toplevel(workspace->fullscreen_toplevel);
+    } else if(!wl_list_empty(&workspace->masters)) {
       struct owl_toplevel *t = wl_container_of(workspace->masters.next, t, link);
       focus_toplevel(t);
     } else if(!wl_list_empty(&workspace->floating_toplevels)) {
@@ -890,9 +893,7 @@ static void toplevel_move_to_workspace(
     }
   } else if(toplevel->floating && old_workspace->output != workspace->output) {
     /* we want to place the toplevel to the same relative coordinates,
-     * as the new output may have a different resolution
-     * note: pending here is the same as current x, y
-     * becuase we havent requested the new state yet*/
+     * as the new output may have a different resolution */
     uint32_t old_output_relative_x =
       toplevel->scene_tree->node.x - old_workspace->output->usable_area.x;
     double relative_x =
@@ -1110,7 +1111,7 @@ static void server_handle_new_input(struct wl_listener *listener, void *data) {
 static void server_handle_request_cursor(struct wl_listener *listener, void *data) {
 	struct wlr_seat_pointer_request_set_cursor_event *event = data;
 	struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-	if (focused_client == event->seat_client) {
+	if(focused_client == event->seat_client) {
 		/* once we've vetted the client, we can tell the cursor to use the
 		 * provided surface as the cursor image. it will set the hardware cursor
 		 * on the output that it's currently on and continue to do so as the
@@ -2073,7 +2074,7 @@ static void server_handle_new_layer_surface(struct wl_listener *listener, void *
   layer_surface->wlr_layer_surface->data = layer_surface;
 
   enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
-  switch (layer) {
+  switch(layer) {
     case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
       layer_surface->scene =
         wlr_scene_layer_surface_v1_create(server.background_tree, wlr_layer_surface);
