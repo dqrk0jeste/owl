@@ -66,10 +66,10 @@ configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
 ## todos
-[ ] issues need fixing, see `known-issues.md`
-[ ] monitor hotplugging
-[ ] more natural (output layout aware) output switching (rn it just focuses master even if the focus came from the right side for example)
-[ ] mouse clicks for keybinds (for moving and resizing toplevels)
-[ ] more ipc capabilities
-[ ] opacity settings
-[ ] animations
+- [ ] issues need fixing, see `known-issues.md`
+- [ ] monitor hotplugging
+- [ ] more natural (output layout aware) output switching (rn it just focuses master even if the focus came from the right side for example)
+- [ ] mouse clicks for keybinds (for moving and resizing toplevels)
+- [ ] more ipc capabilities
+- [ ] opacity settings
+- [ ] animations
