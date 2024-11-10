@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <wayland-util.h>
 
@@ -2915,6 +2916,92 @@ static FILE *try_open_config_file() {
   return fopen(path, "r");
 }
 
+/* assumes the line is newline teriminated */
+static bool config_handle_line(
+  char *line,
+  size_t line_number,
+  char *keyword,
+  char **args,
+  size_t *args_count
+) {
+  char *p = line;
+  /* trim whitespace */
+  while(*p == ' ') p++;
+
+  /* if its an empty line or it starts with '#' (comment) skip */
+  if(*p == '\n' || *p == '#') {
+    return false; 
+  }
+
+  /*wlr_log(WLR_ERROR, "invalid config at line %zu", line_number);*/
+
+  uint32_t len = 0, cap = STRING_INITIAL_LENGTH;
+  keyword = calloc(STRING_INITIAL_LENGTH, sizeof(char));
+  uint32_t args_len = 0, args_cap = 8;
+  args = calloc(8, sizeof(*args));
+
+  char *q = keyword;
+  while(*p != ' ') {
+    if(len >= cap) {
+      cap *= 2;
+      keyword = realloc(keyword, cap);
+    }
+    *q = *p;
+    p++;
+    q++;
+    len++;
+  }
+
+  /* skip whitespace */
+  while(*p == ' ') p++;
+
+  if(*p == '\n') {
+    wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, keyword);
+    return false;
+  }
+
+  while(true) {
+    if(args_len >= args_cap) {
+      args_cap *= 2;
+      args = realloc(args, args_cap * sizeof(*args));
+    }
+
+    len = 0;
+    cap = STRING_INITIAL_LENGTH;
+    args[args_len] = calloc(STRING_INITIAL_LENGTH, sizeof(char));
+    q = args[args_len];
+
+    bool word = false;
+    if(*p == '\"') {
+      word = true;
+      p++;
+    };
+
+    while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\n')) {
+      if(len >= cap) {
+        cap *= 2;
+        args[args_len] = realloc(args[args_len], cap);
+      }
+      *q = *p;
+      p++;
+      q++;
+    }
+    *q = 0;
+    args_len++;
+
+    if(word) p++;
+
+    while(*p == ' ') p++;
+
+    if(*p == '\n') break;
+    if(args_counter == 8) {
+      wlr_log(WLR_ERROR, "too many args to %s", keyword);
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool server_load_config() {
   struct owl_config *c = calloc(1, sizeof(*c));
 
@@ -2923,7 +3010,7 @@ static bool server_load_config() {
     wlr_log(WLR_INFO, "couldn't open config file, backing to default config");
     config_file = fopen("/usr/share/owl/default.conf", "r");
     if(config_file == NULL) {
-      wlr_log(WLR_ERROR, "couldn't find default config file");
+      wlr_log(WLR_ERROR, "couldn't find the default config file");
       return false;
     } else {
       wlr_log(WLR_INFO, "using default config");
@@ -2936,74 +3023,17 @@ static bool server_load_config() {
   wl_list_init(&c->outputs);
   wl_list_init(&c->workspaces);
   
-  /* TODO: implement reallocing for strings */
+  /* you aint gonna have lines longer than 1kB */
   char line_buffer[1024] = {0};
-  while(fgets(line_buffer, 1024, config_file)) {
-    char *p = line_buffer;
-    while(*p == ' ') p++;
-    /* if its an empty line or it starts with '-' (comment) skip */
-    if(*p == '\n' || *p == '-') {
-      continue; 
+  char *keyword, **args;
+  size_t args_count;
+  size_t line_count = 1;
+  while(fgets(line_buffer, 1024, config_file) != NULL) {
+    bool valid = config_handle_line(line_buffer, keyword, args, &args_count);
+    if(valid) {
+      config_handle_value(c, keyword, args, args_count);
     }
-
-    char keyword[64] = {0};
-    char *args[8];
-    uint32_t safe_counter = 0;
-
-    char *q = keyword;
-    while(*p != ' ') {
-      if(safe_counter > 63) {
-        wlr_log(WLR_ERROR, "keyword %s too long", keyword);
-        return false;
-      }
-      *q = *p;
-      p++;
-      q++;
-      safe_counter++;
-    }
-    safe_counter = 0;
-
-    while(*p == ' ') p++;
-
-    if(*p == '\n') {
-      wlr_log(WLR_ERROR, "no args provided for %s", keyword);
-      return false;
-    }
-
-    size_t args_counter = 0;
-    while(true) {
-      args[args_counter] = calloc(256, sizeof(char));
-      q = args[args_counter];
-
-      bool word = false;
-      if(*p == '\"') {
-        word = true;
-        p++;
-      };
-
-      while((word && *p != '\"') || (!word && *p != ' ' && *p != '\n')) {
-        if(safe_counter > 256) {
-          wlr_log(WLR_ERROR, "arg %s too long", args[args_counter]);
-          return false;
-        }
-        *q = *p;
-        p++;
-        q++;
-        safe_counter++;
-      }
-      args_counter++;
-
-      if(word) p++;
-
-      while(*p == ' ') p++;
-
-      if(*p == '\n') break;
-      if(args_counter == 8) {
-        wlr_log(WLR_ERROR, "too many args to %s", keyword);
-        return false;
-      }
-    }
-    config_handle_value(c, keyword, args, args_counter);
+    line_count++;
   }
 
   fclose(config_file);

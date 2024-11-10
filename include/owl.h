@@ -51,6 +51,8 @@
 #define max(a, b) (a) > (b) ? (a) : (b)
 #define min(a, b) (a) < (b) ? (a) : (b)
 
+#define STRING_INITIAL_LENGTH 64
+
 enum owl_cursor_mode {
 	OWL_CURSOR_PASSTHROUGH,
 	OWL_CURSOR_MOVE,
