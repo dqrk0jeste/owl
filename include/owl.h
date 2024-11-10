@@ -120,7 +120,7 @@ struct owl_config {
   } window_rules;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
-  char cursor_theme[256];
+  char *cursor_theme;
   uint32_t cursor_size;
   uint32_t min_toplevel_size;
   float inactive_border_color[4];

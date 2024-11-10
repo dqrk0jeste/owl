@@ -2719,7 +2719,12 @@ static void config_free_args(char **args, size_t arg_count) {
   }
 }
 
-static bool config_handle_value(struct owl_config *c, char* keyword, char **args, size_t arg_count) {
+static bool config_handle_value(
+  struct owl_config *c,
+  char *keyword,
+  char **args,
+  size_t arg_count
+) {
   if(strcmp(keyword, "min_toplevel_size") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2796,7 +2801,7 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       config_free_args(args, arg_count);
       return false;
     }
-    strncpy(c->cursor_theme, args[0], sizeof(c->cursor_theme));
+    c->cursor_theme = strdup(args[0]);
   } else if(strcmp(keyword, "cursor_size") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -2831,9 +2836,8 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       return false;
     }
     struct output_config *m = calloc(1, sizeof(*m));
-    char *args_0_copy = strdup(args[0]);
     *m = (struct output_config){
-      .name = args_0_copy,
+      .name = strdup(args[0]),
       .x = atoi(args[1]),
       .y = atoi(args[2]),
       .width = atoi(args[3]),
@@ -2848,10 +2852,9 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       return false;
     }
     struct workspace_config *w = calloc(1, sizeof(*w));
-    char *args_1_copy = strdup(args[1]);
     *w = (struct workspace_config){
       .index = atoi(args[0]),
-      .output = args_1_copy,
+      .output = strdup(args[1]),
     };
     wl_list_insert(&c->workspaces, &w->link);
   } else if(strcmp(keyword, "run") == 0) {
@@ -2860,9 +2863,11 @@ static bool config_handle_value(struct owl_config *c, char* keyword, char **args
       config_free_args(args, arg_count);
       return false;
     }
-    if(c->run_count >= 64) return false;
-    char *args_0_copy = strdup(args[0]);
-    c->run[c->run_count] = args_0_copy;
+    if(c->run_count >= 64) {
+      wlr_log(WLR_ERROR, "do you really need 64 runs?");
+      return false;
+    }
+    c->run[c->run_count] = strdup(args[0]);
     c->run_count++;
   } else if(strcmp(keyword, "keybind") == 0) {
     if(arg_count < 3) {
@@ -2916,16 +2921,17 @@ static FILE *try_open_config_file() {
   return fopen(path, "r");
 }
 
-/* assumes the line is newline teriminated */
+/* assumes the line is newline teriminated, as it should be with fgets() */
 static bool config_handle_line(
   char *line,
   size_t line_number,
-  char *keyword,
-  char **args,
+  char **keyword,
+  char ***args,
   size_t *args_count
 ) {
   char *p = line;
-  /* trim whitespace */
+
+  /* skip whitespace */
   while(*p == ' ') p++;
 
   /* if its an empty line or it starts with '#' (comment) skip */
@@ -2933,44 +2939,44 @@ static bool config_handle_line(
     return false; 
   }
 
-  /*wlr_log(WLR_ERROR, "invalid config at line %zu", line_number);*/
+  size_t len = 0, cap = STRING_INITIAL_LENGTH;
+  char *kw = calloc(cap, sizeof(char));
+  size_t ars_len = 0, ars_cap = 8;
+  char **ars = calloc(ars_cap, sizeof(*args));
 
-  uint32_t len = 0, cap = STRING_INITIAL_LENGTH;
-  keyword = calloc(STRING_INITIAL_LENGTH, sizeof(char));
-  uint32_t args_len = 0, args_cap = 8;
-  args = calloc(8, sizeof(*args));
-
-  char *q = keyword;
+  char *q = kw;
   while(*p != ' ') {
     if(len >= cap) {
       cap *= 2;
       keyword = realloc(keyword, cap);
+      q = &kw[len];
     }
     *q = *p;
     p++;
     q++;
     len++;
   }
+  *q = 0;
 
   /* skip whitespace */
   while(*p == ' ') p++;
 
   if(*p == '\n') {
-    wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, keyword);
+    wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, kw);
     return false;
   }
 
-  while(true) {
-    if(args_len >= args_cap) {
-      args_cap *= 2;
-      args = realloc(args, args_cap * sizeof(*args));
+  while(*p != '\n') {
+    if(ars_len >= ars_cap) {
+      ars_cap *= 2;
+      ars = realloc(ars, ars_cap * sizeof(*ars));
     }
 
     len = 0;
     cap = STRING_INITIAL_LENGTH;
-    args[args_len] = calloc(STRING_INITIAL_LENGTH, sizeof(char));
-    q = args[args_len];
+    ars[ars_len] = calloc(cap, sizeof(char));
 
+    q = ars[ars_len];
     bool word = false;
     if(*p == '\"') {
       word = true;
@@ -2980,25 +2986,25 @@ static bool config_handle_line(
     while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\n')) {
       if(len >= cap) {
         cap *= 2;
-        args[args_len] = realloc(args[args_len], cap);
+        ars[ars_len] = realloc(ars[ars_len], cap);
+        q = &ars[ars_len][len];
       }
       *q = *p;
       p++;
       q++;
+      len++;
     }
     *q = 0;
-    args_len++;
+    ars_len++;
 
     if(word) p++;
-
+    /* skip whitespace */
     while(*p == ' ') p++;
-
-    if(*p == '\n') break;
-    if(args_counter == 8) {
-      wlr_log(WLR_ERROR, "too many args to %s", keyword);
-      return false;
-    }
   }
+
+  *args_count = ars_len;
+  *keyword = kw;
+  *args = ars;
   return true;
 }
 
@@ -3027,13 +3033,14 @@ static bool server_load_config() {
   char line_buffer[1024] = {0};
   char *keyword, **args;
   size_t args_count;
-  size_t line_count = 1;
+  size_t line_number = 1;
   while(fgets(line_buffer, 1024, config_file) != NULL) {
-    bool valid = config_handle_line(line_buffer, keyword, args, &args_count);
+    bool valid =
+      config_handle_line(line_buffer, line_number, &keyword, &args, &args_count);
     if(valid) {
       config_handle_value(c, keyword, args, args_count);
     }
-    line_count++;
+    line_number++;
   }
 
   fclose(config_file);
