@@ -9,7 +9,7 @@ owl is a minimal tiling wayland compositor based on wlroots.
 - tiling and floating toplevels
 - master layout with support for multiple masters, ideal for wide monitors
 - keyboard focused workflow
-- great multitasking with multimonitor and workspaces out of the box
+- great multitasking with multimonitor support and workspaces out of the box
 - easy configuration with custom keybinds, monitor layouts etc
 - ipc for integrating with other apps
 
