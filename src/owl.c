@@ -1,12 +1,12 @@
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <wayland-util.h>
 
 #include "owl.h"
 #include "ipc.h"
 
 #include "wlr-layer-shell-unstable-v1-protocol.h"
+#include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
 
 /* we initialize an instance of our global state */
@@ -131,17 +131,23 @@ static void toplevel_floating_size(
 static bool toplevel_should_float(struct owl_toplevel *toplevel) {
   /* we make toplevels float if they have fixed size or are children of another toplevel */
   bool natural = (toplevel->xdg_toplevel->current.max_height &&
-    (toplevel->xdg_toplevel->current.max_height == toplevel->xdg_toplevel->current.min_height))
+    (toplevel->xdg_toplevel->current.max_height
+      == toplevel->xdg_toplevel->current.min_height))
     || (toplevel->xdg_toplevel->current.max_width &&
-      (toplevel->xdg_toplevel->current.max_width == toplevel->xdg_toplevel->current.min_width))
+      (toplevel->xdg_toplevel->current.max_width
+      == toplevel->xdg_toplevel->current.min_width))
     || toplevel->xdg_toplevel->parent != NULL;
   if(natural) return true;
+
+  if(toplevel->xdg_toplevel->app_id == NULL) return false;
 
   for(size_t i = 0; i < server.config->window_rules.floating_count; i++) {
     bool matches_app_id = regexec(&server.config->window_rules.floating[i].app_id_regex,
       toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
-    bool matches_title = regexec(&server.config->window_rules.floating[i].title_regex,
-      toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
+    bool matches_title = toplevel->xdg_toplevel->title == NULL
+      ? true
+      : regexec(&server.config->window_rules.floating[i].title_regex,
+          toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
     if(matches_app_id && matches_title) {
       return true;
     }
@@ -691,6 +697,8 @@ static void layout_swap_tiled_toplevels(
 }
 
 static void toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
+  if(!toplevel->mapped) return;
+
   if(toplevel->workspace->fullscreen_toplevel != NULL) return;
 
   struct owl_workspace *workspace = toplevel->workspace;
@@ -1701,6 +1709,8 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
+    /*wlr_log(WLR_ERROR, "app_id: %s, title: %s",
+     * toplevel->xdg_toplevel->app_id, toplevel->xdg_toplevel->title);*/
     toplevel->workspace = server.active_workspace;
     toplevel->floating = toplevel_should_float(toplevel);
 
@@ -1711,6 +1721,7 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
       /* we calculate its size and send a configure */
       uint32_t width, height;
       toplevel_floating_size(toplevel, &width, &height);
+      /* we calculate its size and send a configure */
       /* position it in the center */
       struct wlr_box output_box = output->usable_area;
       uint32_t x = output_box.x + (output_box.width - width) / 2;
