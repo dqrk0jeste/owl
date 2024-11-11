@@ -1366,37 +1366,81 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
   wlr_output_state_init(&state);
   wlr_output_state_set_enabled(&state, true);
 
-  /* TODO: investigate something here, as it doesnt work well */
-  bool set = false;
-  struct output_config *m;
-  wl_list_for_each(m, &server.config->outputs, link) {
-    if(strcmp(m->name, wlr_output->name) == 0) {  
-      wlr_log(WLR_INFO, "found: %s, set mode: %dx%d@%dmHz",
-        m->name, m->width, m->height, m->refresh_rate);
-      struct wlr_output_mode mode = {
-        .width = m->width,
-        .height = m->height,
-        .refresh = m->refresh_rate,
-      };
-      wlr_output_state_set_mode(&state, &mode);
-      set = true;
+  /* we try to find the config for this output */
+  struct output_config *output_config = NULL;
+
+  struct output_config *o;
+  wl_list_for_each(o, &server.config->outputs, link) {
+    if(strcmp(o->name, wlr_output->name) == 0) {
+      output_config = o;
+      break;
     }
   }
+  
+  if(output_config != NULL) {
+    /* we try to find the closest supported mode for this output, that means:
+     *  - same resolution
+     *  - closest refresh rate
+     * if there is none we take the prefered mode for the output */
+    struct wlr_output_mode *best_match = NULL;
+    uint32_t best_match_diff = UINT32_MAX;
 
-  if(!set) {
+    struct wlr_output_mode *m;
+    wl_list_for_each(m, &wlr_output->modes, link) {
+      if(m->width == o->width && m->height == o->height
+        && abs((int)m->refresh - (int)o->refresh_rate) < best_match_diff) {
+        best_match = m;
+        best_match_diff = abs((int)m->refresh - (int)o->refresh_rate);
+      }
+    }
+
+    if(best_match != NULL) {
+      wlr_log(WLR_INFO, "trying to set mode for output %s to %dx%d@%dmHz",
+        wlr_output->name, best_match->width, best_match->height, best_match->refresh);
+      /* we set the mode and try to commit the state.
+       * if it fails then we backup to the preffered. it should not fail! */
+      wlr_output_state_set_mode(&state, best_match);
+      bool success = wlr_output_commit_state(wlr_output, &state);
+      if(!success) {
+        struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
+        if(mode != NULL) {
+          wlr_output_state_set_mode(&state, mode);
+          wlr_log(WLR_ERROR, "couldn't find a mode to set to the output %s", wlr_output->name);
+          /* free the resource */
+          wlr_output_state_finish(&state);
+          return;
+        }
+        success = wlr_output_commit_state(wlr_output, &state);
+        if(!success) {
+          wlr_log(WLR_ERROR, "couldn't find a mode to set to the output %s", wlr_output->name);
+          /* free the resource */
+          wlr_output_state_finish(&state);
+          return;
+        }
+      }
+    } else {
+
+    }
+  } else {
+    /* if it is not specified in the config we take its preffered mode */
     struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
     if(mode != NULL) {
       wlr_output_state_set_mode(&state, mode);
+      wlr_log(WLR_ERROR, "couldn't find a mode to set to the output %s", wlr_output->name);
+      /* free the resource */
+      wlr_output_state_finish(&state);
+      return;
+    }
+    bool success = wlr_output_commit_state(wlr_output, &state);
+    if(!success) {
+      wlr_log(WLR_ERROR, "couldn't find a mode to set to the output %s", wlr_output->name);
+      /* free the resource */
+      wlr_output_state_finish(&state);
+      return;
     }
   }
 
-  /* atomically applies the new output state */
-  bool successful = wlr_output_commit_state(wlr_output, &state);
-  if(successful) {
-    wlr_log(WLR_INFO, "state for output %s comitted successfully", wlr_output->name);
-  } else {
-    wlr_log(WLR_INFO, "state for output %s failed to commit", wlr_output->name);
-  }
+  wlr_log(WLR_INFO, "successfully set up output %s", wlr_output->name);
   wlr_output_state_finish(&state);
 
   /* allocates and configures our state for this output */
@@ -1475,16 +1519,12 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
   wl_list_insert(&server.outputs, &output->link);
 
   struct wlr_output_layout_output *l_output;
-  set = false;
-  wl_list_for_each(m, &server.config->outputs, link) {
-    if(strcmp(m->name, wlr_output->name) == 0) {  
-      wlr_log(WLR_INFO, "found: %s, set position: %d, %d", m->name, m->x, m->y);
-      l_output = wlr_output_layout_add(server.output_layout, wlr_output, m->x, m->y);
-      set = true;
-    }
-  }
 
-  if(!set) {
+  if(output_config != NULL) {
+    wlr_log(WLR_INFO, "setting position of output %s to %d, %d",
+      wlr_output->name, output_config->x, output_config->y);
+    l_output = wlr_output_layout_add(server.output_layout, wlr_output, o->x, o->y);
+  } else {
     l_output = wlr_output_layout_add_auto(server.output_layout, wlr_output);
   }
 
