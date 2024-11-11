@@ -108,7 +108,7 @@ static void toplevel_floating_size(
     bool matches_app_id = regexec(&server.config->window_rules.size[i].app_id_regex,
       toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
     bool matches_title = toplevel->xdg_toplevel->title == NULL
-      ? true
+      ? false
       : regexec(&server.config->window_rules.size[i].title_regex,
           toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
     if(matches_app_id && matches_title) {
@@ -149,7 +149,7 @@ static bool toplevel_should_float(struct owl_toplevel *toplevel) {
     bool matches_app_id = regexec(&server.config->window_rules.floating[i].app_id_regex,
       toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
     bool matches_title = toplevel->xdg_toplevel->title == NULL
-      ? true
+      ? false
       : regexec(&server.config->window_rules.floating[i].title_regex,
           toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
     if(matches_app_id && matches_title) {
