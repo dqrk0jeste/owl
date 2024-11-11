@@ -1391,7 +1391,12 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
   }
 
   /* atomically applies the new output state */
-  wlr_output_commit_state(wlr_output, &state);
+  bool successful = wlr_output_commit_state(wlr_output, &state);
+  if(successful) {
+    wlr_log(WLR_INFO, "state for output %s comitted successfully", wlr_output->name);
+  } else {
+    wlr_log(WLR_INFO, "state for output %s failed to commit", wlr_output->name);
+  }
   wlr_output_state_finish(&state);
 
   /* allocates and configures our state for this output */
@@ -3080,14 +3085,35 @@ static bool server_load_config() {
 
 int main(int argc, char *argv[]) {
   /* this is ripped straight from chatgpt, it prevents the creation of zombie processes. */
-  /* could've been done better probably, but i dont know how */
   struct sigaction sa;
   sa.sa_handler = sigchld_handler;
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
   sigaction(SIGCHLD, &sa, NULL);
 
-	wlr_log_init(WLR_DEBUG, NULL);
+  bool debug = false;
+  for(int i = 1; i < argc; i++) {
+    if(strcmp(argv[i], "--debug") == 0) {
+      debug = true;
+    }
+  }
+
+  if(debug) {
+    /* make it so all the logs do to the log file */
+    FILE *logs = fopen("/tmp/owl-logs", "w");
+    if(logs != NULL) {
+      int fd = fileno(logs);
+      close(1);
+      close(2);
+      dup2(fd, 1);
+      dup2(fd, 2);
+      fclose(logs);
+    }
+
+	  wlr_log_init(WLR_DEBUG, NULL);
+  } else {
+	  wlr_log_init(WLR_INFO, NULL);
+  }
 
   bool valid_config = server_load_config();
   if(!valid_config) {

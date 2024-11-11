@@ -317,6 +317,7 @@ struct owl_server {
   struct wlr_screencopy_manager_v1 *screencopy_manager;
 
   struct owl_config *config;
+  FILE *log_file;
 };
 
 #endif /* ifndef OWL_H */
