@@ -1523,7 +1523,8 @@ static void server_handle_new_output(struct wl_listener *listener, void *data) {
   if(output_config != NULL) {
     wlr_log(WLR_INFO, "setting position of output %s to %d, %d",
       wlr_output->name, output_config->x, output_config->y);
-    l_output = wlr_output_layout_add(server.output_layout, wlr_output, o->x, o->y);
+    l_output = wlr_output_layout_add(server.output_layout, wlr_output,
+      output_config->x, output_config->y);
   } else {
     l_output = wlr_output_layout_add_auto(server.output_layout, wlr_output);
   }
