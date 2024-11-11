@@ -102,11 +102,15 @@ static void toplevel_floating_size(
   uint32_t *width,
   uint32_t *height
 ) {
+  if(toplevel->xdg_toplevel->app_id == NULL) return;
+
   for(size_t i = 0; i < server.config->window_rules.size_count; i++) {
     bool matches_app_id = regexec(&server.config->window_rules.size[i].app_id_regex,
       toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
-    bool matches_title = regexec(&server.config->window_rules.size[i].title_regex,
-      toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
+    bool matches_title = toplevel->xdg_toplevel->title == NULL
+      ? true
+      : regexec(&server.config->window_rules.size[i].title_regex,
+          toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
     if(matches_app_id && matches_title) {
       struct window_rule_size wr = server.config->window_rules.size[i];
       if(wr.relative_width) {
