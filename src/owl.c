@@ -97,62 +97,94 @@ static bool toplevel_is_slave(struct owl_toplevel *toplevel) {
   return false;
 }
 
+
+static bool toplevel_matches_window_rule(
+  struct owl_toplevel *toplevel,
+  struct window_rule_regex *condition
+) {
+  char *app_id = toplevel->xdg_toplevel->app_id;
+  char *title = toplevel->xdg_toplevel->title;
+
+  bool matches_app_id;
+  if(condition->has_app_id_regex) {
+    if(app_id == NULL) {
+      matches_app_id = false;
+    } else {
+      matches_app_id = regexec(&condition->app_id_regex, app_id, 0, NULL, 0) == 0;
+    }
+  } else {
+    matches_app_id = true;
+  }
+
+  bool matches_title;
+  if(condition->has_title_regex) {
+    if(title == NULL) {
+      matches_title = false;
+    } else {
+      matches_title = regexec(&condition->title_regex, title, 0, NULL, 0) == 0;
+    }
+  } else {
+    matches_title = true;
+  }
+
+  if(matches_app_id && matches_title) {
+    return true;
+  }
+  
+  return false;
+}
+
 static void toplevel_floating_size(
   struct owl_toplevel *toplevel,
   uint32_t *width,
   uint32_t *height
 ) {
+  *width = toplevel->xdg_toplevel->current.width;
+  *height = toplevel->xdg_toplevel->current.height;
   if(toplevel->xdg_toplevel->app_id == NULL) return;
 
-  for(size_t i = 0; i < server.config->window_rules.size_count; i++) {
-    bool matches_app_id = regexec(&server.config->window_rules.size[i].app_id_regex,
-      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
-    bool matches_title = toplevel->xdg_toplevel->title == NULL
-      ? false
-      : regexec(&server.config->window_rules.size[i].title_regex,
-          toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
-    if(matches_app_id && matches_title) {
-      struct window_rule_size wr = server.config->window_rules.size[i];
-      if(wr.relative_width) {
-        *width = toplevel->workspace->output->usable_area.width * wr.width / 100;
+  char *app_id = toplevel->xdg_toplevel->app_id;
+  char *title = toplevel->xdg_toplevel->title;
+
+  struct window_rule_size *w;
+  wl_list_for_each(w, &server.config->window_rules.size, link) {
+    if(toplevel_matches_window_rule(toplevel, &w->condition)) {
+      if(w->relative_width) {
+        *width = toplevel->workspace->output->usable_area.width * w->width / 100;
       } else {
-        *width = wr.width;
+        *width = w->width;
       }
 
-      if(wr.relative_height) {
-        *height = toplevel->workspace->output->usable_area.height * wr.height / 100;
+      if(w->relative_height) {
+        *height = toplevel->workspace->output->usable_area.height * w->height / 100;
       } else {
-        *height = wr.height;
+        *height = w->height;
       }
+
       return;
     }
   }
-
-  *width = toplevel->xdg_toplevel->current.width;
-  *height = toplevel->xdg_toplevel->current.height;
 }
 
 static bool toplevel_should_float(struct owl_toplevel *toplevel) {
-  /* we make toplevels float if they have fixed size or are children of another toplevel */
-  bool natural = (toplevel->xdg_toplevel->current.max_height &&
-    (toplevel->xdg_toplevel->current.max_height
-      == toplevel->xdg_toplevel->current.min_height))
+  /* we make toplevels float if they have fixed size
+   * or are children of another toplevel */
+  bool natural =
+    (toplevel->xdg_toplevel->current.max_height &&
+      toplevel->xdg_toplevel->current.max_height
+      == toplevel->xdg_toplevel->current.min_height)
     || (toplevel->xdg_toplevel->current.max_width &&
-      (toplevel->xdg_toplevel->current.max_width
-      == toplevel->xdg_toplevel->current.min_width))
+      toplevel->xdg_toplevel->current.max_width
+      == toplevel->xdg_toplevel->current.min_width)
     || toplevel->xdg_toplevel->parent != NULL;
   if(natural) return true;
 
-  if(toplevel->xdg_toplevel->app_id == NULL) return false;
+  char *app_id = toplevel->xdg_toplevel->app_id;
+  char *title = toplevel->xdg_toplevel->title;
 
-  for(size_t i = 0; i < server.config->window_rules.floating_count; i++) {
-    bool matches_app_id = regexec(&server.config->window_rules.floating[i].app_id_regex,
-      toplevel->xdg_toplevel->app_id, 0, NULL, 0) == 0;
-    bool matches_title = toplevel->xdg_toplevel->title == NULL
-      ? false
-      : regexec(&server.config->window_rules.floating[i].title_regex,
-          toplevel->xdg_toplevel->title, 0, NULL, 0) == 0;
-    if(matches_app_id && matches_title) {
+  struct window_rule_float *w;
+  wl_list_for_each(w, &server.config->window_rules.floating, link) {
+    if(toplevel_matches_window_rule(toplevel, &w->condition)) {
       return true;
     }
   }
@@ -351,6 +383,7 @@ static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
     && toplevel->xdg_toplevel->current.width == width
     && toplevel->xdg_toplevel->current.height == height) {
     toplevel_render_single(toplevel);
+    return;
   };
 
   wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
@@ -575,15 +608,17 @@ static bool layout_tiled_ready(struct owl_workspace *workspace) {
 
 static void toplevel_render_single(struct owl_toplevel *toplevel) {
   assert(toplevel->floating || toplevel->fullscreen);
-
-  /* we are not goint to render it if there is a fullscreen toplevel
-   * thats not this one, because it wouldnt be seen */
+  /* we are not going to render it if there is a fullscreen toplevel
+   * thats not this one, because it wouldnt be seen anyway */
   if(toplevel->workspace->fullscreen_toplevel != NULL &&
     toplevel != toplevel->workspace->fullscreen_toplevel) return;
 
-  /*if(toplevel->requested_size_change && !toplevel->responded_to_size_change) return;*/
+  /* we dont really care if floating toplevels are not respecting our size,
+   * but we dont want fullscreen toplevels to overflow its output if they are weird */
+  if(toplevel->fullscreen) {
+    toplevel_clip_size(toplevel, toplevel->pending_width, toplevel->pending_height);
+  }
 
-  toplevel_clip_size(toplevel, toplevel->pending_width, toplevel->pending_height);
   wlr_scene_node_set_position(&toplevel->scene_tree->node,
     toplevel->pending_x, toplevel->pending_y);
 
@@ -1590,9 +1625,18 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
   toplevel_create_borders(toplevel);
   focus_toplevel(toplevel);
 
-  /* we render the scene if possible */
-  toplevel->responded_to_size_change = true;
-  if(toplevel->floating || toplevel->fullscreen) {
+  if(toplevel->floating) {
+    /* we render it immediately if floating, but have to set the position before */
+    uint32_t width = toplevel->xdg_toplevel->current.width;
+    uint32_t height = toplevel->xdg_toplevel->current.height;
+    uint32_t pending_width = toplevel->xdg_toplevel->current.width;
+    uint32_t pending_height = toplevel->xdg_toplevel->current.height;
+    uint32_t geo_width = toplevel->xdg_toplevel->base->geometry.width;
+    uint32_t geo_height = toplevel->xdg_toplevel->base->geometry.height;
+    wlr_log(WLR_ERROR, "%d, %d, %d, %d, %d, %d", width, height, pending_width, pending_height, geo_width, geo_height);
+    struct wlr_box output_box = toplevel->workspace->output->usable_area;
+    toplevel->pending_x = output_box.x + (output_box.width - width) / 2;
+    toplevel->pending_y = output_box.y + (output_box.height - height) / 2;
     toplevel_render_single(toplevel);
   } else if(layout_tiled_ready(toplevel->workspace)) {
     layout_render(toplevel->workspace);
@@ -1713,24 +1757,17 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
-    /*wlr_log(WLR_ERROR, "app_id: %s, title: %s",
-     * toplevel->xdg_toplevel->app_id, toplevel->xdg_toplevel->title);*/
     toplevel->workspace = server.active_workspace;
     toplevel->floating = toplevel_should_float(toplevel);
-
-    struct owl_output *output = toplevel->workspace->output;
 
     if(toplevel->floating) {
       wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
       /* we calculate its size and send a configure */
       uint32_t width, height;
       toplevel_floating_size(toplevel, &width, &height);
-      /* we calculate its size and send a configure */
-      /* position it in the center */
-      struct wlr_box output_box = output->usable_area;
-      uint32_t x = output_box.x + (output_box.width - width) / 2;
-      uint32_t y = output_box.y + (output_box.height - height) / 2;
-      toplevel_set_pending_state(toplevel, x, y, width, height);
+      toplevel->pending_width = width;
+      toplevel->pending_height = height;
+      wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
     } else if(wl_list_length(&toplevel->workspace->masters)
         < server.config->master_count) {
       wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
@@ -1745,9 +1782,12 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
   if(!toplevel->mapped) return;
 
   if(toplevel->requested_size_change) {
-    /* this is going to be implemented in the future, right now it is now working really well
-     * as some toplevels may not be quick enough to make a new buffer, so it looks choppy.
-     * we need to add a timer of one output frame in which the client can commit, else we just crop the old buffer to fit */
+    /* this is going to be implemented in the future,
+     * right now it is now working really well
+     * as some toplevels may not be quick enough to make a new buffer,
+     * so it looks choppy.
+     * we need to add a timer of one output frame in which the client can commit,
+     * else we just crop the old buffer to fit */
 
     /*if(toplevel->pending_width != (uint32_t)toplevel->xdg_toplevel->current.width*/
     /*  || toplevel->pending_height != (uint32_t)toplevel->xdg_toplevel->current.height) {*/
@@ -2562,61 +2602,67 @@ static void keybind_switch_focused_toplevel_state(void *data) {
   layout_configure_tiled_toplevels(toplevel->workspace);
 }
 
-static bool config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_regex,
-    char *predicate, char **args, size_t arg_count) {
-  /* i dont think i will be freeing those,
-   * as they are needed for the whole runtime of the program */
-  regex_t app_id_compiled;
-  if(regcomp(&app_id_compiled, app_id_regex, REG_EXTENDED) != 0) {
-    wlr_log(WLR_ERROR, "%s is not a valid regex", app_id_regex);
-    regfree(&app_id_compiled);
-    return false;
+static bool config_add_window_rule(
+  struct owl_config *c,
+  char *app_id_regex,
+  char *title_regex,
+  char *predicate,
+  char **args,
+  size_t arg_count
+) {
+  struct window_rule_regex condition;
+  if(strcmp(app_id_regex, "_") == 0) {
+    condition.has_app_id_regex = false;
+  } else {
+    regex_t compiled;
+    if(regcomp(&compiled, app_id_regex, REG_EXTENDED) != 0) {
+      wlr_log(WLR_ERROR, "%s is not a valid regex", app_id_regex);
+      regfree(&compiled);
+      return false;
+    }
+    condition.app_id_regex = compiled;
+    condition.has_app_id_regex = true;
   }
 
-  regex_t title_compiled;
-  if(regcomp(&title_compiled, title_regex, REG_EXTENDED) != 0) {
-    wlr_log(WLR_ERROR, "%s is not a valid regex", title_regex);
-    regfree(&title_compiled);
-    return false;
+  if(strcmp(title_regex, "_") == 0) {
+    condition.has_title_regex = false;
+  } else {
+    regex_t compiled;
+    if(regcomp(&compiled, title_regex, REG_EXTENDED) != 0) {
+      wlr_log(WLR_ERROR, "%s is not a valid regex", title_regex);
+      regfree(&compiled);
+      return false;
+    }
+    condition.title_regex = compiled;
+    condition.has_title_regex = true;
   }
 
   if(strcmp(predicate, "float") == 0) {
-    if(c->window_rules.floating_count >= 64) {
-      wlr_log(WLR_ERROR, "more than 64 window rules, i am lazy to reallocate");
-      return false;
-    }
-    /* get next position in the array, for convenience */
-    struct window_rule_float *wr =
-      &c->window_rules.floating[c->window_rules.floating_count];
-    wr->app_id_regex = app_id_compiled;
-    wr->title_regex = title_compiled;
-    c->window_rules.floating_count++;
+    struct window_rule_float *window_rule = calloc(1, sizeof(*window_rule));
+    window_rule->condition = condition;
+    wl_list_insert(&c->window_rules.floating, &window_rule->link);
   } else if(strcmp(predicate, "size") == 0) {
-    if(c->window_rules.size_count >= 64) {
-      wlr_log(WLR_ERROR, "more than 64 window rules, i am lazy to reallocate");
-      return false;
-    }
     if(arg_count < 2) {
       wlr_log(WLR_ERROR, "invalid args to window_rule %s", predicate);
       return false;
     }
-    struct window_rule_size *wr =
-      &c->window_rules.size[c->window_rules.size_count];
-    wr->app_id_regex = app_id_compiled;
-    wr->title_regex = title_compiled;
-    /* handle relative values */
+    struct window_rule_size *window_rule = calloc(1, sizeof(*window_rule));
+    window_rule->condition = condition;
+
+    /* if it ends with '%' we treat it as a relative unit */
     if(args[0][strlen(args[0]) - 1] == '%') {
       args[0][strlen(args[0]) - 1] = 0;
-      wr->relative_width = true;
+      window_rule->relative_width = true;
     }
     if(args[1][strlen(args[1]) - 1] == '%') {
       args[1][strlen(args[1]) - 1] = 0;
-      wr->relative_height = true;
+      window_rule->relative_height = true;
     }
 
-    wr->width = atoi(args[0]);
-    wr->height = atoi(args[1]);
-    c->window_rules.size_count++;
+    window_rule->width = atoi(args[0]);
+    window_rule->height = atoi(args[1]);
+
+    wl_list_insert(&c->window_rules.size, &window_rule->link);
   }
 
   return true;
@@ -3089,6 +3135,8 @@ static bool server_load_config() {
   wl_list_init(&c->keybinds);
   wl_list_init(&c->outputs);
   wl_list_init(&c->workspaces);
+  wl_list_init(&c->window_rules.floating);
+  wl_list_init(&c->window_rules.size);
   
   /* you aint gonna have lines longer than 1kB */
   char line_buffer[1024] = {0};
@@ -3111,28 +3159,34 @@ static bool server_load_config() {
    * we set their values to some default value.*/
   if(c->keyboard_rate == 0) {
     c->keyboard_rate = 150;
-    wlr_log(WLR_INFO, "keyboard_rate not specified. using default %d", c->keyboard_rate);
+    wlr_log(WLR_INFO,
+      "keyboard_rate not specified. using default %d", c->keyboard_rate);
   } 
   if(c->keyboard_delay == 0) {
     c->keyboard_delay = 50;
-    wlr_log(WLR_INFO, "keyboard_delay not specified. using default %d", c->keyboard_delay);
+    wlr_log(WLR_INFO,
+      "keyboard_delay not specified. using default %d", c->keyboard_delay);
   }
   if(c->master_count == 0) {
     c->master_count = 1;
-    wlr_log(WLR_INFO, "master_count not specified. using default %lf", c->master_ratio);
+    wlr_log(WLR_INFO,
+      "master_count not specified. using default %lf", c->master_ratio);
   }
   if(c->master_ratio == 0) {
     /* here we evenly space toplevels if there is no master_ratio specified */
     c->master_ratio = c->master_count / (double)(c->master_count + 1);
-    wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
+    wlr_log(WLR_INFO,
+      "master_ratio not specified. using default %lf", c->master_ratio);
   }
   if(c->cursor_size == 0) {
     c->cursor_size = 24;
-    wlr_log(WLR_INFO, "cursor_size not specified. using default %d", c->cursor_size);
+    wlr_log(WLR_INFO,
+      "cursor_size not specified. using default %d", c->cursor_size);
   }
   if(c->min_toplevel_size == 0) {
     c->min_toplevel_size = 10;
-    wlr_log(WLR_INFO, "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
+    wlr_log(WLR_INFO,
+      "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
   }
 
   server.config = c;

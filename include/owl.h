@@ -66,14 +66,21 @@ enum owl_direction {
   LEFT,
 };
 
-struct window_rule_float {
+struct window_rule_regex {
+  bool has_app_id_regex;
   regex_t app_id_regex;
+  bool has_title_regex;
   regex_t title_regex;
 };
 
+struct window_rule_float {
+  struct window_rule_regex condition;
+  struct wl_list link;
+};
+
 struct window_rule_size {
-  regex_t app_id_regex;
-  regex_t title_regex;
+  struct window_rule_regex condition;
+  struct wl_list link;
   bool relative_width;
   uint32_t width;
   bool relative_height;
@@ -113,10 +120,8 @@ struct owl_config {
   struct wl_list keybinds;
   struct wl_list workspaces;
   struct {
-    struct window_rule_float floating[64];
-    size_t floating_count;
-    struct window_rule_size size[64];
-    size_t size_count;
+    struct wl_list floating;
+    struct wl_list size;
   } window_rules;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
