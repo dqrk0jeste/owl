@@ -141,8 +141,8 @@ static void toplevel_floating_size(
 ) {
   *width = toplevel->xdg_toplevel->current.width;
   *height = toplevel->xdg_toplevel->current.height;
-  if(toplevel->xdg_toplevel->app_id == NULL) return;
 
+  wlr_log(WLR_ERROR, "width: %d, height: %d", *width, *height);
   char *app_id = toplevel->xdg_toplevel->app_id;
   char *title = toplevel->xdg_toplevel->title;
 
@@ -613,11 +613,7 @@ static void toplevel_render_single(struct owl_toplevel *toplevel) {
   if(toplevel->workspace->fullscreen_toplevel != NULL &&
     toplevel != toplevel->workspace->fullscreen_toplevel) return;
 
-  /* we dont really care if floating toplevels are not respecting our size,
-   * but we dont want fullscreen toplevels to overflow its output if they are weird */
-  if(toplevel->fullscreen) {
-    toplevel_clip_size(toplevel, toplevel->pending_width, toplevel->pending_height);
-  }
+  toplevel_clip_size(toplevel, toplevel->pending_width, toplevel->pending_height);
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node,
     toplevel->pending_x, toplevel->pending_y);
@@ -1604,9 +1600,6 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel->scene_tree =
       wlr_scene_xdg_surface_create(server.tiled_tree, toplevel->xdg_toplevel->base);
   }
-  /* but we disable it since it still doesnt have a buffer */
-  /*wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);*/
-  /*toplevel->initial_render = true;*/
 
   /* we are keeping toplevels scene_tree in this free user data field, this is used in 
    * assigning parents to popups */
@@ -1621,19 +1614,21 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
 
   toplevel->scene_tree->node.data = something;
 
-  /* TODO: toplevels can be initialialy fullscreened, check for that */
   toplevel_create_borders(toplevel);
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
     /* we render it immediately if floating, but have to set the position before */
-    uint32_t width = toplevel->xdg_toplevel->current.width;
-    uint32_t height = toplevel->xdg_toplevel->current.height;
-    uint32_t pending_width = toplevel->xdg_toplevel->current.width;
-    uint32_t pending_height = toplevel->xdg_toplevel->current.height;
-    uint32_t geo_width = toplevel->xdg_toplevel->base->geometry.width;
-    uint32_t geo_height = toplevel->xdg_toplevel->base->geometry.height;
-    wlr_log(WLR_ERROR, "%d, %d, %d, %d, %d, %d", width, height, pending_width, pending_height, geo_width, geo_height);
+    uint32_t width = toplevel->xdg_toplevel->base->geometry.width;
+    uint32_t height = toplevel->xdg_toplevel->base->geometry.height;
+    /* if the toplevel was given size 0, 0, or it has mapped a size not specified
+     * in the configure, we change our state.*/
+    if(width != toplevel->pending_width) {
+      toplevel->pending_width = width;
+    }
+    if(height != toplevel->pending_height) {
+      toplevel->pending_height = height;
+    }
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
     toplevel->pending_x = output_box.x + (output_box.width - width) / 2;
     toplevel->pending_y = output_box.y + (output_box.height - height) / 2;
