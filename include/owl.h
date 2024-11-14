@@ -60,10 +60,16 @@ enum owl_cursor_mode {
 };
 
 enum owl_direction {
-  UP,
-  RIGHT,
-  DOWN,
-  LEFT,
+  OWL_UP,
+  OWL_RIGHT,
+  OWL_DOWN,
+  OWL_LEFT,
+};
+
+enum owl_border_state {
+  OWL_BORDER_INVISIBLE,
+  OWL_BORDER_ACTIVE,
+  OWL_BORDER_INACTIVE,
 };
 
 struct window_rule_regex {
@@ -212,11 +218,8 @@ struct owl_toplevel {
   /* these are going to be used in the next output frame to draw the thing */
   bool requested_size_change;
   bool responded_to_size_change;
-  uint32_t pending_x;
-  uint32_t pending_y;
-  uint32_t pending_width;
-  uint32_t pending_height;
-
+  /* pending state if responded_to_size_change == false and current state if its true */
+  struct wlr_box geometry;
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 
 	struct wl_listener map;
