@@ -1,6 +1,9 @@
+#include <bits/types/idtype_t.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <wayland-util.h>
 
 #include "owl.h"
 #include "ipc.h"
@@ -348,7 +351,6 @@ static void toplevel_borders_set_state(
   const float *border_color = border_get_color(state);
   for(size_t i = 0; i < 4; i++) {
     wlr_scene_rect_set_color(toplevel->borders[i], border_color);
-    wlr_log(WLR_ERROR, "color: %f", border_color[i]);
   }
 }
 
@@ -369,8 +371,8 @@ static void toplevel_set_pending_state(struct owl_toplevel *toplevel,
    * we only request a state from a client if its size has changed
    * to avoid waiting for a response, else we just update it immediately. */
   if((toplevel->floating || toplevel->fullscreen)
-    && toplevel->xdg_toplevel->current.width == width
-    && toplevel->xdg_toplevel->current.height == height) {
+      && toplevel->xdg_toplevel->current.width == width
+      && toplevel->xdg_toplevel->current.height == height) {
     toplevel_render_single(toplevel);
     return;
   };
@@ -447,8 +449,86 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
   
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
 }
-/* TODO: add owl_direction side argument */
-static void focus_output(struct owl_output *output) {
+
+static struct owl_toplevel *workspace_find_closest_tiled_toplevel(
+  struct owl_workspace *workspace,
+  bool master,
+  enum owl_direction side
+) {
+  /* this means there are no tiled toplevels */
+  if(wl_list_empty(&workspace->masters)) return NULL;
+
+  struct owl_toplevel *first_master =
+    wl_container_of(workspace->masters.next, first_master, link);
+  struct owl_toplevel *last_master =
+    wl_container_of(workspace->masters.prev, last_master, link);
+
+  struct owl_toplevel *first_slave = NULL;
+  struct owl_toplevel *last_slave = NULL;
+  if(!wl_list_empty(&workspace->slaves)) {
+    first_slave = wl_container_of(workspace->slaves.next, first_slave, link);
+    last_slave = wl_container_of(workspace->slaves.prev, last_slave, link);
+  }
+
+  switch(side) {
+    case OWL_UP: {
+      if(master || first_slave == NULL) return first_master;
+      return first_slave;
+    }
+    case OWL_DOWN: {
+      if(master || last_slave == NULL) return first_master;
+      return last_slave;
+    }
+    case OWL_LEFT: {
+      return first_master;
+    }
+    case OWL_RIGHT: {
+      if(first_slave != NULL) return first_slave;
+      return last_master;
+    }
+  }
+}
+
+static struct owl_toplevel *workspace_find_closest_floating_toplevel(
+  struct owl_workspace *workspace,
+  enum owl_direction side
+) {
+  struct wl_list *l = workspace->floating_toplevels.next;
+  /* this means there are no floating toplevels */
+  if(l == &workspace->floating_toplevels) return NULL;
+
+  struct owl_toplevel *first = wl_container_of(l, first, link);
+  struct owl_toplevel *min_x = first;
+  struct owl_toplevel *max_x = first;
+  struct owl_toplevel *min_y = first;
+  struct owl_toplevel *max_y = first;
+
+  struct owl_toplevel *t;
+  wl_list_for_each(t, &workspace->floating_toplevels, link) {
+    if(t->geometry.x < min_x->geometry.x) {
+      min_x = t;
+    } else if(t->geometry.x > max_x->geometry.x) {
+      max_x = t;
+    }
+    if(t->geometry.y < min_y->geometry.y) {
+      min_y = t;
+    } else if(t->geometry.y > max_y->geometry.y) {
+      max_y = t;
+    }
+  }
+
+  switch(side) {
+    case OWL_UP: return min_y;
+    case OWL_DOWN: return max_y;
+    case OWL_LEFT: return min_x;
+    case OWL_RIGHT: return max_x;
+  }
+}
+
+static void focus_output(
+  struct owl_output *output,
+  enum owl_direction side
+) {
   assert(output != NULL);
 
   struct owl_toplevel *focus_next = NULL;
@@ -456,12 +536,15 @@ static void focus_output(struct owl_output *output) {
   
   if(workspace->fullscreen_toplevel != NULL) {
     focus_next = workspace->fullscreen_toplevel;
-  } else if(!wl_list_empty(&workspace->masters)) {
-      focus_next = wl_container_of(workspace->masters.next, focus_next, link);
-  } else if(!wl_list_empty(&workspace->floating_toplevels)){
-    /* this is not particurarly natural becuause it doesnt respect
-     * spacial arrangement of toplevels, but its better then doing nothing i think */
-    focus_next = wl_container_of(workspace->floating_toplevels.next, focus_next, link);
+  } else if(server.focused_toplevel == NULL || !server.focused_toplevel->floating) {
+    bool master = server.focused_toplevel != NULL
+      ? toplevel_is_master(server.focused_toplevel)
+      : true;
+    focus_next =
+      workspace_find_closest_tiled_toplevel(output->active_workspace, master, side);
+  } else {
+    focus_next =
+      workspace_find_closest_floating_toplevel(output->active_workspace, side);
   }
 
   server.active_workspace = workspace;
@@ -2298,6 +2381,22 @@ static void keybind_move_focus(void *data) {
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
 
+  enum owl_direction opposite_side;
+  switch(direction) {
+    case OWL_UP:
+      opposite_side = OWL_DOWN;
+      break;
+    case OWL_DOWN:
+      opposite_side = OWL_UP;
+      break;
+    case OWL_LEFT:
+      opposite_side = OWL_RIGHT;
+      break;
+    case OWL_RIGHT:
+      opposite_side = OWL_LEFT;
+      break;
+  }
+
   /* if no toplevel has keyboard focus then get the output
    * the pointer is on and try from there */
   if(toplevel == NULL) {
@@ -2306,7 +2405,7 @@ static void keybind_move_focus(void *data) {
     struct owl_output *output = wlr_output->data;
     struct owl_output *relative_output = output_get_relative(output, direction);
     if(relative_output != NULL) {
-      focus_output(relative_output);
+      focus_output(relative_output, opposite_side);
     }
     return;
   }
@@ -2320,7 +2419,7 @@ static void keybind_move_focus(void *data) {
   if(toplevel->floating || toplevel->fullscreen) {
     struct owl_output *relative_output = output_get_relative(output, direction);
     if(relative_output != NULL) {
-      focus_output(relative_output);
+      focus_output(relative_output, opposite_side);
     }
     return;
   }
@@ -2334,7 +2433,7 @@ static void keybind_move_focus(void *data) {
           next = workspace->slaves.next;
           if(next == &workspace->slaves) {
             if(relative_output != NULL) {
-              focus_output(relative_output);
+              focus_output(relative_output, opposite_side);
             }
             return;
           }
@@ -2348,7 +2447,7 @@ static void keybind_move_focus(void *data) {
         next = toplevel->link.prev;
         if(next == &workspace->masters) {
           if(relative_output != NULL) {
-            focus_output(relative_output);
+            focus_output(relative_output, opposite_side);
           }
           return;
         }
@@ -2358,8 +2457,8 @@ static void keybind_move_focus(void *data) {
         return;
       }
       default: {
-        if(relative_output == NULL) {
-          focus_output(relative_output);
+        if(relative_output != NULL) {
+          focus_output(relative_output, opposite_side);
         }
         return;
       }
@@ -2377,7 +2476,7 @@ static void keybind_move_focus(void *data) {
     }
     case OWL_RIGHT: {
       if(relative_output != NULL) {
-        focus_output(relative_output);
+        focus_output(relative_output, opposite_side);
       }
       return;
     }
@@ -2385,7 +2484,7 @@ static void keybind_move_focus(void *data) {
       struct wl_list *above = toplevel->link.prev;
       if(above == &workspace->slaves) {
         if(relative_output != NULL) {
-          focus_output(relative_output);
+          focus_output(relative_output, opposite_side);
         }
         return;
       }
@@ -2398,7 +2497,7 @@ static void keybind_move_focus(void *data) {
       struct wl_list *bellow = toplevel->link.next;
       if(bellow == &workspace->slaves) {
         if(relative_output != NULL) {
-          focus_output(relative_output);
+          focus_output(relative_output, opposite_side);
         }
         return;
       }
