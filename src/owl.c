@@ -525,6 +525,72 @@ static struct owl_toplevel *workspace_find_closest_floating_toplevel(
   }
 }
 
+static struct owl_toplevel *toplevel_find_closest_floating_on_workspace(
+  struct owl_toplevel *toplevel,
+  enum owl_direction direction
+) {
+  assert(toplevel->floating);
+  struct owl_workspace *workspace = toplevel->workspace;
+  /* this means there are no floating toplevels */
+  if(wl_list_empty(&workspace->floating_toplevels)) return NULL;
+
+  struct owl_toplevel *min = NULL;
+  uint32_t min_val = UINT32_MAX;
+
+  struct owl_toplevel *t;
+
+  switch(direction) {
+    case OWL_UP: {
+      wl_list_for_each(t, &workspace->floating_toplevels, link) {
+        if(t == toplevel || t->geometry.y > toplevel->geometry.y) continue;
+
+        uint32_t dy = abs((int)t->geometry.y - toplevel->geometry.y);
+        if(dy < min_val) {
+          min = t;
+          min_val = dy;
+        }
+      }
+      return min;
+    }
+    case OWL_DOWN: {
+      wl_list_for_each(t, &workspace->floating_toplevels, link) {
+        if(t == toplevel || t->geometry.y < toplevel->geometry.y) continue;
+
+        uint32_t dy = abs((int)t->geometry.y - toplevel->geometry.y);
+        if(dy < min_val) {
+          min = t;
+          min_val = dy;
+        }
+      }
+      return min;
+    }
+    case OWL_LEFT: {
+      wl_list_for_each(t, &workspace->floating_toplevels, link) {
+        if(t == toplevel || t->geometry.x > toplevel->geometry.x) continue;
+
+        uint32_t dx = abs((int)t->geometry.x - toplevel->geometry.x);
+        if(dx < min_val) {
+          min = t;
+          min_val = dx;
+        }
+      }
+      return min;
+    }
+    case OWL_RIGHT: {
+      wl_list_for_each(t, &workspace->floating_toplevels, link) {
+        if(t == toplevel || t->geometry.x < toplevel->geometry.x) continue;
+
+        uint32_t dx = abs((int)t->geometry.x - toplevel->geometry.x);
+        if(dx < min_val) {
+          min = t;
+          min_val = dx;
+        }
+      }
+      return min;
+    }
+  }
+}
+
 static void focus_output(
   struct owl_output *output,
   enum owl_direction side
@@ -542,9 +608,19 @@ static void focus_output(
       : true;
     focus_next =
       workspace_find_closest_tiled_toplevel(output->active_workspace, master, side);
+    /* if there are no tiled toplevels we try floating */
+    if(focus_next == NULL) {
+      focus_next =
+        workspace_find_closest_floating_toplevel(output->active_workspace, side);
+    }
   } else {
     focus_next =
       workspace_find_closest_floating_toplevel(output->active_workspace, side);
+    /* if there are no floating toplevels we try tiled */
+    if(focus_next == NULL) {
+      focus_next =
+        workspace_find_closest_tiled_toplevel(output->active_workspace, true, side);
+    }
   }
 
   server.active_workspace = workspace;
@@ -582,7 +658,7 @@ static void focus_layer_surface(struct owl_layer_surface *layer_surface) {
       server.prev_focused = server.focused_toplevel;
       unfocus_focused_toplevel();
       struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
-      if (keyboard != NULL) {
+      if(keyboard != NULL) {
         wlr_seat_keyboard_notify_enter(server.seat,
           layer_surface->wlr_layer_surface->surface,
           keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
@@ -2416,7 +2492,21 @@ static void keybind_move_focus(void *data) {
   struct owl_output *relative_output =
     output_get_relative(toplevel->workspace->output, direction);
 
-  if(toplevel->floating || toplevel->fullscreen) {
+  if(toplevel->fullscreen) {
+    struct owl_output *relative_output = output_get_relative(output, direction);
+    if(relative_output != NULL) {
+      focus_output(relative_output, opposite_side);
+    }
+    return;
+  }
+
+  if(toplevel->floating) {
+    struct owl_toplevel *closest = toplevel_find_closest_floating_on_workspace(toplevel, direction);
+    if(closest != NULL) {
+      focus_toplevel(closest);
+      cursor_jump_focused_toplevel();
+      return;
+    }
     struct owl_output *relative_output = output_get_relative(output, direction);
     if(relative_output != NULL) {
       focus_output(relative_output, opposite_side);
