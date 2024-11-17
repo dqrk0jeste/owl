@@ -143,6 +143,9 @@ struct owl_config {
   double master_ratio;
   bool natural_scroll;
   bool tap_to_click;
+  bool animations;
+  uint32_t animation_duration;
+  int32_t animation_curve[3];
   char *run[64];
   size_t run_count;
 };
@@ -173,6 +176,16 @@ struct owl_output {
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
+};
+
+struct owl_animation {
+  struct wl_event_source *source;
+  bool should_animate;
+  bool running;
+  bool animate_size;
+  uint32_t frame_duration;
+	struct timespec start;
+  struct wlr_box initial_geometry;
 };
 
 enum owl_type {
@@ -220,6 +233,9 @@ struct owl_toplevel {
   bool responded_to_size_change;
   /* pending state if responded_to_size_change == false and current state if its true */
   struct wlr_box geometry;
+
+  struct owl_animation animation;
+
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 
 	struct wl_listener map;
@@ -252,6 +268,7 @@ struct owl_keyboard {
 
 struct owl_server {
 	struct wl_display *wl_display;
+	struct wl_event_loop *wl_event_loop;
 	struct wlr_backend *backend;
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
