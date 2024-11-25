@@ -4,7 +4,6 @@
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
-#include <stdint.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -31,8 +30,6 @@ static double calculate_animation_passed(struct owl_animation *animation) {
 	struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
   uint32_t time_passed = now.tv_nsec - animation->start.tv_nsec;
-
-  wlr_log(WLR_ERROR, "time_passed / animation_duration = %d / %d", time_passed, server.config->animation_duration);
 
   return min((double)time_passed / server.config->animation_duration, 1);
 }
@@ -176,7 +173,7 @@ static void toplevel_floating_size(
 static bool toplevel_should_float(struct owl_toplevel *toplevel) {
   /* we make toplevels float if they have fixed size
    * or are children of another toplevel */
-  bool natural =
+  bool b =
     (toplevel->xdg_toplevel->current.max_height &&
       toplevel->xdg_toplevel->current.max_height
       == toplevel->xdg_toplevel->current.min_height)
@@ -184,7 +181,7 @@ static bool toplevel_should_float(struct owl_toplevel *toplevel) {
       toplevel->xdg_toplevel->current.max_width
       == toplevel->xdg_toplevel->current.min_width)
     || toplevel->xdg_toplevel->parent != NULL;
-  if(natural) return true;
+  if(b) return true;
 
   char *app_id = toplevel->xdg_toplevel->app_id;
   char *title = toplevel->xdg_toplevel->title;
@@ -295,6 +292,7 @@ static void cursor_jump_focused_toplevel() {
     toplevel->scene_tree->node.y + geo_box.y + geo_box.height / 2.0);
 }
 
+/* TODO: replace with a lookup table */
 static const float *border_get_color(enum owl_border_state state) {
   static const float invisible[] = {0, 0, 0, 0};
   switch(state) {
@@ -362,6 +360,17 @@ static void toplevel_borders_set_state(
 
 static void toplevel_render_single(struct owl_toplevel *toplevel);
 
+/* TODO: */
+static void toplevel_set_initial_state(
+  struct owl_toplevel *toplevel,
+  uint32_t x,
+  uint32_t y,
+  uint32_t width,
+  uint32_t height
+) {
+
+}
+
 static void toplevel_set_pending_state(
   struct owl_toplevel *toplevel,
   uint32_t x,
@@ -389,7 +398,7 @@ static void toplevel_set_pending_state(
     return;
   };
 
-  wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+  toplevel->configure_serial = wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 
   toplevel->requested_size_change = true;
   toplevel->responded_to_size_change = false;
@@ -809,7 +818,7 @@ static bool layout_tiled_ready(struct owl_workspace *workspace) {
 static void toplevel_render_single(struct owl_toplevel *toplevel) {
   assert(toplevel->floating || toplevel->fullscreen);
 
-  if(!toplevel->animation.should_animate) {
+  if(true) {
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
       toplevel->geometry.x, toplevel->geometry.y);
     toplevel_clip_size(toplevel, 0, 0);
@@ -1823,7 +1832,6 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
       .height = height,
     };
     toplevel->geometry = geometry;
-    toplevel->animation.should_animate = false;
     toplevel_render_single(toplevel);
   } else if(layout_tiled_ready(toplevel->workspace)) {
     layout_render(toplevel->workspace);
@@ -1941,12 +1949,13 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 	/* called when a new surface state is committed */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
+  wlr_log(WLR_ERROR, "darko");
+
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
     toplevel->workspace = server.active_workspace;
     toplevel->floating = toplevel_should_float(toplevel);
-    toplevel->animation.should_animate = false;
 
     if(toplevel->floating) {
       wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
@@ -1978,7 +1987,6 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
       toplevel->geometry.width = toplevel->xdg_toplevel->base->geometry.width;
       toplevel->geometry.height = toplevel->xdg_toplevel->base->geometry.height;
       struct wlr_box output_box = toplevel->workspace->output->usable_area;
-      toplevel->animation.should_animate = false;
       toplevel_set_pending_state(toplevel,
         output_box.x + (output_box.width - toplevel->geometry.width) / 2,
         output_box.y + (output_box.height - toplevel->geometry.height) / 2,
@@ -1986,7 +1994,6 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
       return;
     }
 
-    toplevel->animation.should_animate = true;
     toplevel_render_single(toplevel);
     return;
   }

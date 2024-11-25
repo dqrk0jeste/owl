@@ -180,7 +180,7 @@ struct owl_output {
 
 struct owl_animation {
   struct wl_event_source *source;
-  bool should_animate;
+  bool should_animate_next_state;
   bool running;
   bool animate_size;
   uint32_t frame_duration;
@@ -225,12 +225,15 @@ struct owl_toplevel {
   bool mapped;
   bool floating;
   bool fullscreen;
+
   /* if a floating toplevel becomes fullscreen, we keep its previous state here */
   struct wlr_box prev_geometry;
 
   /* these are going to be used in the next output frame to draw the thing */
+  uint32_t configure_serial;
   bool requested_size_change;
   bool responded_to_size_change;
+
   /* pending state if responded_to_size_change == false and current state if its true */
   struct wlr_box geometry;
 
