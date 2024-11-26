@@ -180,7 +180,7 @@ struct owl_output {
 
 struct owl_animation {
   struct wl_event_source *source;
-  bool should_animate_next;
+  bool should_animate;
   bool running;
   uint32_t frame_duration;
 	struct timespec start;
@@ -227,6 +227,7 @@ struct owl_toplevel {
   bool fullscreen;
 
   uint32_t configure_serial;
+  bool dirty;
 
   /* state to be applied to this toplevel; values of 0 mean that the client should
    * choose its size and need to be handled seperately */
