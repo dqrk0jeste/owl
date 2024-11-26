@@ -2,7 +2,6 @@
 #include "ipc.h"
 
 #include "wlr-layer-shell-unstable-v1-protocol.h"
-#include "wlr/types/wlr_xdg_decoration_v1.h"
 #include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
 
@@ -307,8 +306,14 @@ static const float *border_get_color(enum owl_border_state state) {
 }
 
 static void toplevel_borders_create(struct owl_toplevel *toplevel) {
-  uint32_t width = WIDTH(toplevel);
-  uint32_t height = HEIGHT(toplevel);
+  uint32_t width, height;
+  if(toplevel->floating) {
+    width = WIDTH(toplevel);
+    height = HEIGHT(toplevel);
+  } else {
+    width = toplevel->pending.width;
+    height = toplevel->pending.height;
+  }
 
   uint32_t border_width = server.config->border_width;
   const float *border_color = border_get_color(OWL_BORDER_INVISIBLE);
@@ -335,8 +340,14 @@ static void toplevel_borders_create(struct owl_toplevel *toplevel) {
 }
 
 static void toplevel_borders_update(struct owl_toplevel *toplevel) {
-  uint32_t width = WIDTH(toplevel);
-  uint32_t height = HEIGHT(toplevel);
+  uint32_t width, height;
+  if(toplevel->floating) {
+    width = WIDTH(toplevel);
+    height = HEIGHT(toplevel);
+  } else {
+    width = toplevel->pending.width;
+    height = toplevel->pending.height;
+  }
 
   uint32_t border_width = server.config->border_width;
 
@@ -361,6 +372,7 @@ static void toplevel_borders_set_state(
 
 static void toplevel_center_floating(struct owl_toplevel *toplevel) {
   assert(toplevel->floating);
+
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
   toplevel->pending.x = output_box.x + (output_box.width - WIDTH(toplevel)) / 2;
   toplevel->pending.y = output_box.y + (output_box.height - HEIGHT(toplevel)) / 2;
@@ -387,7 +399,7 @@ static void toplevel_set_pending_state(
    * we only request a state from a client if its size has changed
    * to avoid waiting for a response, else we just update it immediately. */
   if((toplevel->floating || toplevel->fullscreen)
-      && WIDTH(toplevel) == width && HEIGHT(toplevel) == height) {
+     && WIDTH(toplevel) == width && HEIGHT(toplevel) == height) {
     toplevel_render(toplevel);
     return;
   };
@@ -401,8 +413,8 @@ static void cursor_jump_output(struct owl_output *output) {
   wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
   wlr_cursor_warp(server.cursor, NULL,
-    output_box.x + output_box.width / 2.0,
-    output_box.y + output_box.height / 2.0);
+                  output_box.x + output_box.width / 2.0,
+                  output_box.y + output_box.height / 2.0);
 }
 
 static void unfocus_focused_toplevel() {
@@ -428,7 +440,7 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
   if(server.layer_exclusive_keyboard != NULL) return;
 
   if(toplevel->workspace->fullscreen_toplevel != NULL
-    && toplevel != toplevel->workspace->fullscreen_toplevel) return;
+     && toplevel != toplevel->workspace->fullscreen_toplevel) return;
 
   struct owl_toplevel *prev_toplevel = server.focused_toplevel;
 	if(prev_toplevel == toplevel) return;
@@ -457,25 +469,28 @@ static void focus_toplevel(struct owl_toplevel *toplevel) {
 	struct wlr_seat *seat = server.seat;
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 	if(keyboard != NULL) {
-		wlr_seat_keyboard_notify_enter(seat, toplevel->xdg_toplevel->base->surface,
-			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+    wlr_seat_keyboard_notify_enter(seat,
+                                   toplevel->xdg_toplevel->base->surface,
+                                   keyboard->keycodes,
+                                   keyboard->num_keycodes,
+                                   &keyboard->modifiers);
 	}
   
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
 }
 
-static struct owl_toplevel *workspace_find_closest_tiled_toplevel(
-  struct owl_workspace *workspace,
-  bool master,
-  enum owl_direction side
-) {
+static struct owl_toplevel*
+workspace_find_closest_tiled_toplevel(struct owl_workspace *workspace,
+                                      bool master,
+                                      enum owl_direction side) {
   /* this means there are no tiled toplevels */
   if(wl_list_empty(&workspace->masters)) return NULL;
 
   struct owl_toplevel *first_master =
     wl_container_of(workspace->masters.next, first_master, link);
-  struct owl_toplevel *last_master =
-    wl_container_of(workspace->masters.prev, last_master, link);
+  struct owl_toplevel *last_master = wl_container_of(workspace->masters.prev,
+                                                     last_master,
+                                                     link);
 
   struct owl_toplevel *first_slave = NULL;
   struct owl_toplevel *last_slave = NULL;
@@ -503,10 +518,9 @@ static struct owl_toplevel *workspace_find_closest_tiled_toplevel(
   }
 }
 
-static struct owl_toplevel *workspace_find_closest_floating_toplevel(
-  struct owl_workspace *workspace,
-  enum owl_direction side
-) {
+static struct owl_toplevel*
+workspace_find_closest_floating_toplevel(struct owl_workspace *workspace,
+                                         enum owl_direction side) {
   if(wl_list_empty(&workspace->floating_toplevels)) return NULL;
 
   struct owl_toplevel *min_x;
@@ -691,9 +705,11 @@ static void focus_layer_surface(struct owl_layer_surface *layer_surface) {
 /* FIXME */
 static struct owl_output *toplevel_get_primary_output(struct owl_toplevel *toplevel) {
   uint32_t toplevel_x =
-    toplevel->scene_tree->node.x;
+    toplevel->scene_tree->node.x +
+    toplevel->xdg_toplevel->base->geometry.x;
   uint32_t toplevel_y =
-    toplevel->scene_tree->node.y;
+    toplevel->scene_tree->node.y +
+    toplevel->xdg_toplevel->base->geometry.y;
 
   struct wlr_box toplevel_box = {
     .x = toplevel_x,
@@ -728,8 +744,8 @@ static void toplevel_clip_size(struct owl_toplevel *toplevel) {
   struct wlr_box clip_box = (struct wlr_box){
     .x = 0,
     .y = 0,
-    .width = toplevel->pending.width + toplevel->xdg_toplevel->base->geometry.x,
-    .height = toplevel->pending.height+ toplevel->xdg_toplevel->base->geometry.y,
+    .width = toplevel->pending.width,
+    .height = toplevel->pending.height,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
@@ -745,8 +761,8 @@ static uint32_t toplevel_get_closest_corner(
 ) {
   struct wlr_box geometry = toplevel->xdg_toplevel->base->geometry;
 
-  uint32_t toplevel_x = toplevel->scene_tree->node.x;
-  uint32_t toplevel_y = toplevel->scene_tree->node.y;
+  uint32_t toplevel_x = toplevel->scene_tree->node.x + geometry.x;
+  uint32_t toplevel_y = toplevel->scene_tree->node.y + geometry.y;
 
   uint32_t left_dist = cursor->x - toplevel_x;
   uint32_t right_dist = geometry.width - left_dist;
@@ -802,10 +818,12 @@ static uint32_t toplevel_get_closest_corner(
 static bool layout_tiled_ready(struct owl_workspace *workspace) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
-    if(t->xdg_toplevel->base->current.configure_serial != t->configure_serial) return false;
+    if(!t->mapped || t->xdg_toplevel->base->current.configure_serial
+       != t->configure_serial) return false;
   }
   wl_list_for_each(t, &workspace->slaves, link) {
-    if(t->xdg_toplevel->base->current.configure_serial != t->configure_serial) return false;
+    if(!t->mapped || t->xdg_toplevel->base->current.configure_serial
+       != t->configure_serial) return false;
   }
 
   return true;
@@ -1385,7 +1403,7 @@ static void process_toplevel_move(uint32_t time) {
 	int new_x = server.grabbed_toplevel_initial_box.x + (server.cursor->x - server.grab_x);
 	int new_y = server.grabbed_toplevel_initial_box.y + (server.cursor->y - server.grab_y);
 
-  toplevel_set_pending_state(toplevel, new_x, new_y,
+  toplevel_set_pending_state(toplevel, new_x - geometry.x, new_y - geometry.y,
     geometry.width, geometry.height);
 }
 
@@ -1790,7 +1808,7 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
    * assigning parents to popups */
   toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
 
-  /* in a node we want to keep information what that node represents. we do that
+  /* in the node we want to keep information what that node represents. we do that
    * be keeping owl_something in user data field, which is a union of all possible
    * 'things' we can have on the screen */
   struct owl_something *something = calloc(1, sizeof(*something));
@@ -1809,9 +1827,8 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel_render(toplevel);
   } else {
     /* we cheat to mark this toplevel as clean */
-    toplevel->configure_serial = toplevel->xdg_toplevel->base->current.configure_serial;
+    /*toplevel->configure_serial = toplevel->xdg_toplevel->base->current.configure_serial;*/
     if(layout_tiled_ready(toplevel->workspace)) {
-      /* FIXME */
       layout_render(toplevel->workspace);
     }
   }
@@ -1940,7 +1957,8 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
       uint32_t width, height;
       toplevel_floating_size(toplevel, &width, &height);
       wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
-    } else if(wl_list_length(&toplevel->workspace->masters) < server.config->master_count) {
+    } else if(wl_list_length(&toplevel->workspace->masters)
+              < server.config->master_count) {
       wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
       layout_send_configure(toplevel->workspace);
     } else {
