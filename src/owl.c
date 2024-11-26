@@ -334,8 +334,8 @@ static void toplevel_borders_create(struct owl_toplevel *toplevel) {
 }
 
 static void toplevel_borders_update(struct owl_toplevel *toplevel) {
-  uint32_t width = toplevel->geometry.width;
-  uint32_t height = toplevel->geometry.height;
+  uint32_t width = toplevel->xdg_toplevel->base->geometry.width;
+  uint32_t height = toplevel->xdg_toplevel->base->geometry.height;
 
   uint32_t border_width = server.config->border_width;
 
@@ -359,17 +359,6 @@ static void toplevel_borders_set_state(
 }
 
 static void toplevel_render_single(struct owl_toplevel *toplevel);
-
-/* TODO: */
-static void toplevel_set_initial_state(
-  struct owl_toplevel *toplevel,
-  uint32_t x,
-  uint32_t y,
-  uint32_t width,
-  uint32_t height
-) {
-
-}
 
 static void toplevel_set_pending_state(
   struct owl_toplevel *toplevel,
@@ -399,9 +388,6 @@ static void toplevel_set_pending_state(
   };
 
   toplevel->configure_serial = wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
-
-  toplevel->requested_size_change = true;
-  toplevel->responded_to_size_change = false;
 }
 
 static void cursor_jump_output(struct owl_output *output) {
@@ -785,7 +771,7 @@ static int toplevel_animate(void *data) {
     (toplevel->geometry.y - toplevel->animation.initial_geometry.y) * animation_passed;
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
 
-  if(toplevel->animation.animate_size) {
+  if(false) {
     uint32_t width = toplevel->animation.initial_geometry.width +
       (toplevel->geometry.width - toplevel->animation.initial_geometry.width) * animation_passed;
     uint32_t height = toplevel->animation.initial_geometry.height +
@@ -806,10 +792,10 @@ static int toplevel_animate(void *data) {
 static bool layout_tiled_ready(struct owl_workspace *workspace) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
-    if(t->requested_size_change && !t->responded_to_size_change) return false;
+    if(t->xdg_toplevel->base->current.configure_serial != t->configure_serial) return false;
   }
   wl_list_for_each(t, &workspace->slaves, link) {
-    if(t->requested_size_change && !t->responded_to_size_change) return false;
+    if(t->xdg_toplevel->base->current.configure_serial != t->configure_serial) return false;
   }
 
   return true;
@@ -821,7 +807,7 @@ static void toplevel_render_single(struct owl_toplevel *toplevel) {
   if(true) {
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
       toplevel->geometry.x, toplevel->geometry.y);
-    toplevel_clip_size(toplevel, 0, 0);
+    toplevel_unclip_size(toplevel);
     toplevel_borders_update(toplevel);
   } else {
 	  struct timespec now;
@@ -835,9 +821,6 @@ static void toplevel_render_single(struct owl_toplevel *toplevel) {
     wl_event_source_timer_update(timer, toplevel->animation.frame_duration);
     toplevel->animation.source = timer;
   }
-
-  /* if we render the new state then remove the flag */
-  toplevel->requested_size_change = false;
 }
 
 static void layout_render(struct owl_workspace *workspace) {
@@ -847,14 +830,12 @@ static void layout_render(struct owl_workspace *workspace) {
   wl_list_for_each(t, &workspace->masters, link) {
     toplevel_clip_size(t, 0, 0);
     wlr_scene_node_set_position(&t->scene_tree->node, t->geometry.x, t->geometry.y);
-    t->requested_size_change = false;
     toplevel_borders_update(t);
   }
 
   wl_list_for_each(t, &workspace->slaves, link) {
     toplevel_clip_size(t, 0, 0);
     wlr_scene_node_set_position(&t->scene_tree->node, t->geometry.x, t->geometry.y);
-    t->requested_size_change = false;
     toplevel_borders_update(t);
   }
 }
@@ -1425,35 +1406,38 @@ static void process_toplevel_resize(uint32_t time) {
 	if(server.resize_edges & WLR_EDGE_TOP) {
 		new_y = start_y + (server.cursor->y - server.grab_y);
     new_height = start_height - (server.cursor->y - server.grab_y);
-		if (new_height <= min_height) {
+		if(new_height <= min_height) {
       new_y = start_y + start_height - min_height;
       new_height = min_height;
 		}
-	} else if (server.resize_edges & WLR_EDGE_BOTTOM) {
+	} else if(server.resize_edges & WLR_EDGE_BOTTOM) {
 		new_y = start_y;
     new_height = start_height + (server.cursor->y - server.grab_y);
-		if (new_height <= min_height) {
+		if(new_height <= min_height) {
       new_height = min_height;
 		}
 	}
-	if (server.resize_edges & WLR_EDGE_LEFT) {
+	if(server.resize_edges & WLR_EDGE_LEFT) {
 		new_x = start_x + (server.cursor->x - server.grab_x);
     new_width = start_width - (server.cursor->x - server.grab_x);
-		if (new_width <= min_width) {
+		if(new_width <= min_width) {
       new_x = start_x + start_width - min_width;
       new_width = min_width;
 		}
-	} else if (server.resize_edges & WLR_EDGE_RIGHT) {
+	} else if(server.resize_edges & WLR_EDGE_RIGHT) {
 		new_x = start_x;
     new_width = start_width + (server.cursor->x - server.grab_x);
-		if (new_width <= min_width) {
+		if(new_width <= min_width) {
       new_width = min_width;
 		}
 	}
 
-	struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-  toplevel_set_pending_state(toplevel, new_x - geo_box->x, new_y - geo_box->y,
+	struct wlr_box *geometry = &toplevel->xdg_toplevel->base->geometry;
+  wlr_xdg_toplevel_set_resizing(toplevel->xdg_toplevel, true);
+  toplevel_set_pending_state(toplevel, new_x - geometry->x, new_y - geometry->y,
     new_width, new_height);
+  /*toplevel_unclip_size(toplevel);*/
+  /*toplevel_borders_update(toplevel);*/
 }
 
 static void process_cursor_motion(uint32_t time) {
@@ -1790,8 +1774,6 @@ static void xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
   toplevel->mapped = true;
-  /* this is just so the toplevel is marked as clean */
-  toplevel->responded_to_size_change = true;
 
   /* add this toplevel to the scene tree */
   if(toplevel->floating) {
@@ -1949,8 +1931,6 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 	/* called when a new surface state is committed */
 	struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
-  wlr_log(WLR_ERROR, "darko");
-
 	if(toplevel->xdg_toplevel->base->initial_commit) {
 		/* when an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. */
@@ -1962,13 +1942,8 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
       /* we lookup window rules and send a configure */
       uint32_t width, height;
       toplevel_floating_size(toplevel, &width, &height);
-      toplevel->animation.initial_geometry.x = 0;
-      toplevel->animation.initial_geometry.y = 0;
-      toplevel->animation.initial_geometry.width = width;
-      toplevel->animation.initial_geometry.height = height;
       wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
-    } else if(wl_list_length(&toplevel->workspace->masters)
-        < server.config->master_count) {
+    } else if(wl_list_length(&toplevel->workspace->masters) < server.config->master_count) {
       wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
       layout_send_configure(toplevel->workspace);
     } else {
@@ -1980,32 +1955,25 @@ static void xdg_toplevel_handle_commit(struct wl_listener *listener, void *data)
 
   if(!toplevel->mapped) return;
 
-  /* we dont really care about the size of floating toplevels */
   if(toplevel->floating || toplevel->fullscreen) {
     /* if the size was set to 0, toplevel should have chosen its preffered size; we copy it */
     if(toplevel->geometry.width == 0) {
+      struct wlr_box output_box = toplevel->workspace->output->usable_area;
       toplevel->geometry.width = toplevel->xdg_toplevel->base->geometry.width;
       toplevel->geometry.height = toplevel->xdg_toplevel->base->geometry.height;
-      struct wlr_box output_box = toplevel->workspace->output->usable_area;
-      toplevel_set_pending_state(toplevel,
-        output_box.x + (output_box.width - toplevel->geometry.width) / 2,
-        output_box.y + (output_box.height - toplevel->geometry.height) / 2,
-        toplevel->geometry.width, toplevel->geometry.height);
-      return;
+      toplevel->geometry.x = output_box.x + (output_box.width - toplevel->geometry.width) / 2;
+      toplevel->geometry.y = output_box.y + (output_box.height - toplevel->geometry.height) / 2;
     }
 
     toplevel_render_single(toplevel);
     return;
   }
 
-  /* these are tiled toplevels; we check if the layout is ready, and only then render it */
-  if(toplevel->requested_size_change
-      && toplevel->xdg_toplevel->current.width == toplevel->geometry.width
-      && toplevel->xdg_toplevel->current.height == toplevel->geometry.height) {
-    toplevel->responded_to_size_change = true;
-    if(layout_tiled_ready(toplevel->workspace)) {
-      layout_render(toplevel->workspace);
-    }
+  if(toplevel->xdg_toplevel->base->current.configure_serial
+    != toplevel->configure_serial) return;
+
+  if(layout_tiled_ready(toplevel->workspace)) {
+    layout_render(toplevel->workspace);
   }
 }
 
@@ -2789,9 +2757,7 @@ static void keybind_swap_focused_toplevel(void *data) {
 
 static void keybind_switch_focused_toplevel_state(void *data) {
   struct owl_toplevel *toplevel = server.focused_toplevel;
-  if(toplevel == NULL) return;
-
-  if(toplevel->fullscreen) return;
+  if(toplevel == NULL || toplevel->fullscreen) return;
 
   if(toplevel->floating) {
     toplevel->floating = false;

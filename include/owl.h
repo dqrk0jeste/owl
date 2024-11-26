@@ -180,9 +180,8 @@ struct owl_output {
 
 struct owl_animation {
   struct wl_event_source *source;
-  bool should_animate_next_state;
+  bool should_animate_next;
   bool running;
-  bool animate_size;
   uint32_t frame_duration;
 	struct timespec start;
   struct wlr_box initial_geometry;
@@ -231,11 +230,9 @@ struct owl_toplevel {
 
   /* these are going to be used in the next output frame to draw the thing */
   uint32_t configure_serial;
-  bool requested_size_change;
-  bool responded_to_size_change;
 
   /* pending state if responded_to_size_change == false and current state if its true */
-  struct wlr_box geometry;
+  /*struct wlr_box geometry;*/
 
   struct owl_animation animation;
 
