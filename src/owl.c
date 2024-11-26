@@ -2,6 +2,7 @@
 #include "ipc.h"
 
 #include "wlr-layer-shell-unstable-v1-protocol.h"
+#include "wlr/types/wlr_xdg_decoration_v1.h"
 #include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
 
@@ -690,11 +691,9 @@ static void focus_layer_surface(struct owl_layer_surface *layer_surface) {
 /* FIXME */
 static struct owl_output *toplevel_get_primary_output(struct owl_toplevel *toplevel) {
   uint32_t toplevel_x =
-    toplevel->scene_tree->node.x +
-    toplevel->xdg_toplevel->base->geometry.x;
+    toplevel->scene_tree->node.x;
   uint32_t toplevel_y =
-    toplevel->scene_tree->node.y +
-    toplevel->xdg_toplevel->base->geometry.y;
+    toplevel->scene_tree->node.y;
 
   struct wlr_box toplevel_box = {
     .x = toplevel_x,
@@ -729,8 +728,8 @@ static void toplevel_clip_size(struct owl_toplevel *toplevel) {
   struct wlr_box clip_box = (struct wlr_box){
     .x = 0,
     .y = 0,
-    .width = toplevel->pending.width,
-    .height = toplevel->pending.height,
+    .width = toplevel->pending.width + toplevel->xdg_toplevel->base->geometry.x,
+    .height = toplevel->pending.height+ toplevel->xdg_toplevel->base->geometry.y,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
@@ -746,8 +745,8 @@ static uint32_t toplevel_get_closest_corner(
 ) {
   struct wlr_box geometry = toplevel->xdg_toplevel->base->geometry;
 
-  uint32_t toplevel_x = toplevel->scene_tree->node.x + geometry.x;
-  uint32_t toplevel_y = toplevel->scene_tree->node.y + geometry.y;
+  uint32_t toplevel_x = toplevel->scene_tree->node.x;
+  uint32_t toplevel_y = toplevel->scene_tree->node.y;
 
   uint32_t left_dist = cursor->x - toplevel_x;
   uint32_t right_dist = geometry.width - left_dist;
@@ -1386,7 +1385,7 @@ static void process_toplevel_move(uint32_t time) {
 	int new_x = server.grabbed_toplevel_initial_box.x + (server.cursor->x - server.grab_x);
 	int new_y = server.grabbed_toplevel_initial_box.y + (server.cursor->y - server.grab_y);
 
-  toplevel_set_pending_state(toplevel, new_x - geometry.x, new_y - geometry.y,
+  toplevel_set_pending_state(toplevel, new_x, new_y,
     geometry.width, geometry.height);
 }
 
@@ -2208,7 +2207,7 @@ static void server_handle_new_xdg_popup(struct wl_listener *listener, void *data
 static void server_handle_request_xdg_decoration(struct wl_listener *listener, void *data) {
   struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
   wlr_xdg_toplevel_decoration_v1_set_mode(decoration,
-    WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+    WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 static void layer_surface_handle_commit(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
