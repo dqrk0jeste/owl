@@ -222,19 +222,20 @@ struct owl_toplevel {
   struct wlr_scene_rect *borders[4];
 
   bool mapped;
+
   bool floating;
   bool fullscreen;
 
-  /* if a floating toplevel becomes fullscreen, we keep its previous state here */
-  struct wlr_box prev_geometry;
-
-  /* these are going to be used in the next output frame to draw the thing */
   uint32_t configure_serial;
 
-  /* pending state if responded_to_size_change == false and current state if its true */
-  /*struct wlr_box geometry;*/
+  /* state to be applied to this toplevel; values of 0 mean that the client should
+   * choose its size and need to be handled seperately */
+  struct wlr_box pending;
 
   struct owl_animation animation;
+
+  /* if a floating toplevel becomes fullscreen, we keep its previous state here */
+  struct wlr_box prev_geometry;
 
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 
@@ -249,6 +250,13 @@ struct owl_toplevel {
 	struct wl_listener set_app_id;
 	struct wl_listener set_title;
 };
+
+/* some macros for commonly accessed fields of a toplevel */
+#define X(t) (t)->scene_tree->node.x
+#define Y(t) (t)->scene_tree->node.y
+#define WIDTH(t) (t)->xdg_toplevel->base->geometry.width
+#define HEIGHT(t) (t)->xdg_toplevel->base->geometry.height
+
 
 struct owl_popup {
 	struct wlr_xdg_popup *xdg_popup;
