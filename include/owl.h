@@ -145,7 +145,7 @@ struct owl_config {
   bool tap_to_click;
   bool animations;
   uint32_t animation_duration;
-  int32_t animation_curve[3];
+  double animation_curve[3];
   char *run[64];
   size_t run_count;
 };
