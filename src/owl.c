@@ -1,6 +1,7 @@
 #include "owl.h"
 #include "ipc.h"
 
+#include "pixman.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
@@ -495,10 +496,9 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(server.layer_exclusive_keyboard != NULL) return;
 
-  /*if(toplevel->workspace->fullscreen_toplevel != NULL*/
-  /*  && toplevel != toplevel->workspace->fullscreen_toplevel) return;*/
+  if(toplevel->workspace->fullscreen_toplevel != NULL
+    && toplevel != toplevel->workspace->fullscreen_toplevel) return;
 
-  wlr_log(WLR_ERROR, "workspace %p", toplevel->workspace);
   struct owl_toplevel *prev_toplevel = server.focused_toplevel;
   if(prev_toplevel == toplevel) return;
 
@@ -878,7 +878,6 @@ layout_tiled_ready(struct owl_workspace *workspace) {
 
 static void
 toplevel_commit(struct owl_toplevel *toplevel) {
-  wlr_log(WLR_ERROR, "workspace when commited %p", toplevel->workspace);
   if(toplevel->animation.should_animate) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1634,14 +1633,15 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, frame);
   struct owl_workspace *workspace = output->active_workspace;
 
-  struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(server.scene,
-                                                                     output->wlr_output);
+  bool animations_done = true;
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
+      } else {
+        animations_done = false;
       }
     }
   }
@@ -1650,6 +1650,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
+      } else {
+        animations_done = false;
       }
     }
   }
@@ -1658,18 +1660,25 @@ output_handle_frame(struct wl_listener *listener, void *data) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
+      } else {
+        animations_done = false;
       }
     }
   }
 
+  struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(server.scene,
+                                                                     output->wlr_output);
   wlr_scene_output_commit(scene_output, NULL);
 
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
   wlr_scene_output_send_frame_done(scene_output, &now);
+
+  if(!animations_done) {
+    wlr_output_schedule_frame(output->wlr_output);
+  }
 }
 
-/* this is not really good, but i dont care, as its not really used */
 static void
 output_handle_request_state(struct wl_listener *listener, void *data) {
   /* this function is called when the backend requests a new state for
@@ -1678,11 +1687,6 @@ output_handle_request_state(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, request_state);
   const struct wlr_output_event_request_state *event = data;
   wlr_output_commit_state(output->wlr_output, event->state);
-
-  struct wlr_box output_box;
-  wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
-
-  output->usable_area = output_box;
 }
 
 /* TODO: this needs tweaking in the future, rn outputs are not removed from
