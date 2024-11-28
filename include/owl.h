@@ -182,7 +182,8 @@ struct owl_animation {
   struct wl_event_source *source;
   bool should_animate;
   bool running;
-  uint32_t frame_duration;
+  uint32_t total_frames;
+  uint32_t passed_frames;
 	struct timespec start;
   struct wlr_box initial_geometry;
 };

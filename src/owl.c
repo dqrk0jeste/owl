@@ -1,7 +1,6 @@
 #include "owl.h"
 #include "ipc.h"
 
-#include "pixman.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
@@ -31,6 +30,10 @@ box_area(struct wlr_box *box) {
   return box->width * box->height;
 }
 
+static double frame_duration(uint32_t refresh_rate_mhz) {
+  return 1000000.0 / refresh_rate_mhz;
+}
+
 static double
 calculate_animation_curve_at(double x) {
   double a = server.config->animation_curve[0];
@@ -42,13 +45,9 @@ calculate_animation_curve_at(double x) {
 
 static double
 calculate_animation_passed(struct owl_animation *animation) {
-  assert(animation->running);
+  double passed = (double)animation->passed_frames / animation->total_frames;
 
-  struct timespec now;
-  clock_gettime(CLOCK_MONOTONIC, &now);
-  uint32_t time_passed = now.tv_nsec - animation->start.tv_nsec;
-
-  return calculate_animation_curve_at(min((double)time_passed / server.config->animation_duration, 1.0));
+  return calculate_animation_curve_at(passed);
 }
 
 static void
@@ -444,7 +443,8 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 
   toplevel->pending = pending;
 
-  if(toplevel == server.grabbed_toplevel || wlr_box_equal(&current, &pending)) {
+  if(server.config->animations && (toplevel == server.grabbed_toplevel
+     || wlr_box_equal(&current, &pending))) {
     toplevel->animation.should_animate = false;
   } else {
     toplevel->animation.should_animate = true;
@@ -842,8 +842,53 @@ toplevel_get_closest_corner(struct wlr_cursor *cursor,
   return edges;
 }
 
+struct wlr_scene_buffer *
+surface_find_buffer(struct wlr_scene_node* node, struct wlr_surface* surface) {
+  if(node->type == WLR_SCENE_NODE_BUFFER) {
+    struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+
+    struct wlr_scene_surface *scene_surface =
+      wlr_scene_surface_try_from_buffer(scene_buffer);
+    if(!scene_surface) {
+      return NULL;
+    }
+
+    struct wlr_surface *s = scene_surface->surface;
+
+    if(s && s == surface) {
+      return scene_buffer;
+    }
+  }
+
+  if(node->type == WLR_SCENE_NODE_TREE) {
+    struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
+
+    struct wlr_scene_node *child;
+    wl_list_for_each(child, &scene_tree->children, link) {
+      struct wlr_scene_buffer *found_buffer = surface_find_buffer(child, surface);
+      if(found_buffer) {
+        return found_buffer;
+      }
+    }
+  }
+
+  return NULL;
+}
+
 static bool toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   double animation_passed = calculate_animation_passed(&toplevel->animation);
+
+  uint32_t width = toplevel->animation.initial_geometry.width +
+    (toplevel->pending.width - toplevel->animation.initial_geometry.width) * animation_passed;
+  uint32_t height = toplevel->animation.initial_geometry.height +
+    (toplevel->pending.height - toplevel->animation.initial_geometry.height) * animation_passed;
+
+  /*toplevel_clip_to_size(toplevel, width, height);*/
+
+  struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&toplevel->scene_tree->node,
+                                                              toplevel->xdg_toplevel->base->surface);
+  wlr_scene_buffer_set_dest_size(scene_buffer, width, height);
+  toplevel_borders_set_size(toplevel, width, height);
 
   uint32_t x = toplevel->animation.initial_geometry.x +
     (toplevel->pending.x - toplevel->animation.initial_geometry.x) * animation_passed;
@@ -852,13 +897,9 @@ static bool toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
 
-  uint32_t width = toplevel->animation.initial_geometry.width +
-    (toplevel->pending.width - toplevel->animation.initial_geometry.width) * animation_passed;
-  uint32_t height = toplevel->animation.initial_geometry.height +
-    (toplevel->pending.height - toplevel->animation.initial_geometry.height) * animation_passed;
-
-  toplevel_clip_to_size(toplevel, width, height);
-  toplevel_borders_set_size(toplevel, width, height);
+  if(toplevel->animation.passed_frames == 1) {
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+  }
 
   return animation_passed == 1.0;
 }
@@ -879,9 +920,10 @@ layout_tiled_ready(struct owl_workspace *workspace) {
 static void
 toplevel_commit(struct owl_toplevel *toplevel) {
   if(toplevel->animation.should_animate) {
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    toplevel->animation.start = now;
+    toplevel->animation.passed_frames = 0;
+    toplevel->animation.total_frames = server.config->animation_duration
+      / frame_duration(toplevel->workspace->output->wlr_output->refresh);
+
     toplevel->animation.running = true;
     toplevel->animation.should_animate = false;
   } else {
@@ -1626,6 +1668,7 @@ server_handle_cursor_frame(struct wl_listener *listener, void *data) {
   wlr_seat_pointer_notify_frame(server.seat);
 }
 
+static struct timespec last;
 static void
 output_handle_frame(struct wl_listener *listener, void *data) {
   /* this function is called every time an output is ready to display a frame,
@@ -1636,33 +1679,48 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   bool animations_done = true;
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
       } else {
+        t->animation.passed_frames++;
         animations_done = false;
       }
+    } else {
+      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     }
   }
   wl_list_for_each(t, &workspace->masters, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
       } else {
+        t->animation.passed_frames++;
         animations_done = false;
       }
+    } else {
+      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     }
   }
   wl_list_for_each(t, &workspace->slaves, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
       } else {
+        t->animation.passed_frames++;
         animations_done = false;
       }
+    } else {
+      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     }
   }
 
@@ -1672,6 +1730,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
 
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC, &now);
+
   wlr_scene_output_send_frame_done(scene_output, &now);
 
   if(!animations_done) {
@@ -1912,6 +1971,8 @@ xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel->scene_tree = wlr_scene_xdg_surface_create(server.tiled_tree,
                                                         toplevel->xdg_toplevel->base);
   }
+
+  wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
 
   /* we are keeping toplevels scene_tree in this free user data field, it is used in 
    * assigning parents to popups */
@@ -3371,8 +3432,7 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    /* we convert ms (10^3) into ns (10^9) */
-    c->animation_duration = atoi(args[0]) * 1000000;
+    c->animation_duration = atoi(args[0]);
   } else if(strcmp(keyword, "animation_curve") == 0) {
     if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
