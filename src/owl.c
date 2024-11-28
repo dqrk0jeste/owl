@@ -184,8 +184,8 @@ toplevel_floating_size(struct owl_toplevel *toplevel, uint32_t *width, uint32_t 
     }
   }
 
-  *width = 0;
-  *height = 0;
+  *width = WIDTH(toplevel);
+  *height = HEIGHT(toplevel);
 }
 
 static bool
@@ -450,14 +450,14 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.initial_geometry = current;
   }
 
-  if(toplevel->mapped && (toplevel->floating || toplevel->fullscreen)
+  if(toplevel->mapped
+     && (toplevel->floating || toplevel->fullscreen)
      && !toplevel_size_changed(toplevel)) {
     toplevel_commit(toplevel);
     return;
   };
 
-  toplevel->configure_serial =
-    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+  toplevel->configure_serial = wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
   toplevel->dirty = true;
 }
 
@@ -495,9 +495,10 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(server.layer_exclusive_keyboard != NULL) return;
 
-  if(toplevel->workspace->fullscreen_toplevel != NULL
-    && toplevel != toplevel->workspace->fullscreen_toplevel) return;
+  /*if(toplevel->workspace->fullscreen_toplevel != NULL*/
+  /*  && toplevel != toplevel->workspace->fullscreen_toplevel) return;*/
 
+  wlr_log(WLR_ERROR, "workspace %p", toplevel->workspace);
   struct owl_toplevel *prev_toplevel = server.focused_toplevel;
   if(prev_toplevel == toplevel) return;
 
@@ -539,8 +540,8 @@ workspace_find_closest_tiled_toplevel(struct owl_workspace *workspace, bool mast
   /* this means there are no tiled toplevels */
   if(wl_list_empty(&workspace->masters)) return NULL;
 
-  struct owl_toplevel *first_master =
-    wl_container_of(workspace->masters.next, first_master, link);
+  struct owl_toplevel *first_master = wl_container_of(workspace->masters.next,
+                                                      first_master, link);
   struct owl_toplevel *last_master = wl_container_of(workspace->masters.prev,
                                                      last_master, link);
 
@@ -573,35 +574,26 @@ workspace_find_closest_tiled_toplevel(struct owl_workspace *workspace, bool mast
 static struct owl_toplevel *
 workspace_find_closest_floating_toplevel(struct owl_workspace *workspace,
                                          enum owl_direction side) {
-  if(wl_list_empty(&workspace->floating_toplevels)) return NULL;
+  struct wl_list *l = workspace->floating_toplevels.next;
+  if(l == &workspace->floating_toplevels) return NULL;
 
-  struct owl_toplevel *min_x;
-  uint32_t min_x_value = UINT32_MAX;
+  struct owl_toplevel *t = wl_container_of(l, t, link);
 
-  struct owl_toplevel *max_x;
-  uint32_t max_x_value = 0;
+  struct owl_toplevel *min_x = t;
+  struct owl_toplevel *max_x = t;
+  struct owl_toplevel *min_y = t;
+  struct owl_toplevel *max_y = t;
 
-  struct owl_toplevel *min_y;
-  uint32_t min_y_value = UINT32_MAX;
-
-  struct owl_toplevel *max_y;
-  uint32_t max_y_value = 0;
-
-  struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
-    if(X(t) < min_x_value) {
+    if(X(t) < X(min_x)) {
       min_x = t;
-      min_x_value = X(t);
-    } else if(X(t) > max_x_value) {
+    } else if(X(t) > X(max_x)) {
       max_x = t;
-      max_x_value = X(t);
     }
-    if(Y(t) < min_y_value) {
+    if(Y(t) < Y(min_y)) {
       min_y = t;
-      min_y_value = Y(t);
-    } else if(Y(t) > max_y_value) {
+    } else if(Y(t) > Y(max_y)) {
       max_y = t;
-      max_y_value = Y(t);
     }
   }
 
@@ -650,7 +642,7 @@ toplevel_find_closest_floating_on_workspace(struct owl_toplevel *toplevel,
     }
     case OWL_LEFT: {
       wl_list_for_each(t, &workspace->floating_toplevels, link) {
-        if(t == toplevel || X(t) < X(toplevel)) continue;
+        if(t == toplevel || X(t) > X(toplevel)) continue;
 
         uint32_t dx = abs((int)X(toplevel) - X(t));
         if(dx < min_val) {
@@ -662,7 +654,7 @@ toplevel_find_closest_floating_on_workspace(struct owl_toplevel *toplevel,
     }
     case OWL_RIGHT: {
       wl_list_for_each(t, &workspace->floating_toplevels, link) {
-        if(t == toplevel || X(t) > X(toplevel)) continue;
+        if(t == toplevel || X(t) < X(toplevel)) continue;
 
         uint32_t dx = abs((int)X(toplevel) - X(t));
         if(dx < min_val) {
@@ -689,20 +681,20 @@ focus_output(struct owl_output *output,
     bool master = server.focused_toplevel != NULL
       ? toplevel_is_master(server.focused_toplevel)
       : true;
-    focus_next =
-      workspace_find_closest_tiled_toplevel(output->active_workspace, master, side);
+    focus_next = workspace_find_closest_tiled_toplevel(output->active_workspace,
+                                                       master, side);
     /* if there are no tiled toplevels we try floating */
     if(focus_next == NULL) {
-      focus_next =
-        workspace_find_closest_floating_toplevel(output->active_workspace, side);
+      focus_next = workspace_find_closest_floating_toplevel(output->active_workspace,
+                                                            side);
     }
   } else {
-    focus_next =
-      workspace_find_closest_floating_toplevel(output->active_workspace, side);
+    focus_next = workspace_find_closest_floating_toplevel(output->active_workspace,
+                                                          side);
     /* if there are no floating toplevels we try tiled */
     if(focus_next == NULL) {
-      focus_next =
-        workspace_find_closest_tiled_toplevel(output->active_workspace, true, side);
+      focus_next = workspace_find_closest_tiled_toplevel(output->active_workspace,
+                                                         true, side);
     }
   }
 
@@ -794,8 +786,8 @@ toplevel_clip_to_size(struct owl_toplevel *toplevel,
   struct wlr_box clip_box = (struct wlr_box){
     .x = 0,
     .y = 0,
-    .width = width,
-    .height = height,
+    .width = width + toplevel->xdg_toplevel->base->geometry.x,
+    .height = height + toplevel->xdg_toplevel->base->geometry.y,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
@@ -809,8 +801,8 @@ toplevel_clip_to_fit(struct owl_toplevel *toplevel) {
   struct wlr_box clip_box = (struct wlr_box){
     .x = 0,
     .y = 0,
-    .width = toplevel->pending.width,
-    .height = toplevel->pending.height,
+    .width = toplevel->pending.width + toplevel->xdg_toplevel->base->geometry.x,
+    .height = toplevel->pending.height + toplevel->xdg_toplevel->base->geometry.y,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
@@ -875,12 +867,10 @@ static bool
 layout_tiled_ready(struct owl_workspace *workspace) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
-    if(!t->mapped || t->xdg_toplevel->base->current.configure_serial
-      != t->configure_serial) return false;
+    if(!t->mapped || t->dirty) return false;
   }
   wl_list_for_each(t, &workspace->slaves, link) {
-    if(!t->mapped || t->xdg_toplevel->base->current.configure_serial
-      != t->configure_serial) return false;
+    if(!t->mapped || t->dirty) return false;
   }
 
   return true;
@@ -888,6 +878,7 @@ layout_tiled_ready(struct owl_workspace *workspace) {
 
 static void
 toplevel_commit(struct owl_toplevel *toplevel) {
+  wlr_log(WLR_ERROR, "workspace when commited %p", toplevel->workspace);
   if(toplevel->animation.should_animate) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1450,8 +1441,9 @@ server_handle_request_set_selection(struct wl_listener *listener, void *data) {
 /* TODO: probably should change this so it does less */
 static void
 server_reset_cursor_mode() {
-  /* Reset the cursor mode to passthrough. */
+  /* reset the cursor mode to passthrough. */
   server.cursor_mode = OWL_CURSOR_PASSTHROUGH;
+  server.grabbed_toplevel->resizing = false;
   server.grabbed_toplevel = NULL;
 
   if(server.client_cursor.surface != NULL) {
@@ -1478,6 +1470,8 @@ process_toplevel_move(uint32_t time) {
 static void
 process_toplevel_resize(uint32_t time) {
   struct owl_toplevel *toplevel = server.grabbed_toplevel;
+
+  toplevel->resizing = true;
 
   int start_x = server.grabbed_toplevel_initial_box.x;
   int start_y = server.grabbed_toplevel_initial_box.y;
@@ -1915,8 +1909,6 @@ xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
                                                         toplevel->xdg_toplevel->base);
   }
 
-  /*wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);*/
-
   /* we are keeping toplevels scene_tree in this free user data field, it is used in 
    * assigning parents to popups */
   toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
@@ -2063,6 +2055,7 @@ xdg_toplevel_handle_commit(struct wl_listener *listener, void *data) {
   if(toplevel->xdg_toplevel->base->initial_commit) {
     /* when an xdg_surface performs an initial commit, the compositor must
      * reply with a configure so the client can map the surface. */
+    wlr_log(WLR_ERROR, "active workspace when making %p", server.active_workspace);
     toplevel->workspace = server.active_workspace;
     toplevel->floating = toplevel_should_float(toplevel);
 
@@ -2085,10 +2078,18 @@ xdg_toplevel_handle_commit(struct wl_listener *listener, void *data) {
     return;
   }
 
-  /*wlr_log(WLR_ERROR, "toplevel %p, commited", toplevel);*/
-  if(!toplevel->mapped || !toplevel->dirty) return;
+  if(!toplevel->mapped) return;
 
-  /*wlr_log(WLR_ERROR, "toplevel %p, was dirty", toplevel);*/
+  if(toplevel->resizing) {
+    toplevel_commit(toplevel);
+    return;
+  }
+
+  if(!toplevel->dirty || toplevel->xdg_toplevel->base->current.configure_serial
+     != toplevel->configure_serial) return;
+
+  toplevel->dirty = false;
+
   if(toplevel->fullscreen) {
     toplevel_commit(toplevel);
     return;
@@ -2101,12 +2102,6 @@ xdg_toplevel_handle_commit(struct wl_listener *listener, void *data) {
     toplevel_commit(toplevel);
     return;
   }
-
-  /* if this is not the serial we last sent, we wait */
-  if(toplevel->xdg_toplevel->base->current.configure_serial
-     != toplevel->configure_serial) return;
-
-  toplevel->dirty = false;
 
   if(layout_tiled_ready(toplevel->workspace)) {
     layout_commit(toplevel->workspace);
@@ -2959,9 +2954,9 @@ keybind_switch_focused_toplevel_state(void *data) {
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
   uint32_t width, height;
   toplevel_floating_size(toplevel, &width, &height);
-  /*toplevel_unclip_size(toplevel);*/
-  toplevel_set_pending_state(toplevel, 0, 0, width, height);
-
+  toplevel_set_pending_state(toplevel, output_box.x + (output_box.width - WIDTH(toplevel)) / 2,
+                             output_box.y + (output_box.height - HEIGHT(toplevel)) / 2,
+                             WIDTH(toplevel), HEIGHT(toplevel));
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   layout_send_configure(toplevel->workspace);

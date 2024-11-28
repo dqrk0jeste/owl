@@ -224,6 +224,7 @@ struct owl_toplevel {
   bool mapped;
 
   bool floating;
+  bool resizing;
   bool fullscreen;
 
   uint32_t configure_serial;
