@@ -897,7 +897,7 @@ static bool toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
 
-  if(toplevel->animation.passed_frames == 1) {
+  if(toplevel->animation.passed_frames == 0) {
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
   }
 
@@ -1680,7 +1680,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -1695,7 +1694,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   }
   wl_list_for_each(t, &workspace->masters, link) {
     if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -1710,7 +1708,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   }
   wl_list_for_each(t, &workspace->slaves, link) {
     if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
