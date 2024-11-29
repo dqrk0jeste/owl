@@ -4,7 +4,6 @@
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "wlr/util/log.h"
 #include "xdg-shell-protocol.h"
-#include <cassert>
 #include <stdint.h>
 #include <sys/types.h>
 #include <wayland-util.h>
@@ -343,7 +342,8 @@ toplevel_borders_create(struct owl_toplevel *toplevel) {
   const float *border_color = border_get_color(OWL_BORDER_INVISIBLE);
 
   toplevel->borders[0] = wlr_scene_rect_create(toplevel->scene_tree,
-                                               width + 2 * border_width, border_width, border_color);
+                                               width + 2 * border_width,
+                                               border_width, border_color);
   wlr_scene_node_set_position(&toplevel->borders[0]->node,
                               -border_width, -border_width);
 
@@ -353,7 +353,8 @@ toplevel_borders_create(struct owl_toplevel *toplevel) {
                               width, 0);
 
   toplevel->borders[2] = wlr_scene_rect_create(toplevel->scene_tree,
-                                               width + 2 * border_width, border_width, border_color);
+                                               width + 2 * border_width,
+                                               border_width, border_color);
   wlr_scene_node_set_position(&toplevel->borders[2]->node,
                               -border_width, height);
 
@@ -364,7 +365,8 @@ toplevel_borders_create(struct owl_toplevel *toplevel) {
 }
 
 static void
-toplevel_borders_set_size(struct owl_toplevel *toplevel, uint32_t width, uint32_t height) {
+toplevel_borders_set_size(struct owl_toplevel *toplevel,
+                          uint32_t width, uint32_t height) {
   uint32_t border_width = server.config->border_width;
 
   wlr_scene_node_set_position(&toplevel->borders[1]->node, width, 0);
@@ -408,7 +410,7 @@ toplevel_borders_set_state(struct owl_toplevel *toplevel,
 }
 
 struct wlr_scene_buffer *
-surface_find_buffer(struct wlr_scene_node* node, struct wlr_surface* surface) {
+surface_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface) {
   if(node->type == WLR_SCENE_NODE_BUFFER) {
     struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
@@ -515,12 +517,6 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel_commit(toplevel);
     return;
   };
-
-  /*if(toplevel->mapped) {*/
-  /*  struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&toplevel->scene_tree->node,*/
-  /*                                                              toplevel->xdg_toplevel->base->surface);*/
-  /*  wlr_scene_buffer_set_dest_size(scene_buffer, WIDTH(toplevel), HEIGHT(toplevel));*/
-  /*}*/
 
   toplevel->configure_serial = wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
                                                          width, height);
