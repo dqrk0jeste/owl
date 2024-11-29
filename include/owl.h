@@ -179,13 +179,12 @@ struct owl_output {
 };
 
 struct owl_animation {
-  struct wl_event_source *source;
   bool should_animate;
   bool running;
   uint32_t total_frames;
   uint32_t passed_frames;
-	struct timespec start;
   struct wlr_box initial_geometry;
+  struct wlr_box current_geometry;
 };
 
 enum owl_type {
@@ -225,8 +224,9 @@ struct owl_toplevel {
   bool mapped;
 
   bool floating;
-  bool resizing;
   bool fullscreen;
+
+  bool resizing;
 
   uint32_t configure_serial;
   bool dirty;
