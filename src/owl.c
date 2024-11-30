@@ -903,6 +903,36 @@ toplevel_get_closest_corner(struct wlr_cursor *cursor,
   return edges;
 }
 
+static void
+toplevel_initial_render(struct owl_toplevel *toplevel) {
+  assert(toplevel->scene_tree == NULL);
+
+  /* add this toplevel to the scene tree */
+  if(toplevel->floating) {
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.floating_tree,
+                                                        toplevel->xdg_toplevel->base);
+  } else {
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.tiled_tree,
+                                                        toplevel->xdg_toplevel->base);
+  }
+
+  toplevel_borders_create(toplevel);
+  focus_toplevel(toplevel);
+
+  /* we are keeping toplevels scene_tree in this free user data field, it is used in 
+   * assigning parents to popups */
+  toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
+
+  /* in the node we want to keep information what that node represents. we do that
+   * be keeping owl_something in user data field, which is a union of all possible
+   * 'things' we can have on the screen */
+  struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_TOPLEVEL;
+  something->toplevel = toplevel;
+
+  toplevel->scene_tree->node.data = something;
+}
+
 static bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   double animation_passed = calculate_animation_passed(&toplevel->animation);
@@ -912,24 +942,29 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   uint32_t height = toplevel->animation.initial_geometry.height +
     (toplevel->pending.height - toplevel->animation.initial_geometry.height) * animation_passed;
 
-  if(width > WIDTH(toplevel) || height > HEIGHT(toplevel)) {
-    struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&toplevel->scene_tree->node,
-                                                                toplevel->xdg_toplevel->base->surface);
-    wlr_scene_buffer_set_dest_size(scene_buffer, width, height);
-  } else {
-    toplevel_clip_to_size(toplevel, width, height); 
+  /*if(width > WIDTH(toplevel) || height > HEIGHT(toplevel)) {*/
+  /*  struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&toplevel->scene_tree->node,*/
+  /*                                                              toplevel->xdg_toplevel->base->surface);*/
+  /*  wlr_scene_buffer_set_dest_size(scene_buffer, width, height);*/
+  /*} else {*/
+  /*  toplevel_clip_to_size(toplevel, width, height); */
+  /*}*/
+
+  if(!toplevel->rendered) {
+    toplevel_initial_render(toplevel);
+    toplevel->rendered = true;
   }
 
-  toplevel_borders_set_size(toplevel, width, height);
+  /*toplevel_borders_set_size(toplevel, width, height);*/
 
   uint32_t x = toplevel->animation.initial_geometry.x +
     (toplevel->pending.x - toplevel->animation.initial_geometry.x) * animation_passed;
   uint32_t y = toplevel->animation.initial_geometry.y +
     (toplevel->pending.y - toplevel->animation.initial_geometry.y) * animation_passed;
 
-  if(toplevel->animation.passed_frames == 0) {
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-  }
+  /*if(toplevel->animation.passed_frames == 0) {*/
+  /*  wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);*/
+  /*}*/
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
 
@@ -957,35 +992,8 @@ layout_tiled_ready(struct owl_workspace *workspace) {
 }
 
 static void
-toplevel_initial_render(struct owl_toplevel *toplevel) {
-  assert(toplevel->scene_tree == NULL);
-
-  /* add this toplevel to the scene tree */
-  if(toplevel->floating) {
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.floating_tree,
-                                                        toplevel->xdg_toplevel->base);
-  } else {
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.tiled_tree,
-                                                        toplevel->xdg_toplevel->base);
-  }
-
-  /* we are keeping toplevels scene_tree in this free user data field, it is used in 
-   * assigning parents to popups */
-  toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
-
-  /* in the node we want to keep information what that node represents. we do that
-   * be keeping owl_something in user data field, which is a union of all possible
-   * 'things' we can have on the screen */
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_TOPLEVEL;
-  something->toplevel = toplevel;
-
-  toplevel->scene_tree->node.data = something;
-}
-
-static void
 toplevel_commit(struct owl_toplevel *toplevel) {
-  if(toplevel->animation.should_animate) {
+  /*if(toplevel->animation.should_animate) {*/
     if(toplevel->animation.running) {
       /* if there is already an animation running, we start this one from the current state */
       toplevel->animation.initial_geometry.width = toplevel->animation.current_geometry.width;
@@ -998,12 +1006,12 @@ toplevel_commit(struct owl_toplevel *toplevel) {
     toplevel->animation.running = true;
     toplevel->animation.should_animate = false;
     wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
-  } else {
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->pending.x,
-                                toplevel->pending.y);
-    toplevel_borders_update(toplevel);
-  }
+  /*} else {*/
+  /*  wlr_scene_node_set_position(&toplevel->scene_tree->node,*/
+  /*                              toplevel->pending.x,*/
+  /*                              toplevel->pending.y);*/
+  /*  toplevel_borders_update(toplevel);*/
+  /*}*/
 }
 
 static void
@@ -2040,9 +2048,6 @@ xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
   toplevel->mapped = true;
   toplevel->dirty = false;
 
-  toplevel_borders_create(toplevel);
-  focus_toplevel(toplevel);
-
   if(toplevel->floating) {
     /* we commit it immediately if floating, but have to set the position before */
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
@@ -2050,10 +2055,8 @@ xdg_toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel->animation.initial_geometry.y = output_box.y + output_box.height / 2;
     toplevel_center_floating(toplevel);
     toplevel_commit(toplevel);
-  } else {
-    if(layout_tiled_ready(toplevel->workspace)) {
-      layout_commit(toplevel->workspace);
-    }
+  } else if(layout_tiled_ready(toplevel->workspace)) {
+    layout_commit(toplevel->workspace);
   }
 
   /* do the thing for foreign_toplevel_manager */
