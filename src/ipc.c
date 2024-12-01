@@ -1,13 +1,16 @@
 #include "ipc.h"
-#include <unistd.h>
 
+#include "owl.h"
+#include "toplevel.h"
+#include "workspace.h"
+
+#include <unistd.h>
 #include <signal.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include "wlr/util/log.h"
-#include "owl.h"
+
 
 extern struct owl_server server;
 

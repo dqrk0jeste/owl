@@ -1,7 +1,15 @@
+#include "workspace.h"
 
-static void
-server_change_workspace(struct owl_workspace *workspace,
-                        bool keep_focus) {
+#include "layout.h"
+#include "owl.h"
+#include "ipc.h"
+
+#include <assert.h>
+
+extern struct owl_server server;
+
+void
+server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
   /* if it is the same as global active workspace, do nothing */
   if(server.active_workspace == workspace) return;
 
@@ -75,7 +83,7 @@ server_change_workspace(struct owl_workspace *workspace,
   }
 }
 
-static void
+void
 toplevel_move_to_workspace(struct owl_toplevel *toplevel,
                            struct owl_workspace *workspace) {
   assert(toplevel != NULL && workspace != NULL);

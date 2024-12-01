@@ -1,4 +1,5 @@
 #pragma once
+
 #include "toplevel.h"
 #include "popup.h"
 #include "layer_surface.h"
@@ -18,3 +19,10 @@ struct owl_something {
   };
 };
 
+struct owl_something *
+root_parent_of_surface(struct wlr_surface *wlr_surface);
+
+struct owl_something *
+something_at(double lx, double ly,
+             struct wlr_surface **surface,
+             double *sx, double *sy);

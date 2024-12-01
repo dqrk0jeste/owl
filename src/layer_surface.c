@@ -3,6 +3,7 @@
 #include "owl.h"
 #include "output.h"
 #include "something.h"
+#include "layout.h"
 
 #include <stdlib.h>
 #include <wlr/types/wlr_scene.h>

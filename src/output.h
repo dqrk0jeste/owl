@@ -3,6 +3,7 @@
 #include <wlr/types/wlr_output.h>
 
 #include "workspace.h"
+#include "owl.h"
 
 struct owl_output {
 	struct wl_list link;
@@ -22,3 +23,27 @@ struct owl_output {
 	struct wl_listener destroy;
 };
 
+void
+server_handle_new_output(struct wl_listener *listener, void *data);
+
+double
+output_frame_duration_ms(uint32_t refresh_rate_mhz);
+
+struct owl_output *
+output_get_relative(struct owl_output *output, enum owl_direction direction);
+
+void
+cursor_jump_output(struct owl_output *output);
+
+void
+focus_output(struct owl_output *output,
+             enum owl_direction side);
+
+void
+output_handle_frame(struct wl_listener *listener, void *data);
+
+void
+output_handle_request_state(struct wl_listener *listener, void *data);
+
+void
+output_handle_destroy(struct wl_listener *listener, void *data);

@@ -1,6 +1,17 @@
+#include "rendering.h"
+
+#include "owl.h"
+#include "config.h"
+#include "something.h"
+#include "toplevel.h"
+
+#include <stdlib.h>
+#include <assert.h>
+
+extern struct owl_server server;
 
 /* TODO: replace with a lookup table */
-static float *
+float *
 border_get_color(enum owl_border_state state) {
   static float invisible[] = {0, 0, 0, 0};
   switch(state) {
@@ -13,7 +24,7 @@ border_get_color(enum owl_border_state state) {
   }
 }
 
-static void
+void
 toplevel_borders_create(struct owl_toplevel *toplevel) {
   uint32_t width, height;
   if(toplevel->floating) {
@@ -50,7 +61,7 @@ toplevel_borders_create(struct owl_toplevel *toplevel) {
                               -border_width, 0);
 }
 
-static void
+void
 toplevel_borders_set_size(struct owl_toplevel *toplevel,
                           uint32_t width, uint32_t height) {
   uint32_t border_width = server.config->border_width;
@@ -64,7 +75,7 @@ toplevel_borders_set_size(struct owl_toplevel *toplevel,
   wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
 }
 
-static void
+void
 toplevel_borders_update(struct owl_toplevel *toplevel) {
   uint32_t width, height;
   if(toplevel->floating) {
@@ -86,7 +97,7 @@ toplevel_borders_update(struct owl_toplevel *toplevel) {
   wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
 }
 
-static void
+void
 toplevel_borders_set_state(struct owl_toplevel *toplevel,
                            enum owl_border_state state) {
   const float *border_color = border_get_color(state);
@@ -128,7 +139,7 @@ surface_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface) {
   return NULL;
 }
 
-static double
+double
 calculate_animation_curve_at(double x) {
   double a = server.config->animation_curve[0];
   double b = server.config->animation_curve[1];
@@ -137,14 +148,14 @@ calculate_animation_curve_at(double x) {
   return (a * x * x * x + b * x * x + c * x) / (a + b + c);
 }
 
-static double
+double
 calculate_animation_passed(struct owl_animation *animation) {
   double passed = (double)animation->passed_frames / animation->total_frames;
 
   return calculate_animation_curve_at(passed);
 }
 
-static void
+void
 toplevel_initial_render(struct owl_toplevel *toplevel) {
   assert(toplevel->scene_tree == NULL);
 
@@ -174,7 +185,7 @@ toplevel_initial_render(struct owl_toplevel *toplevel) {
   toplevel->scene_tree->node.data = something;
 }
 
-static bool
+bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   double animation_passed = calculate_animation_passed(&toplevel->animation);
 

@@ -1,3 +1,17 @@
+#include "pointer.h"
+
+#include "config.h"
+#include "ipc.h"
+#include "owl.h"
+#include "toplevel.h"
+#include "output.h"
+#include "something.h"
+
+#include <libinput.h>
+#include <wlr/backend/libinput.h>
+#include <wlr/types/wlr_cursor.h>
+
+extern struct owl_server server;
 
 void
 server_handle_new_pointer(struct wlr_input_device *device) {
@@ -18,7 +32,7 @@ server_handle_new_pointer(struct wlr_input_device *device) {
   wlr_cursor_attach_input_device(server.cursor, device);
 }
 
-static void
+void
 server_reset_cursor_mode() {
   /* reset the cursor mode to passthrough. */
   server.cursor_mode = OWL_CURSOR_PASSTHROUGH;
@@ -33,7 +47,7 @@ server_reset_cursor_mode() {
   }
 }
 
-static void
+void
 cursor_handle_motion(uint32_t time) {
   /* get the output that the cursor is on currently */
   struct wlr_output *wlr_output = wlr_output_layout_output_at(
@@ -79,7 +93,7 @@ cursor_handle_motion(uint32_t time) {
   wlr_seat_pointer_notify_motion(seat, time, sx, sy);
 }
 
-static void
+void
 server_handle_cursor_motion(struct wl_listener *listener, void *data) {
   struct wlr_pointer_motion_event *event = data;
   wlr_cursor_move(server.cursor, &event->pointer->base,
@@ -88,16 +102,16 @@ server_handle_cursor_motion(struct wl_listener *listener, void *data) {
 }
 
 
-static void
+void
 server_handle_cursor_motion_absolute(
   struct wl_listener *listener, void *data) {
   struct wlr_pointer_motion_absolute_event *event = data;
   wlr_cursor_warp_absolute(server.cursor, &event->pointer->base, event->x, event->y);
-  process_cursor_motion(event->time_msec);
+  cursor_handle_motion(event->time_msec);
 }
 
 /* TODO: add mouse button shortcuts */
-static void
+void
 server_handle_cursor_button(struct wl_listener *listener, void *data) {
   struct wlr_pointer_button_event *event = data;
 
@@ -122,7 +136,7 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
 }
 
 
-static void
+void
 server_handle_cursor_axis(struct wl_listener *listener, void *data) {
   struct wlr_pointer_axis_event *event = data;
 
@@ -132,7 +146,7 @@ server_handle_cursor_axis(struct wl_listener *listener, void *data) {
                                event->delta_discrete, event->source, event->relative_direction);
 }
 
-static void
+void
 server_handle_cursor_frame(struct wl_listener *listener, void *data) {
   wlr_seat_pointer_notify_frame(server.seat);
 }

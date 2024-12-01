@@ -1,5 +1,9 @@
+#include "something.h"
+#include "owl.h"
 
-static struct owl_something *
+extern struct owl_server server;
+
+struct owl_something *
 root_parent_of_surface(struct wlr_surface *wlr_surface) {
   struct wlr_surface *root_wlr_surface =
     wlr_surface_get_root_surface(wlr_surface);
@@ -27,7 +31,7 @@ root_parent_of_surface(struct wlr_surface *wlr_surface) {
   return something;
 }
 
-static struct owl_something *
+struct owl_something *
 something_at(double lx, double ly,
              struct wlr_surface **surface,
              double *sx, double *sy) {

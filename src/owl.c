@@ -1,11 +1,36 @@
 #include "owl.h"
+
 #include "helpers.h"
 #include "ipc.h"
+#include "keyboard.h"
+#include "config.h"
+#include "output.h"
+#include "toplevel.h"
+#include "popup.h"
+#include "layer_surface.h"
+#include "decoration.h"
 
-#include "wlr/util/log.h"
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <wayland-util.h>
+#include "wlr/util/log.h"
+#include "wlr/types/wlr_seat.h"
+#include "wlr/types/wlr_cursor.h"
+#include "wlr/types/wlr_data_device.h"
+#include "wlr/backend.h"
+#include "wlr/render/allocator.h"
+#include "wlr/types/wlr_compositor.h"
+#include "wlr/types/wlr_subcompositor.h"
+#include "wlr/types/wlr_subcompositor.h"
+#include "wlr/types/wlr_xdg_output_v1.h"
+#include "wlr/types/wlr_xcursor_manager.h"
+#include "wlr/types/wlr_xdg_decoration_v1.h"
+#include "wlr/types/wlr_data_control_v1.h"
+#include "wlr/types/wlr_screencopy_v1.h"
+#include "wlr/types/wlr_viewporter.h"
+#include "wlr/types/wlr_foreign_toplevel_management_v1.h"
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -169,7 +194,8 @@ main(int argc, char *argv[]) {
   wl_signal_add(&server.backend->events.new_output, &server.new_output);
 
   /* create a manager used for comunicating with the clients */
-  server.xdg_output_manager = wlr_xdg_output_manager_v1_create(server.wl_display, server.output_layout);
+  server.xdg_output_manager = wlr_xdg_output_manager_v1_create(server.wl_display,
+                                                               server.output_layout);
 
   /* Create a scene graph. This is a wlroots abstraction that handles all
    * rendering and damage tracking. All the compositor author needs to do
@@ -194,9 +220,9 @@ main(int argc, char *argv[]) {
    * https://drewdevault.com/2018/07/29/Wayland-shells.html.
    */
   server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 6);
-  server.new_xdg_toplevel.notify = server_handle_new_xdg_toplevel;
+  server.new_xdg_toplevel.notify = server_handle_new_toplevel;
   wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel);
-  server.new_xdg_popup.notify = server_handle_new_xdg_popup;
+  server.new_xdg_popup.notify = server_handle_new_popup;
   wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_xdg_popup);
 
   server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 5);
@@ -262,8 +288,7 @@ main(int argc, char *argv[]) {
   server.data_control_manager = wlr_data_control_manager_v1_create(server.wl_display);
 
   /* configures decorations */
-  server.xdg_decoration_manager =
-    wlr_xdg_decoration_manager_v1_create(server.wl_display);
+  server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.wl_display);
 
   server.request_xdg_decoration.notify = server_handle_request_xdg_decoration;
   wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
@@ -272,8 +297,7 @@ main(int argc, char *argv[]) {
   server.viewporter = wlr_viewporter_create(server.wl_display);
 
   server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
-  server.foreign_toplevel_manager =
-    wlr_foreign_toplevel_manager_v1_create(server.wl_display);
+  server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);
 
   /* Add a Unix socket to the Wayland display. */
   const char *socket = wl_display_add_socket_auto(server.wl_display);

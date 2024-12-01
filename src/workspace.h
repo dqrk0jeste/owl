@@ -15,3 +15,9 @@ struct owl_workspace {
   struct owl_toplevel *fullscreen_toplevel;
 };
 
+void
+server_change_workspace(struct owl_workspace *workspace, bool keep_focus);
+
+void
+toplevel_move_to_workspace(struct owl_toplevel *toplevel,
+                           struct owl_workspace *workspace);

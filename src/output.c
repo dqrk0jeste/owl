@@ -1,5 +1,24 @@
+#include "output.h"
 
-static void
+#include "owl.h"
+#include "config.h"
+#include "keybinds.h"
+#include "layout.h"
+#include "toplevel.h"
+#include "ipc.h"
+
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <wayland-util.h>
+#include <wlr/util/log.h>
+#include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_cursor.h>
+
+extern struct owl_server server;
+
+void
 server_handle_new_output(struct wl_listener *listener, void *data) {
   struct wlr_output *wlr_output = data;
 
@@ -186,7 +205,8 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
     server.active_workspace = output->active_workspace;
   }
 }
-static double
+
+double
 output_frame_duration_ms(uint32_t refresh_rate_mhz) {
   return 1000000.0 / refresh_rate_mhz;
 }
@@ -233,7 +253,7 @@ output_get_relative(struct owl_output *output, enum owl_direction direction) {
   return NULL;
 }
 
-static void
+void
 cursor_jump_output(struct owl_output *output) {
   struct wlr_box output_box;
   wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
@@ -243,7 +263,7 @@ cursor_jump_output(struct owl_output *output) {
                   output_box.y + output_box.height / 2.0);
 }
 
-static void
+void
 focus_output(struct owl_output *output,
              enum owl_direction side) {
   assert(output != NULL);
@@ -257,19 +277,19 @@ focus_output(struct owl_output *output,
     bool master = server.focused_toplevel != NULL
       ? toplevel_is_master(server.focused_toplevel)
       : true;
-    focus_next = workspace_find_closest_tiled_toplevel(output->active_workspace,
+    focus_next = layout_find_closest_tiled_toplevel(output->active_workspace,
                                                        master, side);
     /* if there are no tiled toplevels we try floating */
     if(focus_next == NULL) {
-      focus_next = workspace_find_closest_floating_toplevel(output->active_workspace,
+      focus_next = layout_find_closest_floating_toplevel(output->active_workspace,
                                                             side);
     }
   } else {
-    focus_next = workspace_find_closest_floating_toplevel(output->active_workspace,
+    focus_next = layout_find_closest_floating_toplevel(output->active_workspace,
                                                           side);
     /* if there are no floating toplevels we try tiled */
     if(focus_next == NULL) {
-      focus_next = workspace_find_closest_tiled_toplevel(output->active_workspace,
+      focus_next = layout_find_closest_tiled_toplevel(output->active_workspace,
                                                          true, side);
     }
   }
@@ -286,7 +306,7 @@ focus_output(struct owl_output *output,
   }
 }
 
-static void
+void
 output_handle_frame(struct wl_listener *listener, void *data) {
   /* this function is called every time an output is ready to display a frame,
    * generally at the output's refresh rate */
@@ -352,7 +372,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   }
 }
 
-static void
+void
 output_handle_request_state(struct wl_listener *listener, void *data) {
   /* this function is called when the backend requests a new state for
    * the output. for example, wayland and X11 backends request a new mode
@@ -364,7 +384,7 @@ output_handle_request_state(struct wl_listener *listener, void *data) {
 
 /* TODO: this needs tweaking in the future, rn outputs are not removed from
  * the layout, and workspaces and not updated. */
-static void
+void
 output_handle_destroy(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, destroy);
 

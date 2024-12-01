@@ -4,6 +4,8 @@
 #include "helpers.h"
 #include "owl.h"
 #include "toplevel.h"
+#include "workspace.h"
+#include "layout.h"
 
 #include <string.h>
 #include <wlr/xcursor.h>
@@ -93,7 +95,7 @@ keybind_resize_focused_toplevel(void *data) {
   strcat(cursor_image, "corner");
 
   wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, cursor_image);
-  server_start_toplevel_move_resize(toplevel, OWL_CURSOR_RESIZE, edges);
+  toplevel_start_move_resize(toplevel, OWL_CURSOR_RESIZE, edges);
 }
 
 void
@@ -118,7 +120,7 @@ keybind_move_focused_toplevel(void *data) {
   if(toplevel == NULL || !toplevel->floating || toplevel->fullscreen) return;
 
   wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "hand1");
-  server_start_toplevel_move_resize(toplevel, OWL_CURSOR_MOVE, 0);
+  toplevel_start_move_resize(toplevel, OWL_CURSOR_MOVE, 0);
 }
 
 void

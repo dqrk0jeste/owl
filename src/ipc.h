@@ -1,5 +1,4 @@
-#ifndef IPC_H
-#define IPC_H
+#pragma once
 
 /* here is the ipc protocol implemented in this file(server) and owl-ipc(client):
  *  - there is a pipe called PIPE_NAME opened by the server
@@ -34,4 +33,3 @@ enum ipc_event {
 void ipc_broadcast_message(enum ipc_event event);
 
 void *run_ipc(void *args);
-#endif /* ifndef IPC_H */
