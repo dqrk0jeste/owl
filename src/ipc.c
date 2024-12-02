@@ -4,6 +4,8 @@
 #include "toplevel.h"
 #include "workspace.h"
 
+#include <assert.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
@@ -43,15 +45,18 @@ static void ipc_create_message(enum ipc_event event, char *buffer, uint32_t leng
       }
       break;
     }
+    case IPC_EVENT_COUNT: {
+      assert(false && "you should not have done this");
+    }
   }
+
+  /* snprintf doesnt terminate the string if too large, so we do it manually */
+  buffer[length - 1] = 0;
 }
 
 void ipc_broadcast_message(enum ipc_event event) {
   char message[512];
   ipc_create_message(event, message, sizeof(message));
-
-  /* snprintf doesnt terminate the string if too large, so we do it manually */
-  message[sizeof(message) - 1] = 0;
 
   struct ipc_client *c, *t;
   wl_list_for_each_safe(c, t, &clients, link) {
@@ -88,21 +93,21 @@ void *run_ipc(void *args) {
 
   wl_list_init(&clients);
 
-  int fifo_fd = open(PIPE_NAME, O_RDONLY);
-  if(fifo_fd == -1) {
+  int fd = open(PIPE_NAME, O_RDONLY);
+  if(fd == -1) {
     wlr_log(WLR_ERROR, "failed to open a pipe");
-    goto clean;
+    close(fd);
+    return NULL;
   }
 
-  /* large enough buffer so the probabality of cutting a message short is small */
+  /* large enough buffer so the probabality of cutting a message midway is small */
   char buffer[512];
-
-  int bytes_read;
   while(true) {
-    bytes_read = read(fifo_fd, buffer, sizeof(buffer) - 1);
+    int bytes_read = read(fd, buffer, sizeof(buffer) - 1);
     if(bytes_read == -1) {
-      wlr_log(WLR_ERROR, "failed read from the pipe");
-      goto clean;
+      printf("failed to read from the pipe\n");
+      close(fd);
+      return NULL;
     }
 
     if(bytes_read == 0) {
@@ -112,44 +117,47 @@ void *run_ipc(void *args) {
 
     /* preventing overflow */
     buffer[bytes_read] = 0;
-    
-    /* we sleep a bit so clients can create their pipes */
+    /* we sleep a bit so clients can open their pipes */
     usleep(100000);
 
-    char name[512];
-    char *q = name;
-    for(size_t i = 0; i < bytes_read; i++) {
-      if(buffer[i] == '\n') {
-        *q = 0;
+    char *line_r;
+    char *line = strtok_r(buffer, "\n", &line_r);
+    while(line != NULL) {
+      char *token_r;
+      /* take the first word of the request, this tells up what action should be performed.
+       * supported actions are:
+       *  - subscribe: start receiving events from the compositor */
+      char *token = strtok_r(line, SEPARATOR, &token_r);
+      if(strcmp(token, "subscribe") == 0) {
+        token = strtok_r(NULL, SEPARATOR, &token_r);
 
-        int client_pipe_fd = open(name, O_WRONLY | O_NONBLOCK);
+        int client_pipe_fd = open(token, O_WRONLY | O_NONBLOCK);
         if(client_pipe_fd == -1) {
-          wlr_log(WLR_ERROR, "failed to open clients pipe");
+          printf("failed to open clients pipe\n");
           continue;
         }
 
-        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'", name);
+        printf("new ipc client subscribed on pipe '%s'\n", token);
 
         struct ipc_client *c = calloc(1, sizeof(*c));
         c->fd = client_pipe_fd;
-        strncpy(c->name, name, MAX_CLIENT_PIPE_NAME_LENGTH);
-        /* terminate the string */
+        strncpy(c->name, token, MAX_CLIENT_PIPE_NAME_LENGTH);
         c->name[sizeof(c->name) - 1] = 0;
+
         wl_list_insert(&clients, &c->link);
 
-        ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
-        ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-        q = name;
+        for(size_t i = 0; i < IPC_EVENT_COUNT; i++) {
+          ipc_broadcast_message(i);
+        }
       } else {
-        *q = buffer[i];
-        q++;
+        /* other ipc request will go here */
       }
-    }
 
+      line = strtok_r(NULL, "\n", &line_r);
+    }
   }
 
-clean:
-  close(fifo_fd);
+  close(fd);
   return NULL;
 }
 

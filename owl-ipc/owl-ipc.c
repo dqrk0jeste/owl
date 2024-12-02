@@ -1,4 +1,4 @@
-/* although you can crate your own ipc-client implementation,
+/* although you can create your own ipc client implementation,
  * you are highly advised to use this one (installed globally as `owl-ipc`)
  * to get ipc messages from the server. see examples/active-workspace.sh */
 #include <assert.h>
@@ -66,9 +66,11 @@ int main(int argc, char **argv) {
   }
 
   char message_to_server[128];
-  snprintf(message_to_server, sizeof(message_to_server), "%s\n", name);
+  snprintf(message_to_server, sizeof(message_to_server),
+           "subscribe" SEPARATOR "%s\n", name);
   /* terminate the string just in case, but it should not exceed the size */
   message_to_server[sizeof(message_to_server) - 1] = 0;
+
   if(write(owl_fd, message_to_server, strlen(message_to_server)) == -1) {
     perror("failed to write to fifo");
     return 1;
@@ -78,6 +80,7 @@ int main(int argc, char **argv) {
   int fd = open(name, O_RDONLY);
   if(fd == -1) {
     perror("failed to open pipe");
+    close(owl_fd);
     goto clean;
   }
 
@@ -87,35 +90,27 @@ int main(int argc, char **argv) {
   printf("successfully created a connection over pipe '%s'\n"
          "waiting for events...\n", name);
 
-  char buffer[128];
-  int bytes_read;
+  char buffer[512];
   while(!interupted) {
-    bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    int bytes_read = read(fd, buffer, sizeof(buffer) - 1);
     if(bytes_read == -1) {
       perror("failed to read from the pipe");
-      goto clean;
+      break;
     }
 
-    if(bytes_read == 0) {
-      usleep(100000);
-      continue;
-    }
+    /* if eof, that means ipc is closed, so we stop */
+    if(bytes_read == 0) break;
 
     /* preventing overflow */
     buffer[bytes_read] = 0;
 
-    char message[512];
-    char *q = message;
-    for(size_t i = 0; i < bytes_read; i++) {
-      if(buffer[i] == '\n') {
-        *q = 0;
-        printf("%s\n", message);
-        fflush(stdout);
-        q = message;
-      } else {
-        *q = buffer[i];
-        q++;
-      }
+    char *line_r;
+    char *line = strtok_r(buffer, "\n", &line_r);
+    while(line != NULL) {
+      printf("%s\n", line);
+      fflush(stdout);
+
+      line = strtok_r(NULL, "\n", &line_r);
     }
   }
 
