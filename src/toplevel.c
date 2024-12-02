@@ -166,8 +166,12 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
 
   if(toplevel->floating) {
     /* we commit it immediately if floating, but have to set the position before */
+    if(toplevel->pending.width == 0) {
+      /* we now know its size */
+      toplevel->pending.width = WIDTH(toplevel);
+      toplevel->pending.height = HEIGHT(toplevel);
+    }
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
-    /* we now know its size, so we can setup the animation */
     toplevel->animation.initial_geometry.x = output_box.x + output_box.width / 2;
     toplevel->animation.initial_geometry.y = output_box.y + output_box.height / 2;
     toplevel_center_floating(toplevel);
