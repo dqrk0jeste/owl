@@ -134,9 +134,35 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   toplevel->mapped = true;
   toplevel->dirty = false;
 
+  /* add this toplevel to the scene tree */
+  if(toplevel->floating) {
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.floating_tree,
+                                                        toplevel->xdg_toplevel->base);
+  } else {
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.tiled_tree,
+                                                        toplevel->xdg_toplevel->base);
+  }
+
+  /* we are keeping toplevels scene_tree in this free user data field, it is used in 
+   * assigning parents to popups */
+  toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
+
+  /* in the node we want to keep information what that node represents. we do that
+   * be keeping owl_something in user data field, which is a union of all possible
+   * 'things' we can have on the screen */
+  struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_TOPLEVEL;
+  something->toplevel = toplevel;
+
+  toplevel->scene_tree->node.data = something;
+
+  toplevel_borders_create(toplevel);
+  focus_toplevel(toplevel);
+
   if(toplevel->floating) {
     /* we commit it immediately if floating, but have to set the position before */
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
+    /* we now know its size, so we can setup the animation */
     toplevel->animation.initial_geometry.x = output_box.x + output_box.width / 2;
     toplevel->animation.initial_geometry.y = output_box.y + output_box.height / 2;
     toplevel_center_floating(toplevel);
@@ -144,8 +170,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   } else if(layout_tiled_ready(toplevel->workspace)) {
     layout_commit(toplevel->workspace);
   }
-
-  focus_toplevel(toplevel);
 
   /* do the thing for foreign_toplevel_manager */
   toplevel->foreign_toplevel_handle
@@ -594,7 +618,7 @@ toplevel_commit(struct owl_toplevel *toplevel) {
   } else {
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
                                 toplevel->pending.x, toplevel->pending.y);
-    toplevel_borders_update(toplevel, toplevel->pending.width, toplevel->pending.height);
+    toplevel_borders_update(toplevel);
   }
 }
 
@@ -758,6 +782,9 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
+    if(!toplevel->fullscreen) {
+      toplevel_borders_set_state(prev_toplevel, OWL_BORDER_INACTIVE);
+    }
   }
 
   server.focused_toplevel = toplevel;
@@ -767,7 +794,12 @@ focus_toplevel(struct owl_toplevel *toplevel) {
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
   }
 
-  wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+
+  if(!toplevel->fullscreen) {
+    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
+  }
 
   struct wlr_seat *seat = server.seat;
   struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);

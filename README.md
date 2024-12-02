@@ -68,8 +68,8 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 ## todos
 - [ ] issues need fixing, see `known-issues.md`
 - [ ] monitor hotplugging
-- [ ] more natural (output layout aware) output switching (rn it just focuses master even if the focus came from the right side for example)
+- [x] more natural (output layout aware) output switching
 - [ ] mouse clicks for keybinds (for moving and resizing toplevels)
 - [ ] more ipc capabilities
 - [ ] opacity settings
-- [ ] animations
+- [x] animations

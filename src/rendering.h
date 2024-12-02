@@ -32,7 +32,7 @@ toplevel_borders_set_size(struct owl_toplevel *toplevel,
                           uint32_t width, uint32_t height);
 
 void
-toplevel_borders_update(struct owl_toplevel *toplevel, uint32_t width, uint32_t height);
+toplevel_borders_update(struct owl_toplevel *toplevel);
 
 void
 toplevel_borders_set_state(struct owl_toplevel *toplevel,
@@ -46,9 +46,6 @@ calculate_animation_curve_at(double x);
 
 double
 calculate_animation_passed(struct owl_animation *animation);
-
-void
-toplevel_initial_render(struct owl_toplevel *toplevel);
 
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel);

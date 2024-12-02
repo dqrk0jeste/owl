@@ -59,14 +59,6 @@ toplevel_borders_create(struct owl_toplevel *toplevel) {
                                                border_width, height, border_color);
   wlr_scene_node_set_position(&toplevel->borders[3]->node,
                               -border_width, 0);
-
-  if(toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INVISIBLE);
-  } else if(toplevel == server.focused_toplevel) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  } else {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
 }
 
 void
@@ -84,7 +76,16 @@ toplevel_borders_set_size(struct owl_toplevel *toplevel,
 }
 
 void
-toplevel_borders_update(struct owl_toplevel *toplevel, uint32_t width, uint32_t height) {
+toplevel_borders_update(struct owl_toplevel *toplevel) {
+  uint32_t width, height;
+  if(toplevel->floating) {
+    width = WIDTH(toplevel);
+    height = HEIGHT(toplevel);
+  } else {
+    width = toplevel->pending.width;
+    height = toplevel->pending.height;
+  }
+
   uint32_t border_width = server.config->border_width;
 
   wlr_scene_node_set_position(&toplevel->borders[1]->node, width, 0);
@@ -94,14 +95,6 @@ toplevel_borders_update(struct owl_toplevel *toplevel, uint32_t width, uint32_t 
   wlr_scene_rect_set_size(toplevel->borders[1], border_width, height);
   wlr_scene_rect_set_size(toplevel->borders[2], width + 2 * border_width, border_width);
   wlr_scene_rect_set_size(toplevel->borders[3], border_width, height);
-
-  if(toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INVISIBLE);
-  } else if(toplevel == server.focused_toplevel) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  } else {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
 }
 
 void
@@ -162,36 +155,6 @@ calculate_animation_passed(struct owl_animation *animation) {
   return calculate_animation_curve_at(passed);
 }
 
-void
-toplevel_initial_render(struct owl_toplevel *toplevel) {
-  assert(toplevel->scene_tree == NULL);
-
-  /* add this toplevel to the scene tree */
-  if(toplevel->floating) {
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.floating_tree,
-                                                        toplevel->xdg_toplevel->base);
-  } else {
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.tiled_tree,
-                                                        toplevel->xdg_toplevel->base);
-  }
-
-  toplevel_borders_create(toplevel);
-  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-
-  /* we are keeping toplevels scene_tree in this free user data field, it is used in 
-   * assigning parents to popups */
-  toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
-
-  /* in the node we want to keep information what that node represents. we do that
-   * be keeping owl_something in user data field, which is a union of all possible
-   * 'things' we can have on the screen */
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_TOPLEVEL;
-  something->toplevel = toplevel;
-
-  toplevel->scene_tree->node.data = something;
-}
-
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   double animation_passed = calculate_animation_passed(&toplevel->animation);
@@ -215,7 +178,7 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
     (toplevel->pending.y - toplevel->animation.initial_geometry.y) * animation_passed;
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
-  toplevel_borders_update(toplevel, width, height);
+  toplevel_borders_set_size(toplevel, width, height);
 
   toplevel->animation.current_geometry = (struct wlr_box){
     .x = x,

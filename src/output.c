@@ -317,14 +317,11 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;
-    if(!t->rendered) {
-      toplevel_initial_render(t);
-      t->rendered = true;
-    }
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
         t->animation.running = false;
+        toplevel_unclip_size(t);
       } else {
         t->animation.passed_frames++;
         animations_done = false;
@@ -335,10 +332,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   }
   wl_list_for_each(t, &workspace->masters, link) {
     if(!t->mapped) continue;
-    if(!t->rendered) {
-      toplevel_initial_render(t);
-      t->rendered = true;
-    }
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -351,10 +344,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   }
   wl_list_for_each(t, &workspace->slaves, link) {
     if(!t->mapped) continue;
-    if(!t->rendered) {
-      toplevel_initial_render(t);
-      t->rendered = true;
-    }
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -375,6 +364,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
 
   wlr_scene_output_send_frame_done(scene_output, &now);
 
+  /* if there are animation that are not finished we request more frames
+   * for the output, until all the animations are done */
   if(!animations_done) {
     wlr_output_schedule_frame(output->wlr_output);
   }
