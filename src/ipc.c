@@ -133,6 +133,8 @@ void *run_ipc(void *args) {
         struct ipc_client *c = calloc(1, sizeof(*c));
         c->fd = client_pipe_fd;
         strncpy(c->name, name, MAX_CLIENT_PIPE_NAME_LENGTH);
+        /* terminate the string */
+        c->name[sizeof(c->name) - 1] = 0;
         wl_list_insert(&clients, &c->link);
 
         ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);

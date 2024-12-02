@@ -144,6 +144,8 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
                                                         toplevel->xdg_toplevel->base);
   }
 
+  /* output at 0, 0 would get this toplevel flashed if its on some other output,
+   * so we disable it until the next frame */
   wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
 
   /* we are keeping toplevels scene_tree in this free user data field, it is used in 
