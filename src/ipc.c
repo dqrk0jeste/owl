@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include "wlr/util/log.h"
 
-
 extern struct owl_server server;
 
 /* global state that keeps track of connected clients */

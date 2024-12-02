@@ -207,8 +207,8 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 }
 
 double
-output_frame_duration_ms(uint32_t refresh_rate_mhz) {
-  return 1000000.0 / refresh_rate_mhz;
+output_frame_duration_ms(struct owl_output *output) {
+  return 1000000.0 / output->wlr_output->refresh;
 }
 
 struct owl_output *
@@ -317,6 +317,10 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;
+    if(!t->rendered) {
+      toplevel_initial_render(t);
+      t->rendered = true;
+    }
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -326,11 +330,15 @@ output_handle_frame(struct wl_listener *listener, void *data) {
         animations_done = false;
       }
     } else {
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+
     }
   }
   wl_list_for_each(t, &workspace->masters, link) {
     if(!t->mapped) continue;
+    if(!t->rendered) {
+      toplevel_initial_render(t);
+      t->rendered = true;
+    }
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -339,12 +347,14 @@ output_handle_frame(struct wl_listener *listener, void *data) {
         t->animation.passed_frames++;
         animations_done = false;
       }
-    } else {
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-    }
+    } 
   }
   wl_list_for_each(t, &workspace->slaves, link) {
     if(!t->mapped) continue;
+    if(!t->rendered) {
+      toplevel_initial_render(t);
+      t->rendered = true;
+    }
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -353,8 +363,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
         t->animation.passed_frames++;
         animations_done = false;
       }
-    } else {
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     }
   }
 

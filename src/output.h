@@ -27,7 +27,7 @@ void
 server_handle_new_output(struct wl_listener *listener, void *data);
 
 double
-output_frame_duration_ms(uint32_t refresh_rate_mhz);
+output_frame_duration_ms(struct owl_output *output);
 
 struct owl_output *
 output_get_relative(struct owl_output *output, enum owl_direction direction);

@@ -103,6 +103,7 @@ void
 layout_send_configure(struct owl_workspace *workspace) {
   /* if there is a fullscreened toplevel we just skip */
   if(workspace->fullscreen_toplevel != NULL) return;
+
   /* if there are no masters we are done */
   if(wl_list_empty(&workspace->masters)) return;
 
@@ -142,8 +143,7 @@ layout_send_configure(struct owl_workspace *workspace) {
 
   /* share the remaining space among slaves */
   uint32_t slave_width, slave_height, slave_x, slave_y;
-  calculate_slaves_dimensions(workspace->output, slave_count,
-                              &slave_width, &slave_height);
+  calculate_slaves_dimensions(workspace->output, slave_count, &slave_width, &slave_height);
 
   struct owl_toplevel *s;
   i = 0;
@@ -166,8 +166,7 @@ layout_send_configure(struct owl_workspace *workspace) {
 /* this function assumes they are in the same workspace and
  * that t2 comes after t1 if in the same list */
 void
-layout_swap_tiled_toplevels(struct owl_toplevel *t1,
-                            struct owl_toplevel *t2) {
+layout_swap_tiled_toplevels(struct owl_toplevel *t1, struct owl_toplevel *t2) {
   struct wl_list *before_t1 = t1->link.prev;
   wl_list_remove(&t1->link);
   wl_list_insert(&t2->link, &t1->link);
@@ -179,7 +178,7 @@ layout_swap_tiled_toplevels(struct owl_toplevel *t1,
 
 struct owl_toplevel *
 layout_find_closest_tiled_toplevel(struct owl_workspace *workspace, bool master,
-                                      enum owl_direction side) {
+                                   enum owl_direction side) {
   /* this means there are no tiled toplevels */
   if(wl_list_empty(&workspace->masters)) return NULL;
 
@@ -216,7 +215,7 @@ layout_find_closest_tiled_toplevel(struct owl_workspace *workspace, bool master,
 
 struct owl_toplevel *
 layout_find_closest_floating_toplevel(struct owl_workspace *workspace,
-                                         enum owl_direction side) {
+                                      enum owl_direction side) {
   struct wl_list *l = workspace->floating_toplevels.next;
   if(l == &workspace->floating_toplevels) return NULL;
 

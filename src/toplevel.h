@@ -11,10 +11,10 @@
 struct owl_animation;
 
 struct owl_toplevel {
-	struct wl_list link;
-	struct wlr_xdg_toplevel *xdg_toplevel;
+  struct wl_list link;
+  struct wlr_xdg_toplevel *xdg_toplevel;
   struct owl_workspace *workspace;
-	struct wlr_scene_tree *scene_tree;
+  struct wlr_scene_tree *scene_tree;
   struct wlr_scene_rect *borders[4];
 
   bool mapped;
@@ -38,16 +38,16 @@ struct owl_toplevel {
 
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 
-	struct wl_listener map;
-	struct wl_listener unmap;
-	struct wl_listener commit;
-	struct wl_listener destroy;
-	struct wl_listener request_move;
-	struct wl_listener request_resize;
-	struct wl_listener request_maximize;
-	struct wl_listener request_fullscreen;
-	struct wl_listener set_app_id;
-	struct wl_listener set_title;
+  struct wl_listener map;
+  struct wl_listener unmap;
+  struct wl_listener commit;
+  struct wl_listener destroy;
+  struct wl_listener request_move;
+  struct wl_listener request_resize;
+  struct wl_listener request_maximize;
+  struct wl_listener request_fullscreen;
+  struct wl_listener set_app_id;
+  struct wl_listener set_title;
 };
 
 /* some macros for commonly accessed fields of a toplevel */
@@ -57,8 +57,23 @@ struct owl_toplevel {
 #define HEIGHT(t) (t)->xdg_toplevel->base->geometry.height
 
 void
+server_handle_new_toplevel(struct wl_listener *listener, void *data);
+
+void
+toplevel_handle_map(struct wl_listener *listener, void *data);
+
+void
+toplevel_handle_unmap(struct wl_listener *listener, void *data);
+
+void
+toplevel_handle_commit(struct wl_listener *listener, void *data);
+
+void
+toplevel_handle_destroy(struct wl_listener *listener, void *data);
+
+void
 toplevel_start_move_resize(struct owl_toplevel *toplevel,
-                                  enum owl_cursor_mode mode, uint32_t edges);
+                           enum owl_cursor_mode mode, uint32_t edges);
 
 void
 toplevel_handle_request_move(struct wl_listener *listener, void *data);
@@ -77,21 +92,6 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data);
 
 void
 toplevel_handle_set_title(struct wl_listener *listener, void *data);
-
-void
-server_handle_new_toplevel(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_map(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_unmap(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_commit(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_destroy(struct wl_listener *listener, void *data);
 
 bool
 toplevel_position_changed(struct owl_toplevel *toplevel);
@@ -117,7 +117,7 @@ toplevel_center_floating(struct owl_toplevel *toplevel);
 
 void
 toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y,
-                           uint32_t width, uint32_t height);
+    uint32_t width, uint32_t height);
 
 void
 toplevel_commit(struct owl_toplevel *toplevel);

@@ -8,7 +8,7 @@ CFLAGS+=$(CFLAGS_PKG_CONFIG)
 CFLAGS+=-Ibuild/protocols
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 
-SRC_FILES := $(wildcard src/*.c src/*.h)
+SRC_FILES := $(wildcard src/*.c)
 OBJ_FILES := $(patsubst src/%.c, build/%.o, $(SRC_FILES))
 
 all: build/owl build/owl-ipc
@@ -31,13 +31,11 @@ build/protocols/xdg-output-unstable-v1-protocol.h: build/protocols
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml $@
 
-build/owl: $(OBJ_FILES)
-	$(CC) $^ $> $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
-
 build/%.o: src/%.c src/%.h build build/protocols/xdg-shell-protocol.h build/protocols/wlr-layer-shell-unstable-v1-protocol.h build/protocols/xdg-output-unstable-v1-protocol.h
 	$(CC) -c $< $(CFLAGS) -DWLR_USE_UNSTABLE -o $@
 
-build/owl: build/owl.o
+build/owl: $(OBJ_FILES)
+	$(CC) $^ $> $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 
 build/owl-ipc: owl-ipc/owl-ipc.c
 	$(CC) $< -o $@

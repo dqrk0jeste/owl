@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdint.h>
 #include <wlr/util/box.h>
 #include <wlr/types/wlr_scene.h>
 
@@ -31,7 +32,7 @@ toplevel_borders_set_size(struct owl_toplevel *toplevel,
                           uint32_t width, uint32_t height);
 
 void
-toplevel_borders_update(struct owl_toplevel *toplevel);
+toplevel_borders_update(struct owl_toplevel *toplevel, uint32_t width, uint32_t height);
 
 void
 toplevel_borders_set_state(struct owl_toplevel *toplevel,

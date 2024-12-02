@@ -59,98 +59,70 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
 }
 
 void
-toplevel_start_move_resize(struct owl_toplevel *toplevel,
-                           enum owl_cursor_mode mode, uint32_t edges) {
-  if(toplevel == NULL) {
+toplevel_handle_commit(struct wl_listener *listener, void *data) {
+  /* called when a new surface state is committed */
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
+
+  if(toplevel->xdg_toplevel->base->initial_commit) {
+    /* when an xdg_surface performs an initial commit, the compositor must
+     * reply with a configure so the client can map the surface. */
+    toplevel->workspace = server.active_workspace;
+    toplevel->floating = toplevel_should_float(toplevel);
+
+    if(toplevel->floating) {
+      wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
+      /* we lookup window rules and send a configure */
+      uint32_t width, height;
+      toplevel_floating_size(toplevel, &width, &height);
+      toplevel_set_initial_state(toplevel, 0, 0, width, height);
+    } else if(wl_list_length(&toplevel->workspace->masters)
+      < server.config->master_count) {
+      wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
+      layout_send_configure(toplevel->workspace);
+    } else {
+      wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
+      layout_send_configure(toplevel->workspace);
+    }
+
+    if(server.config->animations) {
+      toplevel->animation.should_animate = true;
+    } else {
+      toplevel->animation.should_animate = false;
+    }
     return;
   }
 
-  server.grabbed_toplevel = toplevel;
-  server.cursor_mode = mode;
+  if(!toplevel->mapped) return;
 
-  server.grab_x = server.cursor->x;
-  server.grab_y = server.cursor->y;
-
-  struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-  server.grabbed_toplevel_initial_box = *geo_box;
-  server.grabbed_toplevel_initial_box.x += toplevel->scene_tree->node.x;
-  server.grabbed_toplevel_initial_box.y += toplevel->scene_tree->node.y;
-
-  server.resize_edges = edges;
-}
-
-void
-toplevel_handle_request_move(struct wl_listener *listener, void *data) {
-  /* This event is raised when a client would like to begin an interactive
-   * move, typically because the user clicked on their client-side
-   * decorations. Note that a more sophisticated compositor should check the
-   * provided serial against a list of button press serials sent to this
-   * client, to prevent the client from requesting this whenever they want. */
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
-  if(!toplevel->floating || toplevel != get_pointer_focused_toplevel()) return;
-
-  toplevel_start_move_resize(toplevel, OWL_CURSOR_MOVE, 0);
-}
-
-void
-xdg_toplevel_handle_request_resize(struct wl_listener *listener, void *data) {
-  /* This event is raised when a client would like to begin an interactive
-   * resize, typically because the user clicked on their client-side
-   * decorations. Note that a more sophisticated compositor should check the
-   * provided serial against a list of button press serials sent to this
-   * client, to prevent the client from requesting this whenever they want. */
-  struct wlr_xdg_toplevel_resize_event *event = data;
-
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
-  if(!toplevel->floating || toplevel != get_pointer_focused_toplevel()) return;
-
-  toplevel_start_move_resize(toplevel, OWL_CURSOR_RESIZE, event->edges);
-}
-
-void
-toplevel_handle_request_maximize(struct wl_listener *listener, void *data) {
-  /* This event is raised when a client would like to maximize itself,
-   * typically because the user clicked on the maximize button on client-side
-   * decorations. owl doesn't support maximization, but to conform to
-   * xdg-shell protocol we still must send a configure.
-   * wlr_xdg_surface_schedule_configure() is used to send an empty reply.
-   * However, if the request was sent before an initial commit, we don't do
-   * anything and let the client finish the initial surface setup. */
-  struct owl_toplevel *toplevel =
-    wl_container_of(listener, toplevel, request_maximize);
-  if(toplevel->xdg_toplevel->base->initialized) {
-    wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+  if(toplevel->resizing) {
+    toplevel_commit(toplevel);
+    return;
   }
-}
 
-void
-toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel =
-    wl_container_of(listener, toplevel, request_fullscreen);
+  if(!toplevel->dirty || toplevel->xdg_toplevel->base->current.configure_serial
+    != toplevel->configure_serial) return;
 
-  struct owl_output *output = toplevel->workspace->output;
-  if(toplevel->xdg_toplevel->requested.fullscreen) {
-    toplevel_set_fullscreen(toplevel);
-  } else {
-    toplevel_unset_fullscreen(toplevel);
+  toplevel->dirty = false;
+
+  if(toplevel->fullscreen) {
+    toplevel_commit(toplevel);
+    return;
   }
-}
 
-void
-toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
-
-  if(toplevel == server.focused_toplevel) {
-    ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  if(toplevel->floating) {
+    if(toplevel->pending.x == 0) {
+      toplevel_center_floating(toplevel);
+    }
+    if(toplevel->pending.width == 0) {
+      toplevel->pending.width = WIDTH(toplevel);
+      toplevel->pending.height = HEIGHT(toplevel);
+    }
+    toplevel_commit(toplevel);
+    return;
   }
-}
 
-void
-toplevel_handle_set_title(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
-
-  if(toplevel == server.focused_toplevel) {
-    ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  if(layout_tiled_ready(toplevel->workspace)) {
+    layout_commit(toplevel->workspace);
   }
 }
 
@@ -172,6 +144,8 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   } else if(layout_tiled_ready(toplevel->workspace)) {
     layout_commit(toplevel->workspace);
   }
+
+  focus_toplevel(toplevel);
 
   /* do the thing for foreign_toplevel_manager */
   toplevel->foreign_toplevel_handle
@@ -283,74 +257,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 }
 
 void
-toplevel_handle_commit(struct wl_listener *listener, void *data) {
-  /* called when a new surface state is committed */
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
-
-  if(toplevel->xdg_toplevel->base->initial_commit) {
-    /* when an xdg_surface performs an initial commit, the compositor must
-     * reply with a configure so the client can map the surface. */
-    toplevel->workspace = server.active_workspace;
-    toplevel->floating = toplevel_should_float(toplevel);
-
-    if(toplevel->floating) {
-      wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
-      /* we lookup window rules and send a configure */
-      uint32_t width, height;
-      toplevel_floating_size(toplevel, &width, &height);
-      toplevel_set_initial_state(toplevel, 0, 0, width, height);
-    } else if(wl_list_length(&toplevel->workspace->masters)
-      < server.config->master_count) {
-      wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
-      layout_send_configure(toplevel->workspace);
-    } else {
-      wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
-      layout_send_configure(toplevel->workspace);
-    }
-
-    if(server.config->animations) {
-      toplevel->animation.should_animate = true;
-    } else {
-      toplevel->animation.should_animate = false;
-    }
-    return;
-  }
-
-  if(!toplevel->mapped) return;
-
-  if(toplevel->resizing) {
-    toplevel_commit(toplevel);
-    return;
-  }
-
-  if(!toplevel->dirty || toplevel->xdg_toplevel->base->current.configure_serial
-    != toplevel->configure_serial) return;
-
-  toplevel->dirty = false;
-
-  if(toplevel->fullscreen) {
-    toplevel_commit(toplevel);
-    return;
-  }
-
-  if(toplevel->floating) {
-    if(toplevel->pending.x == 0) {
-      toplevel_center_floating(toplevel);
-    }
-    if(toplevel->pending.width == 0) {
-      toplevel->pending.width = WIDTH(toplevel);
-      toplevel->pending.height = HEIGHT(toplevel);
-    }
-    toplevel_commit(toplevel);
-    return;
-  }
-
-  if(layout_tiled_ready(toplevel->workspace)) {
-    layout_commit(toplevel->workspace);
-  }
-}
-
-void
 toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   /* called when the xdg_toplevel is destroyed. */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
@@ -365,6 +271,102 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&toplevel->request_fullscreen.link);
 
   free(toplevel);
+}
+
+void
+toplevel_start_move_resize(struct owl_toplevel *toplevel,
+                           enum owl_cursor_mode mode, uint32_t edges) {
+  if(toplevel == NULL) {
+    return;
+  }
+
+  server.grabbed_toplevel = toplevel;
+  server.cursor_mode = mode;
+
+  server.grab_x = server.cursor->x;
+  server.grab_y = server.cursor->y;
+
+  struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
+  server.grabbed_toplevel_initial_box = *geo_box;
+  server.grabbed_toplevel_initial_box.x += toplevel->scene_tree->node.x;
+  server.grabbed_toplevel_initial_box.y += toplevel->scene_tree->node.y;
+
+  server.resize_edges = edges;
+}
+
+void
+toplevel_handle_request_move(struct wl_listener *listener, void *data) {
+  /* This event is raised when a client would like to begin an interactive
+   * move, typically because the user clicked on their client-side
+   * decorations. Note that a more sophisticated compositor should check the
+   * provided serial against a list of button press serials sent to this
+   * client, to prevent the client from requesting this whenever they want. */
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
+  if(!toplevel->floating || toplevel != get_pointer_focused_toplevel()) return;
+
+  toplevel_start_move_resize(toplevel, OWL_CURSOR_MOVE, 0);
+}
+
+void
+toplevel_handle_request_resize(struct wl_listener *listener, void *data) {
+  /* This event is raised when a client would like to begin an interactive
+   * resize, typically because the user clicked on their client-side
+   * decorations. Note that a more sophisticated compositor should check the
+   * provided serial against a list of button press serials sent to this
+   * client, to prevent the client from requesting this whenever they want. */
+  struct wlr_xdg_toplevel_resize_event *event = data;
+
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
+  if(!toplevel->floating || toplevel != get_pointer_focused_toplevel()) return;
+
+  toplevel_start_move_resize(toplevel, OWL_CURSOR_RESIZE, event->edges);
+}
+
+void
+toplevel_handle_request_maximize(struct wl_listener *listener, void *data) {
+  /* This event is raised when a client would like to maximize itself,
+   * typically because the user clicked on the maximize button on client-side
+   * decorations. owl doesn't support maximization, but to conform to
+   * xdg-shell protocol we still must send a configure.
+   * wlr_xdg_surface_schedule_configure() is used to send an empty reply.
+   * However, if the request was sent before an initial commit, we don't do
+   * anything and let the client finish the initial surface setup. */
+  struct owl_toplevel *toplevel =
+    wl_container_of(listener, toplevel, request_maximize);
+  if(toplevel->xdg_toplevel->base->initialized) {
+    wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+  }
+}
+
+void
+toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
+  struct owl_toplevel *toplevel =
+    wl_container_of(listener, toplevel, request_fullscreen);
+
+  struct owl_output *output = toplevel->workspace->output;
+  if(toplevel->xdg_toplevel->requested.fullscreen) {
+    toplevel_set_fullscreen(toplevel);
+  } else {
+    toplevel_unset_fullscreen(toplevel);
+  }
+}
+
+void
+toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
+
+  if(toplevel == server.focused_toplevel) {
+    ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  }
+}
+
+void
+toplevel_handle_set_title(struct wl_listener *listener, void *data) {
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
+
+  if(toplevel == server.focused_toplevel) {
+    ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  }
 }
 
 bool
@@ -515,14 +517,14 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.initial_geometry = (struct wlr_box){
       .x = x + width / 2,
       .y = y + height / 2,
-      .width = 0,
-      .height = 0,
+      .width = 1,
+      .height = 1,
     };
   } else {
     toplevel->animation.should_animate = false;
   }
 
-  toplevel->animation.initial_geometry = (struct wlr_box){
+  toplevel->pending = (struct wlr_box){
     .x = x,
     .y = y,
     .width = width,
@@ -539,7 +541,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
                            uint32_t width, uint32_t height) {
   assert(toplevel->mapped);
 
-  struct wlr_box current = (struct wlr_box){
+  struct wlr_box current = {
     .x = X(toplevel),
     .y = Y(toplevel),
     .width = WIDTH(toplevel),
@@ -564,7 +566,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   }
 
   if((toplevel->floating || toplevel->fullscreen)
-    && !toplevel_size_changed(toplevel)) {
+     && !toplevel_size_changed(toplevel)) {
     toplevel_commit(toplevel);
     return;
   };
@@ -576,25 +578,24 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 
 void
 toplevel_commit(struct owl_toplevel *toplevel) {
-  /*if(toplevel->animation.should_animate) {*/
-  if(toplevel->animation.running) {
-    /* if there is already an animation running, we start this one from the current state */
-    toplevel->animation.initial_geometry.width = toplevel->animation.current_geometry.width;
-    toplevel->animation.initial_geometry.height = toplevel->animation.current_geometry.height;
-  }
-  toplevel->animation.passed_frames = 0;
-  toplevel->animation.total_frames = server.config->animation_duration
-    / output_frame_duration_ms(toplevel->workspace->output->wlr_output->refresh);
+  if(toplevel->animation.should_animate) {
+    if(toplevel->animation.running) {
+      /* if there is already an animation running, we start this one from the current state */
+      toplevel->animation.initial_geometry.width = toplevel->animation.current_geometry.width;
+      toplevel->animation.initial_geometry.height = toplevel->animation.current_geometry.height;
+    }
+    toplevel->animation.passed_frames = 0;
+    toplevel->animation.total_frames = server.config->animation_duration
+      / output_frame_duration_ms(toplevel->workspace->output);
 
-  toplevel->animation.running = true;
-  toplevel->animation.should_animate = false;
-  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
-  /*} else {*/
-  /*  wlr_scene_node_set_position(&toplevel->scene_tree->node,*/
-  /*                              toplevel->pending.x,*/
-  /*                              toplevel->pending.y);*/
-  /*  toplevel_borders_update(toplevel);*/
-  /*}*/
+    toplevel->animation.running = true;
+    toplevel->animation.should_animate = false;
+    wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
+  } else {
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+                                toplevel->pending.x, toplevel->pending.y);
+    toplevel_borders_update(toplevel, toplevel->pending.width, toplevel->pending.height);
+  }
 }
 
 void
@@ -734,15 +735,12 @@ unfocus_focused_toplevel(void) {
   if(toplevel == NULL) return;
 
   server.focused_toplevel = NULL;
-
-  if(!toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
   /* deactivate the surface */
   wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, false);
   /* clear all focus on the keyboard, focusing new should set new toplevel focus */
   wlr_seat_keyboard_clear_focus(server.seat);
 
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
 }
 
@@ -760,9 +758,6 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
-    if(!toplevel->fullscreen) {
-      toplevel_borders_set_state(prev_toplevel, OWL_BORDER_INACTIVE);
-    }
   }
 
   server.focused_toplevel = toplevel;
@@ -772,12 +767,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
   }
 
-  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
-
-  if(!toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  }
 
   struct wlr_seat *seat = server.seat;
   struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -787,6 +777,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
                                    &keyboard->modifiers);
   }
 
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
 }
 
