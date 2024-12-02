@@ -207,7 +207,7 @@ layout_find_closest_tiled_toplevel(struct owl_workspace *workspace, bool master,
       return first_master;
     }
     case OWL_RIGHT: {
-      if(first_slave != NULL) return first_slave;
+      if(last_slave != NULL) return last_slave;
       return last_master;
     }
   }

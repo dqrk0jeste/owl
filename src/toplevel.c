@@ -3,6 +3,7 @@
 #include "ipc.h"
 #include "layout.h"
 #include "owl.h"
+#include "rendering.h"
 #include "something.h"
 #include "wlr/util/edges.h"
 #include "workspace.h"
@@ -143,6 +144,8 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
                                                         toplevel->xdg_toplevel->base);
   }
 
+  wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+
   /* we are keeping toplevels scene_tree in this free user data field, it is used in 
    * assigning parents to popups */
   toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
@@ -219,6 +222,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         focus_toplevel(t);
       } else {
         server.focused_toplevel = NULL;
+        ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
       }
     }
 
@@ -252,6 +256,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         focus_toplevel(t);
       } else {
         server.focused_toplevel = NULL;
+        ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
       }
     }
 
@@ -763,6 +768,10 @@ unfocus_focused_toplevel(void) {
   wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, false);
   /* clear all focus on the keyboard, focusing new should set new toplevel focus */
   wlr_seat_keyboard_clear_focus(server.seat);
+
+  if(!toplevel->fullscreen) {
+    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
+  }
 
   wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);

@@ -18,7 +18,6 @@ struct owl_toplevel {
   struct wlr_scene_rect *borders[4];
 
   bool mapped;
-  bool rendered;
 
   bool floating;
   bool fullscreen;

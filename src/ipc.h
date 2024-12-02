@@ -3,7 +3,7 @@
 /* here is the ipc protocol implemented in this file(server) and owl-ipc(client):
  *  - there is a pipe called PIPE_NAME opened by the server
  *  - clients who want to subscribe to the ipc to receive events should open another pipe,
- *    and then send the new pipes name to PIPE_NAME and add $ to the end to signalize end of message
+ *    and then send the new pipes name to PIPE_NAME and add \x1E to the end to signalize end of message
  *  - server will then open the new pipe and start sending down all the events
  *  - if a client wants to stop receiving events it just needs to close the file descriptor */
 
@@ -15,8 +15,7 @@
 #include <sys/stat.h>
 #include <wayland-util.h>
 
-#define PIPE_NAME "/tmp/owl"
-#define MAX_CLIENTS 128
+#define PIPE_NAME "/tmp/owl/ipc"
 #define MAX_CLIENT_PIPE_NAME_LENGTH 128
 
 struct ipc_client {

@@ -317,6 +317,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -326,12 +327,11 @@ output_handle_frame(struct wl_listener *listener, void *data) {
         t->animation.passed_frames++;
         animations_done = false;
       }
-    } else {
-
     }
   }
   wl_list_for_each(t, &workspace->masters, link) {
     if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {
@@ -344,6 +344,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   }
   wl_list_for_each(t, &workspace->slaves, link) {
     if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
     if(t->animation.running) {
       bool done = toplevel_animation_next_tick(t);
       if(done) {

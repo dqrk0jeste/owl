@@ -111,9 +111,10 @@ main(int argc, char *argv[]) {
     }
   }
 
+  mkdir("/tmp/owl", 0777);
   if(debug) {
     /* make it so all the logs do to the log file */
-    FILE *logs = fopen("/tmp/owl-logs", "w");
+    FILE *logs = fopen("/tmp/owl/logs", "w");
     if(logs != NULL) {
       int fd = fileno(logs);
       close(1);

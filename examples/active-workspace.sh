@@ -1,8 +1,14 @@
 #!/bin/bash
 
+# active-workspace has two args separated by the \x1E separator sequence
+#   - workspace index
+#   - workspace output
+#
 owl-ipc | while read -r line; do
-  if [[ "$line" == active-workspace\$* ]]; then
-    number=$(echo "$line" | cut -d'$' -f2)
+  # if the line starts with active-toplevel
+  if [[ "$line" == active-workspace* ]]; then
+    # we extract the arguments and take the second one - index
+    number=$(echo "$line" | cut -d$(printf '\x1E') -f2)
     echo "workspace $number"
   fi
 done

@@ -15,7 +15,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-#define OWL_PIPE "/tmp/owl"
+#define OWL_PIPE "/tmp/owl/ipc"
+#define SEPARATOR "\x1E"
 
 static bool interupted = false;
 const char letters[] = "abcdefghijklmnopqrstuvwxyz";
@@ -26,13 +27,13 @@ static void sigint_handler(int signum) {
 }
 
 void generate_random_name(char *buffer, uint32_t length, uint32_t buffer_size) {
-  assert(buffer_size >= 5 + length + 1);
+  assert(buffer_size >= 9 + length + 1);
 
-  strcpy(buffer, "/tmp/");
+  strcpy(buffer, "/tmp/owl/");
   for(size_t i = 0; i < length; i++) {
-    buffer[5 + i] = letters[rand() % (sizeof(letters) - 1)];
+    buffer[9 + i] = letters[rand() % (sizeof(letters) - 1)];
   }
-  buffer[5 + length] = 0;
+  buffer[9 + length] = 0;
 }
 
 int main(int argc, char **argv) {
@@ -52,7 +53,7 @@ int main(int argc, char **argv) {
 
   int owl_fd = open(OWL_PIPE, O_WRONLY);
   if(owl_fd == -1) {
-    perror("failed to open pipe /tmp/owl");
+    perror("failed to open pipe" OWL_PIPE);
     return 1;
   }
 
@@ -65,7 +66,9 @@ int main(int argc, char **argv) {
   }
 
   char message_to_server[128];
-  snprintf(message_to_server, sizeof(message_to_server), "%s$", name);
+  snprintf(message_to_server, sizeof(message_to_server), "%s\n", name);
+  /* terminate the string just in case, but it should not exceed the size */
+  message_to_server[sizeof(message_to_server) - 1] = 0;
   if(write(owl_fd, message_to_server, strlen(message_to_server)) == -1) {
     perror("failed to write to fifo");
     return 1;
@@ -81,8 +84,8 @@ int main(int argc, char **argv) {
   /* we wont use the main pipe anymore */
   close(owl_fd);
 
-  /*printf("successfully created a connection over pipe '%s'\n"*/
-  /*       "waiting for events...\n", name);*/
+  printf("successfully created a connection over pipe '%s'\n"
+         "waiting for events...\n", name);
 
   char buffer[128];
   int bytes_read;
