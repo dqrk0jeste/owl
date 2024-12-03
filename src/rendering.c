@@ -2,7 +2,6 @@
 
 #include "owl.h"
 #include "config.h"
-#include "something.h"
 #include "toplevel.h"
 
 #include <stdint.h>

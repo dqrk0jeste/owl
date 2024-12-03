@@ -313,6 +313,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, frame);
   struct owl_workspace *workspace = output->active_workspace;
 
+  if(!layout_tiled_ready(workspace)) return;
+
   bool animations_done = true;
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
