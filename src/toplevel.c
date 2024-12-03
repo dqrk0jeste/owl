@@ -802,7 +802,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
-    if(!toplevel->fullscreen) {
+    if(!prev_toplevel->fullscreen) {
       toplevel_borders_set_state(prev_toplevel, OWL_BORDER_INACTIVE);
     }
   }
