@@ -1,6 +1,7 @@
 <div align="center">
 <h1>owl</h1>
 <img src="https://github.com/dqrk0jeste/owl/blob/main/assets/owl.gif" width="500"/>
+<br>
 minimal tiling wayland compositor based on wlroots.
 </div>
 
