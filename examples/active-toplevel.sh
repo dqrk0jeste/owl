@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# active-toplevel has two args separated by the \x1E separator sequence
+# active-toplevel event has two args separated by the \x1E separator sequence
 #   - toplevel class
 #   - toplevel title
 

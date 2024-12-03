@@ -322,7 +322,7 @@ keybind_swap_focused_toplevel(void *data) {
       case OWL_RIGHT: {
         next = toplevel->link.next;
         if(next == &workspace->masters) {
-          next = workspace->slaves.next;
+          next = workspace->slaves.prev;
           if(next == &workspace->slaves) {
             if(relative_output != NULL
               && relative_output->active_workspace->fullscreen_toplevel == NULL) {

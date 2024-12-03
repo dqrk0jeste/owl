@@ -1,6 +1,7 @@
 <div align="center">
 <h1>owl</h1>
-owl is a minimal tiling wayland compositor based on wlroots.
+<img src="https://github.com/dqrk0jeste/owl/blob/main/assets/showcase.gif" width="500"/>
+minimal tiling wayland compositor based on wlroots.
 </div>
 
 <br>
@@ -10,6 +11,7 @@ owl is a minimal tiling wayland compositor based on wlroots.
 - master layout with support for multiple masters, ideal for wide monitors
 - keyboard focused workflow
 - great multitasking with multimonitor support and workspaces out of the box
+- great and customizable animations
 - easy configuration with custom keybinds, monitor layouts etc
 - ipc for integrating with other apps
 
@@ -20,7 +22,6 @@ owl is a minimal tiling wayland compositor based on wlroots.
 
 <img src="assets/showcase-1.png" alt="logo" width="500">
 <img src="assets/showcase-2.png" alt="logo" width="500">
-<img src="assets/showcase-3.png" alt="logo" width="500">
 
 </div>
 
@@ -35,8 +36,6 @@ owl is a minimal tiling wayland compositor based on wlroots.
 - xkbcommmon
 - wlroots >= 19.0 (git version on aur)
 
-if you are using a wayland compositor you probably have those installed already.
-
 ## building
 ```bash
 git clone https://github.com/dqrk0jeste/owl
@@ -45,13 +44,13 @@ make
 ```
 
 ## installation
-it is recommended to install it by running
+it is recommended to install `owl` by running
 ```bash
 make install
 ```
 it will also install the default config to `/usr/share/owl/default.conf`
 
-> if you choose to uninstall it you can do so with `make unistall`.
+> if you want to uninstall it you can do so with `make unistall`.
 
 ## usage
 ```bash
@@ -61,7 +60,7 @@ owl
 > it is recommended to run it from a tty.
 
 ## configuration
-configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl.conf` or `$HOME/.config/owl/owl.conf`. if no config is found a default config will be used (you need `owl` installed, see previous).
+configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl.conf` or `$HOME/.config/owl/owl.conf`. if no config is found a default config will be used (you need `owl` installed, see above).
 
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
