@@ -26,6 +26,12 @@ struct window_rule_size {
   uint32_t height;
 };
 
+struct window_rule_opacity {
+  struct window_rule_regex condition;
+  struct wl_list link;
+  double value;
+};
+
 struct output_config {
   char *name;
   struct wl_list link;
@@ -49,6 +55,7 @@ struct owl_config {
   struct {
     struct wl_list floating;
     struct wl_list size;
+    struct wl_list opacity;
   } window_rules;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
