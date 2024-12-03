@@ -627,6 +627,11 @@ toplevel_commit(struct owl_toplevel *toplevel) {
     toplevel->animation.should_animate = false;
     wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   } else {
+    if(toplevel->floating) {
+      toplevel_unclip_size(toplevel);
+    } else {
+      toplevel_clip_to_fit(toplevel);
+    }
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
                                 toplevel->pending.x, toplevel->pending.y);
     toplevel_borders_update(toplevel);
