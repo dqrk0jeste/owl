@@ -313,7 +313,10 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, frame);
   struct owl_workspace *workspace = output->active_workspace;
 
-  if(!layout_tiled_ready(workspace)) return;
+  /*if(!layout_tiled_ready(workspace)) {*/
+  /*  wlr_output_schedule_frame(output->wlr_output);*/
+  /*  return;*/
+  /*};*/
 
   bool animations_done = true;
   struct owl_toplevel *t;
