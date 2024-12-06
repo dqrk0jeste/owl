@@ -110,6 +110,15 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     key_sym = XKB_KEY_Escape;
   } else if(strcmp(key, "tab") == 0) {
     key_sym = XKB_KEY_Tab;
+
+  } else if(strcmp(key, "up") == 0) {
+    key_sym = XKB_KEY_Up;
+  } else if(strcmp(key, "down") == 0) {
+    key_sym = XKB_KEY_Down;
+  } else if(strcmp(key, "left") == 0) {
+    key_sym = XKB_KEY_Left;
+  } else if(strcmp(key, "right") == 0) {
+    key_sym = XKB_KEY_Right;
   } else {
     key_sym = xkb_keysym_from_name(key, 0);
     if(key_sym == 0) {
