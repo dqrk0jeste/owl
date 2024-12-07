@@ -12,7 +12,7 @@ minimal tiling wayland compositor based on wlroots.
 - master layout with support for multiple masters, ideal for wide monitors
 - keyboard focused workflow
 - great multitasking with multimonitor support and workspaces out of the box
-- great and customizable animations
+- smooth and customizable animations
 - easy configuration with custom keybinds, monitor layouts etc
 - ipc for integrating with other apps
 
