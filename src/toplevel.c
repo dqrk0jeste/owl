@@ -591,6 +591,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   };
 
   toplevel->pending = pending;
+  toplevel->last = current;
 
   if(!server.config->animations || toplevel == server.grabbed_toplevel
     || wlr_box_equal(&current, &pending)) {

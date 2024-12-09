@@ -32,6 +32,7 @@ struct owl_toplevel {
   /* state to be applied to this toplevel; values of 0 mean that the client should
    * choose its size and need to be handled seperately */
   struct wlr_box pending;
+  struct wlr_box last;
 
   struct owl_animation animation;
 
