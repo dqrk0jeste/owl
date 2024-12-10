@@ -71,10 +71,14 @@ you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/ny
 for now `owl` exist only as `owl-wlr_git` package, just add it into your nixos / home-manager configuration and follow **usage** and **configuration** parts of `README.md`!
 
 ## todos
-- [ ] issues need fixing, see `known-issues.md`
+- [x] animations
+- [ ] fix issues
+- [ ] drag and drop implementation
+- [ ] rounded corners
+- [ ] transparency
+- [ ] blur
 - [ ] monitor hotplugging
-- [x] more natural (output layout aware) output switching
+- [ ] complete foreign toplevel implementation
+- [ ] add portals
 - [ ] mouse clicks for keybinds (for moving and resizing toplevels)
 - [ ] more ipc capabilities
-- [ ] opacity settings
-- [x] animations

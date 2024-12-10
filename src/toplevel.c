@@ -22,7 +22,7 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   /* this event is raised when a client creates a new toplevel */
   struct wlr_xdg_toplevel *xdg_toplevel = data;
 
-  /* allocate a owl_toplevel for this surface */
+  /* allocate an owl_toplevel for this surface */
   struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
 
   toplevel->xdg_toplevel = xdg_toplevel;
@@ -77,7 +77,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_floating_size(toplevel, &width, &height);
       toplevel_set_initial_state(toplevel, 0, 0, width, height);
     } else if(wl_list_length(&toplevel->workspace->masters)
-      < server.config->master_count) {
+              < server.config->master_count) {
       wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
       layout_send_configure(toplevel->workspace);
     } else {
@@ -85,11 +85,6 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       layout_send_configure(toplevel->workspace);
     }
 
-    if(server.config->animations) {
-      toplevel->animation.should_animate = true;
-    } else {
-      toplevel->animation.should_animate = false;
-    }
     return;
   }
 
@@ -101,7 +96,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   }
 
   if(!toplevel->dirty || toplevel->xdg_toplevel->base->current.configure_serial
-    != toplevel->configure_serial) return;
+     < toplevel->configure_serial) return;
 
   toplevel->dirty = false;
 
@@ -183,10 +178,10 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   /* do the thing for foreign_toplevel_manager */
   toplevel->foreign_toplevel_handle
     = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
-  wlr_foreign_toplevel_handle_v1_set_title(
-    toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
-  wlr_foreign_toplevel_handle_v1_set_app_id(
-    toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->app_id);
+  wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
+                                           toplevel->xdg_toplevel->title);
+  wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
+                                            toplevel->xdg_toplevel->app_id);
 }
 
 void
@@ -295,6 +290,8 @@ void
 toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   /* called when the xdg_toplevel is destroyed. */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
+
+  wlr_foreign_toplevel_handle_v1_destroy(toplevel->foreign_toplevel_handle);
 
   wl_list_remove(&toplevel->map.link);
   wl_list_remove(&toplevel->unmap.link);
