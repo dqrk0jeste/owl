@@ -65,6 +65,11 @@ configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl
 
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
+## nixos
+you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) flake! 
+
+for now `owl` exist only as `owl-wlr_git` package, just add it into your nixos / home-manager configuration and follow **usage** and **configuration** parts of `README.md`!
+
 ## todos
 - [ ] issues need fixing, see `known-issues.md`
 - [ ] monitor hotplugging
