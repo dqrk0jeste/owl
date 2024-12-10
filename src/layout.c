@@ -63,7 +63,7 @@ toplevel_is_master(struct owl_toplevel *toplevel) {
   return false;
 }
 
-static bool
+bool
 toplevel_is_slave(struct owl_toplevel *toplevel) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &toplevel->workspace->slaves, link) {
@@ -73,7 +73,7 @@ toplevel_is_slave(struct owl_toplevel *toplevel) {
 }
 
 bool
-layout_tiled_ready(struct owl_workspace *workspace) {
+layout_is_ready(struct owl_workspace *workspace) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
     if(!t->mapped || t->dirty) return false;
@@ -86,21 +86,7 @@ layout_tiled_ready(struct owl_workspace *workspace) {
 }
 
 void
-layout_commit(struct owl_workspace *workspace) {
-  if(workspace->fullscreen_toplevel != NULL) return;
-
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->masters, link) {
-    toplevel_commit(t);
-  }
-
-  wl_list_for_each(t, &workspace->slaves, link) {
-    toplevel_commit(t);
-  }
-}
-
-void
-layout_send_configure(struct owl_workspace *workspace) {
+layout_set_pending_state(struct owl_workspace *workspace) {
   /* if there is a fullscreened toplevel we just skip */
   if(workspace->fullscreen_toplevel != NULL) return;
 
@@ -163,6 +149,20 @@ layout_send_configure(struct owl_workspace *workspace) {
   }
 }
 
+void
+layout_commit(struct owl_workspace *workspace) {
+  if(workspace->fullscreen_toplevel != NULL) return;
+
+  struct owl_toplevel *t;
+  wl_list_for_each(t, &workspace->masters, link) {
+    toplevel_commit(t);
+  }
+
+  wl_list_for_each(t, &workspace->slaves, link) {
+    toplevel_commit(t);
+  }
+}
+
 /* this function assumes they are in the same workspace and
  * that t2 comes after t1 if in the same list */
 void
@@ -173,7 +173,7 @@ layout_swap_tiled_toplevels(struct owl_toplevel *t1, struct owl_toplevel *t2) {
   wl_list_remove(&t2->link);
   wl_list_insert(before_t1, &t2->link);
 
-  layout_send_configure(t1->workspace);
+  layout_set_pending_state(t1->workspace);
 }
 
 struct owl_toplevel *

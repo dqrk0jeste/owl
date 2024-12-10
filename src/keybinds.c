@@ -427,7 +427,7 @@ keybind_switch_focused_toplevel_state(void *data) {
 
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-    layout_send_configure(toplevel->workspace);
+    layout_set_pending_state(toplevel->workspace);
     return;
   }
 
@@ -453,6 +453,6 @@ keybind_switch_focused_toplevel_state(void *data) {
                              WIDTH(toplevel), HEIGHT(toplevel));
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-  layout_send_configure(toplevel->workspace);
+  layout_set_pending_state(toplevel->workspace);
 }
 

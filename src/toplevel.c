@@ -79,10 +79,10 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
     } else if(wl_list_length(&toplevel->workspace->masters)
               < server.config->master_count) {
       wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
-      layout_send_configure(toplevel->workspace);
+      layout_set_pending_state(toplevel->workspace);
     } else {
       wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
-      layout_send_configure(toplevel->workspace);
+      layout_set_pending_state(toplevel->workspace);
     }
 
     return;
@@ -117,7 +117,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
     return;
   }
 
-  if(layout_tiled_ready(toplevel->workspace)) {
+  if(layout_is_ready(toplevel->workspace)) {
     layout_commit(toplevel->workspace);
   }
 }
@@ -156,6 +156,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
 
   toplevel->scene_tree->node.data = something;
 
+  /* TODO: move border rendering to output_handle_frame */
   toplevel_borders_create(toplevel);
   focus_toplevel(toplevel);
 
@@ -171,13 +172,14 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     toplevel->animation.initial_geometry.y = output_box.y + output_box.height / 2;
     toplevel_center_floating(toplevel);
     toplevel_commit(toplevel);
-  } else if(layout_tiled_ready(toplevel->workspace)) {
+  } else if(layout_is_ready(toplevel->workspace)) {
     layout_commit(toplevel->workspace);
   }
 
-  /* do the thing for foreign_toplevel_manager */
-  toplevel->foreign_toplevel_handle
-    = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
+  /* add foreign toplevel handler */
+  toplevel->foreign_toplevel_handle =
+    wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
+
   wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
                                            toplevel->xdg_toplevel->title);
   wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
@@ -232,14 +234,13 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
   }
 
   if(toplevel_is_master(toplevel)) {
+    /* we find a new master to replace him if possible */
+    if(!wl_list_empty(&workspace->slaves)) {
+      struct owl_toplevel *s = wl_container_of(workspace->slaves.prev, s, link);
+      wl_list_remove(&s->link);
+      wl_list_insert(workspace->masters.prev, &s->link);
+    }
     if(toplevel == server.focused_toplevel) {
-      /* we find a new master to replace him if possible */
-      if(!wl_list_empty(&workspace->slaves)) {
-        struct owl_toplevel *s = wl_container_of(workspace->slaves.next, s, link);
-        wl_list_remove(&s->link);
-        wl_list_insert(workspace->masters.prev, &s->link);
-      }
-
       /* we want to give focus to some other toplevel */
       struct wl_list *focus_next = toplevel->link.next;
       if(focus_next == &workspace->masters) {
@@ -283,7 +284,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     wl_list_remove(&toplevel->link);
   }
 
-  layout_send_configure(toplevel->workspace);
+  layout_set_pending_state(toplevel->workspace);
 }
 
 void
@@ -387,6 +388,11 @@ void
 toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
+  if(toplevel->mapped) {
+    wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
+                                              toplevel->xdg_toplevel->app_id);
+  }
+
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
   }
@@ -395,6 +401,11 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
 void
 toplevel_handle_set_title(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
+
+  if(toplevel->mapped) {
+    wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
+                                             toplevel->xdg_toplevel->title);
+  }
 
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
@@ -519,6 +530,7 @@ get_pointer_focused_toplevel(void) {
   return NULL;
 }
 
+/* TODO: here we should use clipped size for tiled toplevels */
 void
 cursor_jump_focused_toplevel(void) {
   struct owl_toplevel *toplevel = server.focused_toplevel;
@@ -591,7 +603,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   toplevel->last = current;
 
   if(!server.config->animations || toplevel == server.grabbed_toplevel
-    || wlr_box_equal(&current, &pending)) {
+     || wlr_box_equal(&current, &pending)) {
     toplevel->animation.should_animate = false;
   } else {
     toplevel->animation.should_animate = true;
@@ -694,10 +706,9 @@ toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
   }
 
-  layout_send_configure(workspace);
+  layout_set_pending_state(workspace);
 }
 
-/* TODO: probably should change this so it does less */
 void
 toplevel_move(void) {
   /* move the grabbed toplevel to the new position */
@@ -827,7 +838,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
                                    &keyboard->modifiers);
   }
 
-  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
+  /*wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);*/
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
 }
 

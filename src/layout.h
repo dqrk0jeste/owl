@@ -17,13 +17,16 @@ bool
 toplevel_is_master(struct owl_toplevel *toplevel);
 
 bool
-layout_tiled_ready(struct owl_workspace *workspace);
+toplevel_is_slave(struct owl_toplevel *toplevel);
+
+bool
+layout_is_ready(struct owl_workspace *workspace);
 
 void
 layout_commit(struct owl_workspace *workspace);
 
 void
-layout_send_configure(struct owl_workspace *workspace);
+layout_set_pending_state(struct owl_workspace *workspace);
 
 /* this function assumes they are in the same workspace and
  * that t2 comes after t1 if in the same list */

@@ -315,7 +315,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
 
   bool animations_done = true;
   struct owl_toplevel *t;
-  if(!layout_tiled_ready(workspace)) {
+  if(!layout_is_ready(workspace)) {
     wl_list_for_each(t, &workspace->masters, link) {
       if(!t->mapped) continue;
       wlr_scene_node_set_enabled(&t->scene_tree->node, true);

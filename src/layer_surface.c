@@ -62,7 +62,7 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
   wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
 
   if(temp.width != output->usable_area.width || temp.height != output->usable_area.height) {
-    layout_send_configure(output->active_workspace);
+    layout_set_pending_state(output->active_workspace);
   }
 
   focus_layer_surface(layer_surface);
@@ -118,7 +118,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
         break;
     }
 
-    layout_send_configure(output->active_workspace);
+    layout_set_pending_state(output->active_workspace);
   }
 
   wl_list_remove(&layer_surface->link);

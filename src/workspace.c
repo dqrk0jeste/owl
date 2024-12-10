@@ -18,7 +18,7 @@ server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
     server.active_workspace = workspace;
     cursor_jump_output(workspace->output);
     ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-    /* we dont want to keep focus only if he is going to be under a fullscreen toplevel */
+    /* we dont want to keep focus only if it is going to be under a fullscreen toplevel */
     if(workspace->fullscreen_toplevel != NULL) {
       focus_toplevel(workspace->fullscreen_toplevel);
     } else if(keep_focus) {
@@ -153,7 +153,7 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
       toplevel->prev_geometry.x = new_output_x;
       toplevel->prev_geometry.y = new_output_y;
     } else {
-      layout_send_configure(old_workspace);
+      layout_set_pending_state(old_workspace);
     }
   } else if(toplevel->floating && old_workspace->output != workspace->output) {
     /* we want to place the toplevel to the same relative coordinates,
@@ -176,8 +176,8 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
     toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
                                WIDTH(toplevel), HEIGHT(toplevel));
   } else {
-    layout_send_configure(old_workspace);
-    layout_send_configure(workspace);
+    layout_set_pending_state(old_workspace);
+    layout_set_pending_state(workspace);
   }
 
   /* change active workspace */
