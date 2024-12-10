@@ -552,7 +552,14 @@ server_load_config() {
   FILE *config_file = try_open_config_file();
   if(config_file == NULL) {
     wlr_log(WLR_INFO, "couldn't open config file, backing to default config");
-    config_file = fopen("/usr/share/owl/default.conf", "r");
+    char *default_config_path = getenv("OWL_DEFAULT_CONFIG_PATH");
+    if(default_config_path == NULL) {
+      default_config_path = "/usr/share/owl/default.conf";
+      wlr_log(WLR_INFO, "no env OWL_DEFAULT_CONFIG_PATH set, using the default %s", default_config_path);
+    } else {
+      wlr_log(WLR_INFO, "env OWL_DEFAULT_CONFIG_PATH set to %s", default_config_path);
+    }
+    config_file = fopen(default_config_path, "r");
     if(config_file == NULL) {
       wlr_log(WLR_ERROR, "couldn't find the default config file");
       return false;

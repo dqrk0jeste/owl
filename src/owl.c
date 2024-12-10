@@ -131,7 +131,7 @@ main(int argc, char *argv[]) {
 
   bool valid_config = server_load_config();
   if(!valid_config) {
-    wlr_log(WLR_ERROR, "there is a problem in the config, quiting");
+    wlr_log(WLR_ERROR, "there was a problem loading the config, quiting");
     return 1;
   }
 
