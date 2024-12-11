@@ -25,14 +25,8 @@ border_get_color(enum owl_border_state state) {
 
 void
 toplevel_borders_create(struct owl_toplevel *toplevel) {
-  uint32_t width, height;
-  if(toplevel->floating) {
-    width = WIDTH(toplevel);
-    height = HEIGHT(toplevel);
-  } else {
-    width = toplevel->pending.width;
-    height = toplevel->pending.height;
-  }
+  uint32_t width = toplevel->current.width;
+  uint32_t height = toplevel->current.height;
 
   uint32_t border_width = server.config->border_width;
   const float *border_color = border_get_color(OWL_BORDER_INVISIBLE);
@@ -76,14 +70,8 @@ toplevel_borders_set_size(struct owl_toplevel *toplevel,
 
 void
 toplevel_borders_update(struct owl_toplevel *toplevel) {
-  uint32_t width, height;
-  if(toplevel->floating) {
-    width = WIDTH(toplevel);
-    height = HEIGHT(toplevel);
-  } else {
-    width = toplevel->pending.width;
-    height = toplevel->pending.height;
-  }
+  uint32_t width = toplevel->current.width;
+  uint32_t height = toplevel->current.height;
 
   uint32_t border_width = server.config->border_width;
 
@@ -163,7 +151,7 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   uint32_t height = toplevel->animation.initial_geometry.height +
     (toplevel->pending.height - toplevel->animation.initial_geometry.height) * animation_passed;
 
-  if(width > WIDTH(toplevel) || height > HEIGHT(toplevel)) {
+  if(width > toplevel->current.width || height > toplevel->current.height) {
     struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&toplevel->scene_tree->node,
                                                                 toplevel->xdg_toplevel->base->surface);
     wlr_scene_buffer_set_dest_size(scene_buffer, width, height);

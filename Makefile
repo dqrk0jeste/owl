@@ -2,7 +2,7 @@ PKG_CONFIG?=pkg-config
 WAYLAND_PROTOCOLS!=$(PKG_CONFIG) --variable=pkgdatadir wayland-protocols
 WAYLAND_SCANNER!=$(PKG_CONFIG) --variable=wayland_scanner wayland-scanner
 
-PKGS="wlroots-0.19" wayland-server xkbcommon libinput
+PKGS="wlroots-0.18" wayland-server xkbcommon libinput
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 CFLAGS+=-Ibuild/protocols

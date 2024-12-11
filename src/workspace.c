@@ -174,7 +174,7 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
       + relative_y * workspace->output->usable_area.height;
 
     toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
-                               WIDTH(toplevel), HEIGHT(toplevel));
+                               toplevel->current.width, toplevel->current.height);
   } else {
     layout_set_pending_state(old_workspace);
     layout_set_pending_state(workspace);

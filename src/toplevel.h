@@ -29,10 +29,10 @@ struct owl_toplevel {
   uint32_t configure_serial;
   bool dirty;
 
+  struct wlr_box current;
   /* state to be applied to this toplevel; values of 0 mean that the client should
    * choose its size and need to be handled seperately */
   struct wlr_box pending;
-  struct wlr_box last;
 
   struct owl_animation animation;
 
@@ -50,11 +50,11 @@ struct owl_toplevel {
   struct wl_listener set_title;
 };
 
-/* some macros for commonly accessed fields of a toplevel */
 #define X(t) (t)->scene_tree->node.x
 #define Y(t) (t)->scene_tree->node.y
-#define WIDTH(t) (t)->xdg_toplevel->base->geometry.width
-#define HEIGHT(t) (t)->xdg_toplevel->base->geometry.height
+
+struct wlr_box
+toplevel_get_geometry(struct owl_toplevel *toplevel);
 
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);

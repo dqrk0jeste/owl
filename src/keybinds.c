@@ -448,9 +448,10 @@ keybind_switch_focused_toplevel_state(void *data) {
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
   uint32_t width, height;
   toplevel_floating_size(toplevel, &width, &height);
-  toplevel_set_pending_state(toplevel, output_box.x + (output_box.width - WIDTH(toplevel)) / 2,
-                             output_box.y + (output_box.height - HEIGHT(toplevel)) / 2,
-                             WIDTH(toplevel), HEIGHT(toplevel));
+  toplevel_set_pending_state(toplevel,
+                             output_box.x + (output_box.width - width) / 2,
+                             output_box.y + (output_box.height - height) / 2,
+                             width, height);
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
   layout_set_pending_state(toplevel->workspace);

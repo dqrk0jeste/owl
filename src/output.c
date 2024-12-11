@@ -321,7 +321,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
       wlr_scene_node_set_enabled(&t->scene_tree->node, true);
       struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
                                                                   t->xdg_toplevel->base->surface);
-      wlr_scene_buffer_set_dest_size(scene_buffer, t->last.width, t->last.height);
+      wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
     }
 
     wl_list_for_each(t, &workspace->slaves, link) {
@@ -329,7 +329,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
       wlr_scene_node_set_enabled(&t->scene_tree->node, true);
       struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
                                                                   t->xdg_toplevel->base->surface);
-      wlr_scene_buffer_set_dest_size(scene_buffer, t->last.width, t->last.height);
+      wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
     }
   } else {
     wl_list_for_each(t, &workspace->floating_toplevels, link) {
