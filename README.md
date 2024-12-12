@@ -45,6 +45,23 @@ make
 ```
 
 ## installation
+### nixos
+you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) flake! 
+
+in [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) are available both `owl-wlr_git` package and `chaotic.owl-wlr` option. to enable `owl` just add:
+```Nix
+chaotic.owl = {
+  enable = true;
+  extraPackages = with pkgs; [
+    kitty
+    rofi
+    grimblast
+  ];
+};
+```
+to your **nixos** configuration!
+
+### other distros
 it is recommended to install `owl` by running
 ```bash
 make install
@@ -58,28 +75,13 @@ it will also install the default config to `/usr/share/owl/default.conf`
 owl
 ```
 
-> it is recommended to run it from a tty.
+> it is recommended to run `owl` from a tty.
 
 ## configuration
 configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl.conf` or `$HOME/.config/owl/owl.conf`. if no config is found a default config will be used (you need `owl` installed, see above).
 
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
-## nixos
-you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) flake! 
-
-in [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) avaibale both `owl-wlr_git` package and `chaotic.owl-wlr` option. to enable `owl` just add:
-```Nix
-chaotic.owl = {
-  enable = true;
-  extraPackages = with pkgs; [
-    kitty
-    rofi
-    grimblast
-  ];
-};
-```
-to your **nixos** configuration!
 
 ## todos
 - [ ] issues need fixing, see `known-issues.md`
