@@ -68,7 +68,18 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 ## nixos
 you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) flake! 
 
-for now `owl` exist only as `owl-wlr_git` package, just add it into your nixos / home-manager configuration and follow **usage** and **configuration** parts of `README.md`!
+in [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) avaibale both `owl-wlr_git` package and `chaotic.owl-wlr` option. to enable `owl` just add:
+```Nix
+chaotic.owl = {
+  enable = true;
+  extraPackages = with pkgs; [
+    kitty
+    rofi
+    grimblast
+  ];
+};
+```
+to your **nixos** configuration!
 
 ## todos
 - [ ] issues need fixing, see `known-issues.md`
