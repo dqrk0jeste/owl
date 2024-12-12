@@ -1,9 +1,11 @@
 #pragma once
 
-#include <wayland-server-protocol.h>
-
 #include "toplevel.h"
 #include "output.h"
+
+#include <wayland-server-protocol.h>
+
+struct owl_animation;
 
 struct owl_workspace {
   struct wl_list link;

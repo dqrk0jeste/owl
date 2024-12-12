@@ -1,14 +1,12 @@
 #pragma once
 
-#include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/types/wlr_cursor.h>
-
 #include "rendering.h"
 #include "owl.h"
 #include "pointer.h"
 #include "config.h"
 
-struct owl_animation;
+#include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_cursor.h>
 
 struct owl_toplevel {
   struct wl_list link;

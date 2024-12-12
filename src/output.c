@@ -4,6 +4,8 @@
 #include "config.h"
 #include "keybinds.h"
 #include "layout.h"
+#include "rendering.h"
+#include "workspace.h"
 #include "toplevel.h"
 #include "ipc.h"
 
@@ -316,70 +318,10 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   bool animations_done = true;
   struct owl_toplevel *t;
   if(!layout_is_ready(workspace)) {
-    wl_list_for_each(t, &workspace->masters, link) {
-      if(!t->mapped) continue;
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-      struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
-                                                                  t->xdg_toplevel->base->surface);
-      wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
-    }
-
-    wl_list_for_each(t, &workspace->slaves, link) {
-      if(!t->mapped) continue;
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-      struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
-                                                                  t->xdg_toplevel->base->surface);
-      wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
-    }
+    layout_render_dirty(workspace);
   } else {
-    wl_list_for_each(t, &workspace->floating_toplevels, link) {
-      if(!t->mapped) continue;
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-      if(t->animation.running) {
-        bool done = toplevel_animation_next_tick(t);
-        if(done) {
-          t->animation.running = false;
-          toplevel_unclip_size(t);
-        } else {
-          t->animation.passed_frames++;
-          animations_done = false;
-        }
-      } else {
-        toplevel_draw_borders(t, t->current.width, t->current.height);
-      }
-    }
-    wl_list_for_each(t, &workspace->masters, link) {
-      if(!t->mapped) continue;
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-      if(t->animation.running) {
-        bool done = toplevel_animation_next_tick(t);
-        if(done) {
-          t->animation.running = false;
-        } else {
-          t->animation.passed_frames++;
-          animations_done = false;
-        }
-      } else {
-        toplevel_draw_borders(t, t->current.width, t->current.height);
-      }
-    }
-    wl_list_for_each(t, &workspace->slaves, link) {
-      if(!t->mapped) continue;
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-      if(t->animation.running) {
-        bool done = toplevel_animation_next_tick(t);
-        if(done) {
-          t->animation.running = false;
-        } else {
-          t->animation.passed_frames++;
-          animations_done = false;
-        }
-      } else {
-        toplevel_draw_borders(t, t->current.width, t->current.height);
-      }
-    }
+    workspace_render_frame(workspace);
   }
-
 
   struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(server.scene,
                                                                      output->wlr_output);
@@ -389,12 +331,6 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   clock_gettime(CLOCK_MONOTONIC, &now);
 
   wlr_scene_output_send_frame_done(scene_output, &now);
-
-  /* if there are animation that are not finished we request more frames
-   * for the output, until all the animations are done */
-  if(!animations_done) {
-    wlr_output_schedule_frame(output->wlr_output);
-  }
 }
 
 void

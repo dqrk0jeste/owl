@@ -183,4 +183,3 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
   /* change active workspace */
   change_workspace(workspace, true);
 }
-

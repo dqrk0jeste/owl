@@ -3,6 +3,7 @@
 #include "owl.h"
 #include "config.h"
 #include "toplevel.h"
+#include "workspace.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -138,3 +139,82 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   return animation_passed == 1.0;
 }
 
+bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
+  bool done = toplevel_animation_next_tick(toplevel);
+  if(done) {
+    toplevel->animation.running = false;
+    if(toplevel->floating) {
+      toplevel_unclip_size(toplevel);
+    }
+  } else {
+    toplevel->animation.passed_frames++;
+  }
+
+  return done;
+}
+
+void layout_render_dirty(struct owl_workspace *workspace) {
+  struct owl_toplevel *t;
+  wl_list_for_each(t, &workspace->masters, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+    struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
+                                                                t->xdg_toplevel->base->surface);
+    wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
+  }
+
+  wl_list_for_each(t, &workspace->slaves, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+    struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
+                                                                t->xdg_toplevel->base->surface);
+    wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
+  }
+}
+
+void workspace_render_frame(struct owl_workspace *workspace) {
+  bool animations_done = true;
+  struct owl_toplevel *t;
+  wl_list_for_each(t, &workspace->floating_toplevels, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+    if(t->animation.running) {
+      bool done = toplevel_draw_animation_frame(t);
+      if(!done) {
+        animations_done = false;
+      }
+    } else {
+      toplevel_draw_borders(t, t->current.width, t->current.height);
+    }
+  }
+  wl_list_for_each(t, &workspace->masters, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+    if(t->animation.running) {
+      bool done = toplevel_draw_animation_frame(t);
+      if(!done) {
+        animations_done = false;
+      }
+    } else {
+      toplevel_draw_borders(t, t->current.width, t->current.height);
+    }
+  }
+  wl_list_for_each(t, &workspace->slaves, link) {
+    if(!t->mapped) continue;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+    if(t->animation.running) {
+      bool done = toplevel_draw_animation_frame(t);
+      if(!done) {
+        animations_done = false;
+      }
+    } else {
+      toplevel_draw_borders(t, t->current.width, t->current.height);
+    }
+  }
+
+  /* if there are animation that are not finished we request more frames
+   * for the output, until all the animations are done */
+  if(!animations_done) {
+    wlr_output_schedule_frame(workspace->output->wlr_output);
+  }
+}

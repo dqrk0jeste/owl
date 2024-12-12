@@ -152,26 +152,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
    * so we disable it until the next frame */
   wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
 
-  /* check for the opacity window rules */
-  /*struct window_rule_opacity *w;*/
-  /*wl_list_for_each(w, &server.config->window_rules.opacity, link) {*/
-  /*  if(toplevel_matches_window_rule(toplevel, &w->condition)) {*/
-  /*    struct wlr_scene_buffer *buffer =*/
-  /*      surface_find_buffer(&toplevel->scene_tree->node,*/
-  /*                          toplevel->xdg_toplevel->base->surface);*/
-  /*    assert(buffer != NULL);*/
-  /*    wlr_log(WLR_ERROR, "found, setting opacity to %lf", w->value);*/
-  /*    wlr_scene_buffer_set_opacity(buffer, w->value);*/
-  /*  }*/
-  /*}*/
-
-  /* this does not work for some reason */
-  struct wlr_scene_buffer *buffer =
-    surface_find_buffer(&toplevel->scene_tree->node,
-                        toplevel->xdg_toplevel->base->surface);
-  assert(buffer != NULL);
-  wlr_scene_buffer_set_opacity(buffer, 0.5);
-
   /* we are keeping toplevels scene_tree in this free user data field, it is used in 
    * assigning parents to popups */
   toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
