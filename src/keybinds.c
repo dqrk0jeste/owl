@@ -14,8 +14,7 @@
 extern struct owl_server server;
 
 bool
-server_handle_keybinds(struct owl_keyboard *keyboard,
-                       uint32_t keycode,
+server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
                        enum wl_keyboard_key_state state) {
   uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
   /* we create new empty state so we can get raw, unmodified key.
@@ -62,7 +61,7 @@ keybind_run(void *data) {
 void
 keybind_change_workspace(void *data) {
   struct owl_workspace *workspace = data;
-  server_change_workspace(workspace, false);
+  change_workspace(workspace, false);
 }
 
 void
@@ -434,7 +433,7 @@ keybind_switch_focused_toplevel_state(void *data) {
   toplevel->floating = true;
   if(toplevel_is_master(toplevel)) {
     if(!wl_list_empty(&toplevel->workspace->slaves)) {
-      struct owl_toplevel *s = wl_container_of(toplevel->workspace->slaves.next, s, link);
+      struct owl_toplevel *s = wl_container_of(toplevel->workspace->slaves.prev, s, link);
       wl_list_remove(&s->link);
       wl_list_insert(toplevel->workspace->masters.prev, &s->link);
     }

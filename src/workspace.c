@@ -9,7 +9,7 @@
 extern struct owl_server server;
 
 void
-server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
+change_workspace(struct owl_workspace *workspace, bool keep_focus) {
   /* if it is the same as global active workspace, do nothing */
   if(server.active_workspace == workspace) return;
 
@@ -181,6 +181,6 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
   }
 
   /* change active workspace */
-  server_change_workspace(workspace, true);
+  change_workspace(workspace, true);
 }
 

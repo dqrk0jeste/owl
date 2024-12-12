@@ -344,6 +344,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
           t->animation.passed_frames++;
           animations_done = false;
         }
+      } else {
+        toplevel_draw_borders(t, t->current.width, t->current.height);
       }
     }
     wl_list_for_each(t, &workspace->masters, link) {
@@ -357,7 +359,9 @@ output_handle_frame(struct wl_listener *listener, void *data) {
           t->animation.passed_frames++;
           animations_done = false;
         }
-      } 
+      } else {
+        toplevel_draw_borders(t, t->current.width, t->current.height);
+      }
     }
     wl_list_for_each(t, &workspace->slaves, link) {
       if(!t->mapped) continue;
@@ -370,6 +374,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
           t->animation.passed_frames++;
           animations_done = false;
         }
+      } else {
+        toplevel_draw_borders(t, t->current.width, t->current.height);
       }
     }
   }

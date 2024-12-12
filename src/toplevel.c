@@ -21,10 +21,8 @@ void
 server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   /* this event is raised when a client creates a new toplevel */
   struct wlr_xdg_toplevel *xdg_toplevel = data;
-
   /* allocate an owl_toplevel for this surface */
   struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
-
   toplevel->xdg_toplevel = xdg_toplevel;
 
   /* listen to the various events it can emit */
@@ -83,6 +81,14 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
     } else {
       wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
       layout_set_pending_state(toplevel->workspace);
+    }
+
+    if(!toplevel->floating && toplevel->workspace->fullscreen_toplevel != NULL) {
+      /* layout_set_pending_state() does not send any configures if there is
+       * a fullscreen toplevel on the workspace, but we need to send something
+       * in order to resepect the protocol. we dont really care,
+       * as it is not going to be shown anyway*/
+      toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
     }
 
     return;
@@ -156,8 +162,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
 
   toplevel->scene_tree->node.data = something;
 
-  /* TODO: move border rendering to output_handle_frame */
-  toplevel_borders_create(toplevel);
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
@@ -168,8 +172,8 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
       toplevel->pending.height = toplevel_get_geometry(toplevel).height;
     }
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
-    toplevel->animation.initial_geometry.x = output_box.x + output_box.width / 2;
-    toplevel->animation.initial_geometry.y = output_box.y + output_box.height / 2;
+    toplevel->animation.initial.x = output_box.x + output_box.width / 2;
+    toplevel->animation.initial.y = output_box.y + output_box.height / 2;
     toplevel_center_floating(toplevel);
     toplevel_commit(toplevel);
   } else if(layout_is_ready(toplevel->workspace)) {
@@ -312,9 +316,6 @@ toplevel_get_geometry(struct owl_toplevel *toplevel) {
   wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
   return geometry;
 }
-
-uint32_t
-toplevel_get_buffer_height(struct owl_toplevel *toplevel);
 
 void
 toplevel_start_move_resize(struct owl_toplevel *toplevel,
@@ -564,7 +565,7 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 
   if(server.config->animations) {
     toplevel->animation.should_animate = true;
-    toplevel->animation.initial_geometry = (struct wlr_box){
+    toplevel->animation.initial = (struct wlr_box){
       .x = x + width / 2,
       .y = y + height / 2,
       .width = 1,
@@ -573,6 +574,17 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   } else {
     toplevel->animation.should_animate = false;
   }
+
+  /* we set this just in case a frame gets called between a toplevel map and
+   * last layout toplevel commit; its better for the toplevel to be flashed at 0, 0
+   * with size 1, 1 then somewhere in the middle of the screen. this generaly rarely
+   * happens, but we should still try to handle it better in the future */
+  toplevel->current = (struct wlr_box){
+    .x = 0,
+    .y = 0,
+    .width = 1,
+    .height = 1,
+  };
 
   toplevel->pending = (struct wlr_box){
     .x = x,
@@ -605,7 +617,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.should_animate = false;
   } else {
     toplevel->animation.should_animate = true;
-    toplevel->animation.initial_geometry = toplevel->current;
+    toplevel->animation.initial = toplevel->current;
   }
 
   if((toplevel->floating || toplevel->fullscreen)
@@ -621,11 +633,13 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 
 void
 toplevel_commit(struct owl_toplevel *toplevel) {
+  /* we set this state to current */
+  toplevel->current = toplevel->pending;
+
   if(toplevel->animation.should_animate) {
     if(toplevel->animation.running) {
       /* if there is already an animation running, we start this one from the current state */
-      toplevel->animation.initial_geometry.width = toplevel->animation.current_geometry.width;
-      toplevel->animation.initial_geometry.height = toplevel->animation.current_geometry.height;
+      toplevel->animation.initial = toplevel->animation.current;
     }
     toplevel->animation.passed_frames = 0;
     toplevel->animation.total_frames = server.config->animation_duration
@@ -641,12 +655,9 @@ toplevel_commit(struct owl_toplevel *toplevel) {
       toplevel_clip_to_fit(toplevel);
     }
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->pending.x, toplevel->pending.y);
-    toplevel_borders_update(toplevel);
+                                toplevel->current.x, toplevel->current.y);
+    toplevel_draw_borders(toplevel, toplevel->current.width, toplevel->current.height);
   }
-
-  /* we set this state to current */
-  toplevel->current = toplevel->pending;
 }
 
 void
@@ -667,8 +678,6 @@ toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   workspace->fullscreen_toplevel = toplevel;
   toplevel->fullscreen = true;
 
-  toplevel_borders_set_state(toplevel, OWL_BORDER_INVISIBLE);
-
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
   toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
                              output_box.width, output_box.height);
@@ -686,12 +695,6 @@ toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   toplevel->fullscreen = false;
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
-
-  if(server.focused_toplevel == toplevel) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  } else {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
 
   if(toplevel->floating) {
     toplevel_set_pending_state(toplevel,
@@ -769,8 +772,7 @@ toplevel_resize(void) {
   }
 
   struct wlr_box geometry = toplevel_get_geometry(toplevel);
-  toplevel_set_pending_state(toplevel,
-                             new_x - geometry.x, new_y - geometry.y,
+  toplevel_set_pending_state(toplevel, new_x - geometry.x, new_y - geometry.y,
                              new_width, new_height);
 }
 
@@ -785,12 +787,10 @@ unfocus_focused_toplevel(void) {
   /* clear all focus on the keyboard, focusing new should set new toplevel focus */
   wlr_seat_keyboard_clear_focus(server.seat);
 
-  if(!toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
-
-  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+
+  /* we schedule a frame in order for borders to be redrawn */
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
 }
 
 void
@@ -807,9 +807,6 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
-    if(!prev_toplevel->fullscreen) {
-      toplevel_borders_set_state(prev_toplevel, OWL_BORDER_INACTIVE);
-    }
   }
 
   server.focused_toplevel = toplevel;
@@ -819,12 +816,8 @@ focus_toplevel(struct owl_toplevel *toplevel) {
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
   }
 
-  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
-
-  if(!toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  }
+  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
   struct wlr_seat *seat = server.seat;
   struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -834,8 +827,10 @@ focus_toplevel(struct owl_toplevel *toplevel) {
                                    &keyboard->modifiers);
   }
 
-  /*wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);*/
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+
+  /* we schedule a frame in order for borders to be redrawn */
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
 }
 
 
