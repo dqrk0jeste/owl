@@ -64,6 +64,16 @@ config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_reg
     window_rule->height = atoi(args[1]);
 
     wl_list_insert(&c->window_rules.size, &window_rule->link);
+  } else if(strcmp(predicate, "opacity") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to window_rule %s", predicate);
+      return false;
+    }
+    struct window_rule_opacity *window_rule = calloc(1, sizeof(*window_rule));
+    window_rule->condition = condition;
+    window_rule->value = atof(args[0]);
+
+    wl_list_insert(&c->window_rules.opacity, &window_rule->link);
   }
 
   return true;
@@ -575,6 +585,7 @@ server_load_config() {
   wl_list_init(&c->workspaces);
   wl_list_init(&c->window_rules.floating);
   wl_list_init(&c->window_rules.size);
+  wl_list_init(&c->window_rules.opacity);
 
   /* you aint gonna have lines longer than 1kB */
   char line_buffer[1024] = {0};
