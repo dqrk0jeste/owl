@@ -218,3 +218,35 @@ void workspace_render_frame(struct owl_workspace *workspace) {
     wlr_output_schedule_frame(workspace->output->wlr_output);
   }
 }
+
+void toplevel_handle_opacity(struct owl_toplevel *toplevel) {
+  assert(toplevel->mapped);
+
+ /*check for the opacity window rules */
+  struct window_rule_opacity *w;
+  wl_list_for_each(w, &server.config->window_rules.opacity, link) {
+    if(toplevel_matches_window_rule(toplevel, &w->condition)) {
+      struct wlr_scene_buffer *buffer =
+        surface_find_buffer(&toplevel->scene_tree->node,
+                            toplevel->xdg_toplevel->base->surface);
+      assert(buffer != NULL);
+      wlr_scene_buffer_set_opacity(buffer, w->value);
+    }
+  }
+}
+
+void workspace_handle_opacity(struct owl_workspace *workspace) {
+  struct owl_toplevel *t;
+  wl_list_for_each(t, &workspace->floating_toplevels, link) {
+    if(!t->mapped) continue;
+    toplevel_handle_opacity(t);
+  }
+  wl_list_for_each(t, &workspace->masters, link) {
+    if(!t->mapped) continue;
+    toplevel_handle_opacity(t);
+  }
+  wl_list_for_each(t, &workspace->slaves, link) {
+    if(!t->mapped) continue;
+    toplevel_handle_opacity(t);
+  }
+}

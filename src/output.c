@@ -323,6 +323,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
     workspace_render_frame(workspace);
   }
 
+  workspace_handle_opacity(workspace);
+
   struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(server.scene,
                                                                      output->wlr_output);
   wlr_scene_output_commit(scene_output, NULL);

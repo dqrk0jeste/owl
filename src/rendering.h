@@ -44,3 +44,7 @@ struct owl_workspace;
 void layout_render_dirty(struct owl_workspace *workspace);
 
 void workspace_render_frame(struct owl_workspace *workspace);
+
+void toplevel_handle_opacity(struct owl_toplevel *toplevel);
+
+void workspace_handle_opacity(struct owl_workspace *workspace);
