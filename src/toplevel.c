@@ -685,6 +685,8 @@ toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
                              output_box.width, output_box.height);
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
+
+  wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, true);
 }
 
 void
@@ -709,6 +711,8 @@ toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   }
 
   layout_set_pending_state(workspace);
+  
+  wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
 }
 
 void
@@ -791,6 +795,7 @@ unfocus_focused_toplevel(void) {
   wlr_seat_keyboard_clear_focus(server.seat);
 
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
 
   /* we schedule a frame in order for borders to be redrawn */
   wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
@@ -810,6 +815,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
+    wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
   }
 
   server.focused_toplevel = toplevel;
@@ -831,6 +837,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
   }
 
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, true);
 
   /* we schedule a frame in order for borders to be redrawn */
   wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);

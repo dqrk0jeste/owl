@@ -315,7 +315,7 @@ main(int argc, char *argv[]) {
 
   /* Add a Unix socket to the Wayland display. */
   const char *socket = wl_display_add_socket_auto(server.wl_display);
-  if (!socket) {
+  if(!socket) {
     wlr_backend_destroy(server.backend);
     return 1;
   }
