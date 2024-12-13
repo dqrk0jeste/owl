@@ -57,6 +57,13 @@ struct owl_server {
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
+
+  bool drag_active;
+  struct wlr_scene_tree *drag_icon_tree;
+	struct wl_listener request_drag;
+	struct wl_listener request_start_drag;
+  struct wl_listener request_destroy_drag;
+
 	struct wl_list keyboards;
 
 	enum owl_cursor_mode cursor_mode;

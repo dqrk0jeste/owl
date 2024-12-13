@@ -9,6 +9,7 @@
 #include "popup.h"
 #include "layer_surface.h"
 #include "decoration.h"
+#include "dnd.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -277,6 +278,7 @@ main(int argc, char *argv[]) {
   wl_list_init(&server.keyboards);
   server.new_input.notify = server_handle_new_input;
   wl_signal_add(&server.backend->events.new_input, &server.new_input);
+
   server.seat = wlr_seat_create(server.wl_display, "seat0");
   server.request_cursor.notify = server_handle_request_cursor;
   wl_signal_add(&server.seat->events.request_set_cursor,
@@ -284,6 +286,17 @@ main(int argc, char *argv[]) {
   server.request_set_selection.notify = server_handle_request_set_selection;
   wl_signal_add(&server.seat->events.request_set_selection,
                 &server.request_set_selection);
+
+  server.drag_icon_tree = wlr_scene_tree_create(&server.scene->tree);
+	wlr_scene_node_set_enabled(&server.drag_icon_tree->node, false);
+
+	server.request_drag.notify = server_handle_request_drag;
+	wl_signal_add(&server.seat->events.request_start_drag, &server.request_drag);
+
+	server.request_start_drag.notify = server_handle_request_start_drag;
+	wl_signal_add(&server.seat->events.start_drag, &server.request_start_drag);
+
+	server.request_destroy_drag.notify = server_handle_destroy_drag;
 
   /* handles clipboard clients */
   server.data_control_manager = wlr_data_control_manager_v1_create(server.wl_display);

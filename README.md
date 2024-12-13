@@ -74,7 +74,7 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 - [ ] fix issues
 - [x] animations
 - [ ] rounded corners
-- [ ] transparency
+- [x] transparency
 - [ ] blur
 - [ ] drag and drop implementation
 - [ ] monitor hotplugging
