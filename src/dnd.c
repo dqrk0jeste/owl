@@ -9,6 +9,8 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
+/* large portion of this was taken from labwc; huge thanks to consolatis */
+
 extern struct owl_server server;
 
 void
