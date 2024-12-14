@@ -76,7 +76,7 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 - [ ] rounded corners
 - [x] transparency
 - [ ] blur
-- [ ] drag and drop implementation
+- [x] drag and drop implementation
 - [ ] monitor hotplugging
 - [ ] complete foreign toplevel implementation
 - [ ] add portals
