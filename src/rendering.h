@@ -26,7 +26,7 @@ toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t he
 
 
 struct wlr_scene_buffer *
-surface_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface);
+scene_node_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface);
 
 double
 calculate_animation_curve_at(double x);
@@ -40,8 +40,6 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel);
 bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel);
 
 struct owl_workspace;
-
-void layout_render_dirty(struct owl_workspace *workspace);
 
 void workspace_render_frame(struct owl_workspace *workspace);
 

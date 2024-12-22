@@ -55,7 +55,7 @@ toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t he
 }
 
 struct wlr_scene_buffer *
-surface_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface) {
+scene_node_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface) {
   if(node->type == WLR_SCENE_NODE_BUFFER) {
     struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
@@ -77,7 +77,7 @@ surface_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface) {
 
     struct wlr_scene_node *child;
     wl_list_for_each(child, &scene_tree->children, link) {
-      struct wlr_scene_buffer *found_buffer = surface_find_buffer(child, surface);
+      struct wlr_scene_buffer *found_buffer = scene_node_find_buffer(child, surface);
       if(found_buffer) {
         return found_buffer;
       }
@@ -112,11 +112,11 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   uint32_t height = toplevel->animation.initial.height +
     (toplevel->current.height - toplevel->animation.initial.height) * animation_passed;
 
-  if(width > toplevel->current.width || height > toplevel->current.height) {
-    struct wlr_scene_buffer *scene_buffer =
-      surface_find_buffer(&toplevel->scene_tree->node,
-                          toplevel->xdg_toplevel->base->surface);
-    wlr_scene_buffer_set_dest_size(scene_buffer, width, height);
+  if(width > toplevel_get_geometry(toplevel).width 
+     || height > toplevel_get_geometry(toplevel).height) {
+    struct wlr_scene_buffer *buffer = scene_node_find_buffer(&toplevel->scene_tree->node,
+                                                             toplevel->xdg_toplevel->base->surface);
+    wlr_scene_buffer_set_dest_size(buffer, width, height);
   } else {
     toplevel_clip_to_size(toplevel, width, height); 
   }
@@ -151,25 +151,6 @@ bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
   }
 
   return done;
-}
-
-void layout_render_dirty(struct owl_workspace *workspace) {
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->masters, link) {
-    if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-    struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
-                                                                t->xdg_toplevel->base->surface);
-    wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
-  }
-
-  wl_list_for_each(t, &workspace->slaves, link) {
-    if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-    struct wlr_scene_buffer *scene_buffer = surface_find_buffer(&t->scene_tree->node,
-                                                                t->xdg_toplevel->base->surface);
-    wlr_scene_buffer_set_dest_size(scene_buffer, t->current.width, t->current.height);
-  }
 }
 
 void workspace_render_frame(struct owl_workspace *workspace) {
@@ -227,7 +208,7 @@ void toplevel_handle_opacity(struct owl_toplevel *toplevel) {
   wl_list_for_each(w, &server.config->window_rules.opacity, link) {
     if(toplevel_matches_window_rule(toplevel, &w->condition)) {
       struct wlr_scene_buffer *buffer =
-        surface_find_buffer(&toplevel->scene_tree->node,
+        scene_node_find_buffer(&toplevel->scene_tree->node,
                             toplevel->xdg_toplevel->base->surface);
       assert(buffer != NULL);
       wlr_scene_buffer_set_opacity(buffer, w->value);

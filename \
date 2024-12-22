@@ -94,7 +94,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
     }
 
-    /* we tell clients that they are maximized and tiled to the edges
+    /* we tell clients that they are maximized
      * so they dont draw their client side decorations, eg. shadows */
     wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
     wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP | WLR_EDGE_RIGHT
@@ -127,10 +127,13 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel->pending.width = toplevel_get_geometry(toplevel).width;
       toplevel->pending.height = toplevel_get_geometry(toplevel).height;
     }
+    toplevel_commit(toplevel);
+    return;
   }
 
-  toplevel_commit(toplevel);
-  return;
+  if(layout_is_ready(toplevel->workspace)) {
+    layout_commit(toplevel->workspace);
+  }
 }
 
 void
@@ -580,9 +583,7 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.should_animate = false;
   }
 
-  /* i dont know if this is needed anymore, but it does not hurt *
-   *
-   * we set this just in case a frame gets called between a toplevel map and
+  /* we set this just in case a frame gets called between a toplevel map and
    * last layout toplevel commit; its better for the toplevel to be flashed at 0, 0
    * with size 1, 1 then somewhere in the middle of the screen. this generaly rarely
    * happens, but we should still try to handle it better in the future */
@@ -627,7 +628,8 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.initial = toplevel->current;
   }
 
-  if((toplevel->floating || toplevel->fullscreen) && !toplevel_size_changed(toplevel)) {
+  if((toplevel->floating || toplevel->fullscreen)
+     && !toplevel_size_changed(toplevel)) {
     toplevel_commit(toplevel);
     return;
   };
@@ -638,33 +640,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 }
 
 void
-toplevel_patch_dirty(struct owl_toplevel *toplevel) {
-  assert(!toplevel->floating);
-
-  uint32_t width = toplevel->animation.running ?
-    toplevel->animation.current.width : toplevel->current.width;
-  uint32_t height = toplevel->animation.running ?
-    toplevel->animation.current.height : toplevel->current.height;
-
-  if(width > toplevel_get_geometry(toplevel).width 
-     || height > toplevel_get_geometry(toplevel).height) {
-    struct wlr_scene_buffer *buffer = scene_node_find_buffer(&toplevel->scene_tree->node,
-                                                             toplevel->xdg_toplevel->base->surface);
-
-    assert(buffer != NULL);
-    wlr_scene_buffer_set_dest_size(buffer, width, height);
-  } else {
-    toplevel_clip_to_size(toplevel, width, height);
-  }
-
-}
-
-void
 toplevel_commit(struct owl_toplevel *toplevel) {
-  if(!toplevel->floating && !layout_is_ready(toplevel->workspace)) {
-    toplevel_patch_dirty(toplevel);
-  }
-
   /* we set this state to current */
   toplevel->current = toplevel->pending;
 

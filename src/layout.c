@@ -3,6 +3,7 @@
 #include "owl.h"
 #include "config.h"
 #include "toplevel.h"
+#include "wlr/util/log.h"
 
 #include <wlr/types/wlr_scene.h>
 
