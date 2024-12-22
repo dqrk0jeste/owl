@@ -11,6 +11,60 @@
 extern struct owl_server server;
 
 void
+server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
+  struct wlr_layer_surface_v1 *wlr_layer_surface = data;
+
+  struct owl_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
+  layer_surface->wlr_layer_surface = wlr_layer_surface;
+  layer_surface->wlr_layer_surface->data = layer_surface;
+
+  enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
+  switch(layer) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+      layer_surface->scene =
+        wlr_scene_layer_surface_v1_create(server.background_tree, wlr_layer_surface);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+      layer_surface->scene =
+        wlr_scene_layer_surface_v1_create(server.bottom_tree, wlr_layer_surface);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+      layer_surface->scene =
+        wlr_scene_layer_surface_v1_create(server.top_tree, wlr_layer_surface);
+      break;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+      layer_surface->scene =
+        wlr_scene_layer_surface_v1_create(server.overlay_tree, wlr_layer_surface);
+      break;
+  }
+
+  struct owl_something *something = calloc(1, sizeof(*something));
+  something->type = OWL_LAYER_SURFACE;
+  something->layer_surface = layer_surface;
+
+  layer_surface->scene->tree->node.data = something;
+
+  if(layer_surface->wlr_layer_surface->output == NULL) {
+    layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;
+  }
+
+  layer_surface->commit.notify = layer_surface_handle_commit;
+  wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
+
+  layer_surface->map.notify = layer_surface_handle_map;
+  wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
+
+  layer_surface->unmap.notify = layer_surface_handle_unmap;
+  wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
+
+  layer_surface->new_popup.notify = layer_surface_handle_new_popup;
+  wl_signal_add(&wlr_layer_surface->events.new_popup, &layer_surface->new_popup);
+
+  layer_surface->destroy.notify = layer_surface_handle_destroy;
+  wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
+}
+
+void
 layer_surface_handle_commit(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
 
@@ -126,7 +180,8 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
 
 void
 layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
-  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, destroy);
+  struct owl_layer_surface *layer_surface =
+    wl_container_of(listener, layer_surface, destroy);
 
   wl_list_remove(&layer_surface->map.link);
   wl_list_remove(&layer_surface->unmap.link);
@@ -137,7 +192,8 @@ layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
 
 void
 layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
-  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
+  struct owl_layer_surface *layer_surface =
+    wl_container_of(listener, layer_surface, new_popup);
   struct wlr_xdg_popup *xdg_popup = data;
 
   /* see server_handle_new_xdg_popup */
@@ -153,60 +209,6 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
   popup->scene_tree->node.data = something;
 
   popup->xdg_popup->base->data = popup->scene_tree;
-}
-
-void
-server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
-  struct wlr_layer_surface_v1 *wlr_layer_surface = data;
-
-  struct owl_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
-  layer_surface->wlr_layer_surface = wlr_layer_surface;
-  layer_surface->wlr_layer_surface->data = layer_surface;
-
-  enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
-  switch(layer) {
-    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.background_tree, wlr_layer_surface);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.bottom_tree, wlr_layer_surface);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.top_tree, wlr_layer_surface);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.overlay_tree, wlr_layer_surface);
-      break;
-  }
-
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_LAYER_SURFACE;
-  something->layer_surface = layer_surface;
-
-  layer_surface->scene->tree->node.data = something;
-
-  if(layer_surface->wlr_layer_surface->output == NULL) {
-    layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;
-  }
-
-  layer_surface->commit.notify = layer_surface_handle_commit;
-  wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
-
-  layer_surface->map.notify = layer_surface_handle_map;
-  wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
-
-  layer_surface->unmap.notify = layer_surface_handle_unmap;
-  wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
-
-  layer_surface->new_popup.notify = layer_surface_handle_new_popup;
-  wl_signal_add(&wlr_layer_surface->events.new_popup, &layer_surface->new_popup);
-
-  layer_surface->destroy.notify = layer_surface_handle_destroy;
-  wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
 }
 
 void

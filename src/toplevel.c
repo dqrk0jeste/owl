@@ -94,6 +94,11 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
     }
 
+    /* we tell clients that they are maximized
+     * so they dont draw their client side decorations, eg. shadows */
+    wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
+    wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP | WLR_EDGE_RIGHT
+                               | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT);
     return;
   }
 
@@ -165,6 +170,15 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
 
   toplevel->scene_tree->node.data = something;
 
+  /* add foreign toplevel handler */
+  toplevel->foreign_toplevel_handle =
+    wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
+
+  wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
+                                           toplevel->xdg_toplevel->title);
+  wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
+                                            toplevel->xdg_toplevel->app_id);
+
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
@@ -182,15 +196,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   } else if(layout_is_ready(toplevel->workspace)) {
     layout_commit(toplevel->workspace);
   }
-
-  /* add foreign toplevel handler */
-  toplevel->foreign_toplevel_handle =
-    wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
-
-  wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
-                                           toplevel->xdg_toplevel->title);
-  wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
-                                            toplevel->xdg_toplevel->app_id);
 }
 
 void
@@ -387,8 +392,8 @@ toplevel_handle_request_maximize(struct wl_listener *listener, void *data) {
 
 void
 toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel =
-    wl_container_of(listener, toplevel, request_fullscreen);
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel,
+                                                  request_fullscreen);
 
   struct owl_output *output = toplevel->workspace->output;
   if(toplevel->xdg_toplevel->requested.fullscreen) {
