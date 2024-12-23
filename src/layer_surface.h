@@ -1,5 +1,8 @@
 #pragma once
 
+#include "output.h"
+
+#include <stdbool.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 
 struct owl_layer_surface {
@@ -13,6 +16,9 @@ struct owl_layer_surface {
   struct wl_listener new_popup;
   struct wl_listener destroy;
 };
+
+void
+server_handle_new_layer_surface(struct wl_listener *listener, void *data);
 
 void
 layer_surface_handle_commit(struct wl_listener *listener, void *data);
@@ -30,7 +36,13 @@ void
 layer_surface_handle_new_popup(struct wl_listener *listener, void *data);
 
 void
-server_handle_new_layer_surface(struct wl_listener *listener, void *data);
+layer_surfaces_commit(struct owl_output *output);
 
 void
 focus_layer_surface(struct owl_layer_surface *layer_surface);
+
+struct wlr_scene_tree *
+layer_get_scene(enum zwlr_layer_shell_v1_layer layer);
+
+struct wl_list *
+layer_get_list(struct owl_output *output, enum zwlr_layer_shell_v1_layer layer);

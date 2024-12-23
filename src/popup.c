@@ -44,17 +44,11 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
 
 void
 xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
-  /* Called when a new surface state is committed. */
   struct owl_popup *popup = wl_container_of(listener, popup, commit);
 
   if(!popup->xdg_popup->base->initialized) return;
 
   if(popup->xdg_popup->base->initial_commit) {
-    /* When an xdg_surface performs an initial commit, the compositor must
-     * reply with a configure so the client can map the surface.
-     * owl sends an empty configure. A more sophisticated compositor
-     * might change an xdg_popup's geometry to ensure it's not positioned
-     * off-screen, for example. */
     struct owl_something *root = root_parent_of_surface(popup->xdg_popup->base->surface);
 
     if(root == NULL) {
@@ -83,7 +77,6 @@ xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
 
 void
 xdg_popup_handle_destroy(struct wl_listener *listener, void *data) {
-  /* Called when the xdg_popup is destroyed. */
   struct owl_popup *popup = wl_container_of(listener, popup, destroy);
 
   wl_list_remove(&popup->commit.link);

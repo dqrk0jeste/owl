@@ -4,8 +4,10 @@
 #include "output.h"
 #include "something.h"
 #include "layout.h"
+#include "wlr-layer-shell-unstable-v1-protocol.h"
 
 #include <stdlib.h>
+#include <wayland-util.h>
 #include <wlr/types/wlr_scene.h>
 
 extern struct owl_server server;
@@ -17,36 +19,26 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
   layer_surface->wlr_layer_surface = wlr_layer_surface;
   layer_surface->wlr_layer_surface->data = layer_surface;
-
-  enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
-  switch(layer) {
-    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.background_tree, wlr_layer_surface);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.bottom_tree, wlr_layer_surface);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.top_tree, wlr_layer_surface);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-      layer_surface->scene =
-        wlr_scene_layer_surface_v1_create(server.overlay_tree, wlr_layer_surface);
-      break;
+  
+  if(layer_surface->wlr_layer_surface->output == NULL) {
+    /* we give it currently active output */
+    layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;
   }
+
+  struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
+  enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
+
+  struct wlr_scene_tree *scene = layer_get_scene(layer);
+  layer_surface->scene = wlr_scene_layer_surface_v1_create(scene, wlr_layer_surface);
+
+  struct wl_list *list = layer_get_list(output, layer);
+  wl_list_insert(list, &layer_surface->link);
 
   struct owl_something *something = calloc(1, sizeof(*something));
   something->type = OWL_LAYER_SURFACE;
   something->layer_surface = layer_surface;
 
   layer_surface->scene->tree->node.data = something;
-
-  if(layer_surface->wlr_layer_surface->output == NULL) {
-    layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;
-  }
 
   layer_surface->commit.notify = layer_surface_handle_commit;
   wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
@@ -68,19 +60,27 @@ void
 layer_surface_handle_commit(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
 
-  if(!layer_surface->wlr_layer_surface->initialized) {
-    return;
-  }
+  if(!layer_surface->wlr_layer_surface->initialized) return;
 
-  if(layer_surface->wlr_layer_surface->initial_commit) {
-    struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
+  struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
 
-    struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+  uint32_t committed = layer_surface->wlr_layer_surface->current.committed;
+	if(committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) {
+    /* if the layer has been changed we respect it */
+		enum zwlr_layer_shell_v1_layer layer = layer_surface->wlr_layer_surface->current.layer;
 
-    struct wlr_box temp = output->usable_area;
-    wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
-  }
+		struct wl_list *list = layer_get_list(output, layer);
+    wl_list_remove(&layer_surface->link);
+    wl_list_insert(list, &layer_surface->link);
+
+		struct wlr_scene_tree *scene = layer_get_scene(layer);
+		wlr_scene_node_reparent(&layer_surface->scene->tree->node, scene);
+	}
+
+  /* if its the first commit or something has changed we rearange the surfaces */
+  if(layer_surface->wlr_layer_surface->initial_commit || committed) {
+		layer_surfaces_commit(output);
+	}
 }
 
 void
@@ -93,31 +93,12 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
 
   wlr_scene_node_raise_to_top(&layer_surface->scene->tree->node);
 
-  switch(layer) {
-    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-      wl_list_insert(&output->layers.background, &layer_surface->link);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-      wl_list_insert(&output->layers.bottom, &layer_surface->link);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-      wl_list_insert(&output->layers.top, &layer_surface->link);
-      break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-      wl_list_insert(&output->layers.overlay, &layer_surface->link);
-      break;
-  }
-
-  int x, y;
   struct wlr_box output_box;
   wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
-  struct wlr_box temp = output->usable_area;
   wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
 
-  if(temp.width != output->usable_area.width || temp.height != output->usable_area.height) {
-    layout_set_pending_state(output->active_workspace);
-  }
+  layout_set_pending_state(output->active_workspace);
 
   focus_layer_surface(layer_surface);
 }
@@ -138,44 +119,9 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     }
   }
 
-  if(layer_surface->wlr_layer_surface->current.exclusive_zone > 0) {
-    switch (state->anchor) {
-      case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
-      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
-        // Anchor top
-        output->usable_area.y -= state->exclusive_zone + state->margin.top;
-        output->usable_area.height += state->exclusive_zone + state->margin.top;
-        break;
-      case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
-      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
-        // Anchor bottom
-        output->usable_area.height += state->exclusive_zone + state->margin.bottom;
-        break;
-      case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
-      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT):
-        // Anchor left
-        output->usable_area.x -= state->exclusive_zone + state->margin.left;
-        output->usable_area.width += state->exclusive_zone + state->margin.left;
-        break;
-      case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
-      case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT):
-        // Anchor right
-        output->usable_area.width += state->exclusive_zone + state->margin.right;
-        break;
-    }
-
-    layout_set_pending_state(output->active_workspace);
-  }
-
   wl_list_remove(&layer_surface->link);
+
+  layer_surfaces_commit(output);
 }
 
 void
@@ -246,3 +192,66 @@ focus_layer_surface(struct owl_layer_surface *layer_surface) {
   }
 }
 
+void
+layer_surfaces_commit_layer(struct owl_output *output,
+                            enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
+	struct wl_list *list = layer_get_list(output, layer);
+
+  struct wlr_box full_area;
+  wlr_output_layout_get_box(server.output_layout, output->wlr_output, &full_area);
+
+  struct owl_layer_surface *l;
+	wl_list_for_each(l, list, link) {
+		if((l->wlr_layer_surface->current.exclusive_zone > 0) != exclusive) continue;
+
+		wlr_scene_layer_surface_v1_configure(l->scene, &full_area, &output->usable_area);
+	}
+}
+
+void
+layer_surfaces_commit(struct owl_output *output) {
+  struct wlr_box full_area;
+  wlr_output_layout_get_box(server.output_layout, output->wlr_output, &full_area);
+
+  output->usable_area = full_area;
+
+  /* first commit all the exclusive ones */
+  for(size_t i = 0; i < 4; i++) {
+    layer_surfaces_commit_layer(output, i, true);
+  }
+
+  /* then all the others */
+  for(size_t i = 0; i < 4; i++) {
+    layer_surfaces_commit_layer(output, i, false);
+  }
+
+  layout_set_pending_state(output->active_workspace);
+}
+
+struct wlr_scene_tree *
+layer_get_scene(enum zwlr_layer_shell_v1_layer layer) {
+  switch(layer) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+      return server.background_tree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+      return server.bottom_tree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+      return server.top_tree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+      return server.overlay_tree;
+  }
+}
+
+struct wl_list *
+layer_get_list(struct owl_output *output, enum zwlr_layer_shell_v1_layer layer) {
+  switch(layer) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+      return &output->layers.background;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+      return &output->layers.bottom;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+      return &output->layers.top;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+      return &output->layers.overlay;
+  }
+}
