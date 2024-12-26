@@ -6,6 +6,10 @@
 /* these next few functions are some helpers,
  * implemented straight in this header file */
 
+struct vec2 {
+  double x, y;
+};
+
 static void
 run_cmd(char *cmd) {
   if(fork() == 0) {

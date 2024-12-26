@@ -3,6 +3,8 @@
 #include "owl.h"
 #include "config.h"
 #include "toplevel.h"
+#include "config.h"
+#include "wlr/util/log.h"
 #include "workspace.h"
 
 #include <stdint.h>
@@ -88,29 +90,38 @@ scene_node_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface)
 }
 
 double
-calculate_animation_curve_at(double x) {
-  double a = server.config->animation_curve[0];
-  double b = server.config->animation_curve[1];
-  double c = server.config->animation_curve[2];
+find_animation_curve_at(double t) {
+  size_t down = 0;
+  size_t up = BAKED_POINTS_COUNT - 1;
 
-  return (a * x * x * x + b * x * x + c * x) / (a + b + c);
+  size_t middle = BAKED_POINTS_COUNT / 2; 
+  while(up - down != 1) {
+    if(server.config->baked_points[middle].x <= t) {
+      down = middle;  
+    } else {
+      up = middle;
+    }
+    middle = (up + down) / 2;
+  }
+
+  return server.config->baked_points[up].y;
 }
 
 double
 calculate_animation_passed(struct owl_animation *animation) {
-  double passed = (double)animation->passed_frames / animation->total_frames;
-
-  return calculate_animation_curve_at(passed);
+  return (double)animation->passed_frames / animation->total_frames;
 }
 
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
-  double animation_passed = calculate_animation_passed(&toplevel->animation);
+  double animation_passed = min(calculate_animation_passed(&toplevel->animation), 1.0);
+
+  double factor = find_animation_curve_at(animation_passed);
 
   uint32_t width = toplevel->animation.initial.width +
-    (toplevel->current.width - toplevel->animation.initial.width) * animation_passed;
+    (toplevel->current.width - toplevel->animation.initial.width) * factor;
   uint32_t height = toplevel->animation.initial.height +
-    (toplevel->current.height - toplevel->animation.initial.height) * animation_passed;
+    (toplevel->current.height - toplevel->animation.initial.height) * factor;
 
   if(width > toplevel_get_geometry(toplevel).width 
      || height > toplevel_get_geometry(toplevel).height) {
@@ -122,9 +133,9 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   }
 
   uint32_t x = toplevel->animation.initial.x +
-    (toplevel->current.x - toplevel->animation.initial.x) * animation_passed;
+    (toplevel->current.x - toplevel->animation.initial.x) * factor;
   uint32_t y = toplevel->animation.initial.y +
-    (toplevel->current.y - toplevel->animation.initial.y) * animation_passed;
+    (toplevel->current.y - toplevel->animation.initial.y) * factor;
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
   toplevel_draw_borders(toplevel, width, height);

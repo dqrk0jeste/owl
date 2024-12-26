@@ -8,6 +8,31 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
+struct vec2
+calculate_animation_curve_at(struct owl_config *c, double t) {
+  struct vec2 point;
+
+  point.x = 3 * t * (1 - t) * (1 - t) * c->animation_curve[0]
+    + 3 * t * t * (1 - t) * c->animation_curve[2]
+    + t * t * t;
+
+  point.y = 3 * t * (1 - t) * (1 - t) * c->animation_curve[1]
+    + 3 * t * t * (1 - t) * c->animation_curve[3]
+    + t * t * t;
+
+  return point;
+}
+
+
+void bake_bezier_curve_points(struct owl_config *c) {
+  c->baked_points = calloc(BAKED_POINTS_COUNT, sizeof(*c->baked_points));
+
+  for(size_t i = 0; i < BAKED_POINTS_COUNT; i++) {
+    c->baked_points[i] = calculate_animation_curve_at(c, (double)i / (BAKED_POINTS_COUNT - 1));
+    printf("%lf, %lf\n", c->baked_points[i].x, c->baked_points[i].y);
+  }
+}
+
 bool
 config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_regex,
                        char *predicate, char **args, size_t arg_count) {
@@ -434,7 +459,7 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     }
     c->animation_duration = atoi(args[0]);
   } else if(strcmp(keyword, "animation_curve") == 0) {
-    if(arg_count < 3) {
+    if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
@@ -442,6 +467,8 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     c->animation_curve[0] = atof(args[0]);
     c->animation_curve[1] = atof(args[1]);
     c->animation_curve[2] = atof(args[2]);
+    c->animation_curve[3] = atof(args[3]);
+    bake_bezier_curve_points(c);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);

@@ -29,7 +29,7 @@ struct wlr_scene_buffer *
 scene_node_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface);
 
 double
-calculate_animation_curve_at(double x);
+find_animation_curve_at(double t);
 
 double
 calculate_animation_passed(struct owl_animation *animation);

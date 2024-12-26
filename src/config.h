@@ -1,9 +1,13 @@
 #pragma once
 
+#include "helpers.h"
+
 #include <regex.h>
 #include <stdio.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
+
+#define BAKED_POINTS_COUNT 256
 
 struct window_rule_regex {
   bool has_app_id_regex;
@@ -73,10 +77,17 @@ struct owl_config {
   bool tap_to_click;
   bool animations;
   uint32_t animation_duration;
-  double animation_curve[3];
+  double animation_curve[4];
+  struct vec2 *baked_points;
   char *run[64];
   size_t run_count;
 };
+
+struct vec2
+calculate_animation_curve_at(struct owl_config *c, double t);
+
+void
+bake_bezier_curve_points(struct owl_config *c);
 
 bool
 config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_regex,
