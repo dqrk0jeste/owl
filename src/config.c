@@ -29,7 +29,6 @@ void bake_bezier_curve_points(struct owl_config *c) {
 
   for(size_t i = 0; i < BAKED_POINTS_COUNT; i++) {
     c->baked_points[i] = calculate_animation_curve_at(c, (double)i / (BAKED_POINTS_COUNT - 1));
-    printf("%lf, %lf\n", c->baked_points[i].x, c->baked_points[i].y);
   }
 }
 

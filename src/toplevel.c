@@ -65,6 +65,8 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   /* called when a new surface state is committed */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
+  if(!toplevel->xdg_toplevel->base->initialized) return;
+
   if(toplevel->xdg_toplevel->base->initial_commit) {
     /* when an xdg_surface performs an initial commit, the compositor must
      * reply with a configure so the client can map the surface. */
@@ -94,11 +96,6 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
     }
 
-    /* we tell clients that they are maximized and tiled to the edges
-     * so they dont draw their client side decorations, eg. shadows */
-    wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
-    wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP | WLR_EDGE_RIGHT
-                               | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT);
     return;
   }
 
@@ -694,10 +691,13 @@ toplevel_commit(struct owl_toplevel *toplevel) {
 
 void
 toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
+  wlr_log(WLR_ERROR, "");
   if(!toplevel->mapped) return;
 
+  wlr_log(WLR_ERROR, "");
   if(toplevel->workspace->fullscreen_toplevel != NULL) return;
 
+  wlr_log(WLR_ERROR, "");
   struct owl_workspace *workspace = toplevel->workspace;
   struct owl_output *output = workspace->output;
 
@@ -705,43 +705,59 @@ toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   wlr_output_layout_get_box(server.output_layout,
                             output->wlr_output, &output_box);
 
+  wlr_log(WLR_ERROR, "");
   toplevel->prev_geometry = toplevel->current;
 
   workspace->fullscreen_toplevel = toplevel;
   toplevel->fullscreen = true;
 
+  wlr_log(WLR_ERROR, "");
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
+  wlr_log(WLR_ERROR, "");
   toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
                              output_box.width, output_box.height);
+  wlr_log(WLR_ERROR, "");
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
+  wlr_log(WLR_ERROR, "");
 
   wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, true);
+  wlr_log(WLR_ERROR, "");
 }
 
 void
 toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
   if(toplevel->workspace->fullscreen_toplevel != toplevel) return;
 
+  wlr_log(WLR_ERROR, "");
   struct owl_workspace *workspace = toplevel->workspace;
   struct owl_output *output = workspace->output;
 
+  wlr_log(WLR_ERROR, "");
   workspace->fullscreen_toplevel = NULL;
   toplevel->fullscreen = false;
 
+  wlr_log(WLR_ERROR, "");
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
 
+  wlr_log(WLR_ERROR, "");
   if(toplevel->floating) {
+  wlr_log(WLR_ERROR, "");
     toplevel_set_pending_state(toplevel,
                                toplevel->prev_geometry.x, toplevel->prev_geometry.y,
                                toplevel->prev_geometry.width, toplevel->prev_geometry.height);
+  wlr_log(WLR_ERROR, "");
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   } else {
+  wlr_log(WLR_ERROR, "");
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
   }
 
+  wlr_log(WLR_ERROR, "");
   layout_set_pending_state(workspace);
   
+  wlr_log(WLR_ERROR, "");
   wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
+  wlr_log(WLR_ERROR, "");
 }
 
 void

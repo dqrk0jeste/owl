@@ -89,13 +89,17 @@ layout_is_ready(struct owl_workspace *workspace) {
 void
 layout_set_pending_state(struct owl_workspace *workspace) {
   /* if there is a fullscreened toplevel we just skip */
+  wlr_log(WLR_ERROR, "");
   if(workspace->fullscreen_toplevel != NULL) return;
 
+  wlr_log(WLR_ERROR, "");
   /* if there are no masters we are done */
   if(wl_list_empty(&workspace->masters)) return;
 
+  wlr_log(WLR_ERROR, "");
   struct owl_output *output = workspace->output;
 
+  wlr_log(WLR_ERROR, "");
   uint32_t outer_gaps = server.config->outer_gaps;
   uint32_t inner_gaps = server.config->inner_gaps;
   double master_ratio = server.config->master_ratio;
@@ -107,6 +111,7 @@ layout_set_pending_state(struct owl_workspace *workspace) {
   uint32_t master_width, master_height;
   calculate_masters_dimensions(output, master_count, slave_count,
                                &master_width, &master_height);
+  wlr_log(WLR_ERROR, "");
 
   struct owl_toplevel *m;
   size_t i = 0;
@@ -125,12 +130,15 @@ layout_set_pending_state(struct owl_workspace *workspace) {
     }
     i++;
   }
+  wlr_log(WLR_ERROR, "");
 
   if(slave_count == 0) return;
 
+  wlr_log(WLR_ERROR, "");
   /* share the remaining space among slaves */
   uint32_t slave_width, slave_height, slave_x, slave_y;
   calculate_slaves_dimensions(workspace->output, slave_count, &slave_width, &slave_height);
+  wlr_log(WLR_ERROR, "");
 
   struct owl_toplevel *s;
   i = 0;
@@ -148,6 +156,7 @@ layout_set_pending_state(struct owl_workspace *workspace) {
     }
     i++;
   }
+  wlr_log(WLR_ERROR, "");
 }
 
 void

@@ -4,7 +4,6 @@
 #include "config.h"
 #include "toplevel.h"
 #include "config.h"
-#include "wlr/util/log.h"
 #include "workspace.h"
 
 #include <stdint.h>
@@ -91,6 +90,10 @@ scene_node_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface)
 
 double
 find_animation_curve_at(double t) {
+  return t;
+  if(t >= 1) return 1.0;
+  if(t <= 0) return 0.0;
+
   size_t down = 0;
   size_t up = BAKED_POINTS_COUNT - 1;
 
@@ -114,7 +117,7 @@ calculate_animation_passed(struct owl_animation *animation) {
 
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
-  double animation_passed = min(calculate_animation_passed(&toplevel->animation), 1.0);
+  double animation_passed = calculate_animation_passed(&toplevel->animation);
 
   double factor = find_animation_curve_at(animation_passed);
 
