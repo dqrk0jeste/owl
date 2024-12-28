@@ -200,8 +200,8 @@ workspace_render_frame(struct owl_workspace *workspace) {
 
 void
 scene_buffer_apply_opacity(struct wlr_scene_buffer *buffer,
-                           int sx, int sy, void *user_data) {
-  struct window_rule_opacity *w = user_data;
+                           int sx, int sy, void *data) {
+  struct window_rule_opacity *w = data;
 
   wlr_scene_buffer_set_opacity(buffer, w->value);
 }
@@ -215,6 +215,7 @@ toplevel_handle_opacity(struct owl_toplevel *toplevel) {
   wl_list_for_each(w, &server.config->window_rules.opacity, link) {
     if(toplevel_matches_window_rule(toplevel, &w->condition)) {
       wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, w);
+      /* apply opacity to the placeholder rect so the surface is actually transperent */
       if(toplevel->placeholder != NULL) {
         float applied_opacity[4];
         applied_opacity[0] = server.config->placeholder_color[0];

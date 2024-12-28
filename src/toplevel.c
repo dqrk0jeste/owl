@@ -12,6 +12,7 @@
 #include "helpers.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <wayland-util.h>
 #include <wlr/types/wlr_cursor.h>
@@ -548,8 +549,8 @@ toplevel_center_floating(struct owl_toplevel *toplevel) {
   assert(toplevel->floating);
 
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
-  toplevel->pending.x = output_box.x + (output_box.width - toplevel->current.width) / 2;
-  toplevel->pending.y = output_box.y + (output_box.height - toplevel->current.height) / 2;
+  toplevel->pending.x = output_box.x + (output_box.width - toplevel->pending.width) / 2;
+  toplevel->pending.y = output_box.y + (output_box.height - toplevel->pending.height) / 2;
 }
 
 void
@@ -919,7 +920,6 @@ toplevel_get_primary_output(struct owl_toplevel *toplevel) {
 void
 toplevel_clip_to_size(struct owl_toplevel *toplevel,
                       uint32_t width, uint32_t height) {
-  /* this is good */
   struct wlr_box clip_box = (struct wlr_box){
     .x = toplevel_get_geometry(toplevel).x,
     .y = toplevel_get_geometry(toplevel).y,
@@ -928,6 +928,14 @@ toplevel_clip_to_size(struct owl_toplevel *toplevel,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+
+  struct wlr_scene_node *n;
+  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+    struct owl_something *view = n->data;
+    if(view != NULL && view->type == OWL_POPUP) {
+      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+    }
+  }
 }
 
 void
@@ -943,6 +951,13 @@ toplevel_clip_to_fit(struct owl_toplevel *toplevel) {
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+  struct wlr_scene_node *n;
+  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+    struct owl_something *thing = n->data;
+    if(thing != NULL && thing->type == OWL_POPUP) {
+      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+    }
+  }
 }
 
 void
