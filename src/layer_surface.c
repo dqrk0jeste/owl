@@ -128,15 +128,15 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
 
 void
 layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
-  struct owl_layer_surface *layer_surface =
-    wl_container_of(listener, layer_surface, destroy);
+  struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, destroy);
 
   wl_list_remove(&layer_surface->map.link);
   wl_list_remove(&layer_surface->unmap.link);
   wl_list_remove(&layer_surface->destroy.link);
 
+  /* this crashes, scene is probably freed before */
   /* free out owl_something */
-  free(layer_surface->scene->tree->node.data);
+  /*free(layer_surface->scene->tree->node.data);*/
   free(layer_surface);
 }
 

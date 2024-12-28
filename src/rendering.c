@@ -154,6 +154,7 @@ workspace_render_frame(struct owl_workspace *workspace) {
       wlr_scene_node_set_position(&t->scene_tree->node,
                                   t->current.x, t->current.y);
       toplevel_draw_borders(t, t->current.width, t->current.height);
+      toplevel_render_placeholder(t, t->current.width, t->current.height);
     }
   }
 
@@ -171,6 +172,7 @@ workspace_render_frame(struct owl_workspace *workspace) {
       wlr_scene_node_set_position(&t->scene_tree->node,
                                   t->current.x, t->current.y);
       toplevel_draw_borders(t, t->current.width, t->current.height);
+      toplevel_render_placeholder(t, t->current.width, t->current.height);
     }
   }
 
@@ -188,6 +190,7 @@ workspace_render_frame(struct owl_workspace *workspace) {
       wlr_scene_node_set_position(&t->scene_tree->node,
                                   t->current.x, t->current.y);
       toplevel_draw_borders(t, t->current.width, t->current.height);
+      toplevel_render_placeholder(t, t->current.width, t->current.height);
     }
   }
 
