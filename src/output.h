@@ -26,6 +26,12 @@ struct owl_output {
 void
 server_handle_new_output(struct wl_listener *listener, void *data);
 
+bool
+output_initialize(struct wlr_output *output, struct output_config *config);
+
+bool
+output_apply_preffered_mode(struct wlr_output *wlr_output, struct wlr_output_state *state);
+
 double
 output_frame_duration_ms(struct owl_output *output);
 

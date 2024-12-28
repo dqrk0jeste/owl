@@ -144,7 +144,6 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     key_sym = XKB_KEY_Escape;
   } else if(strcmp(key, "tab") == 0) {
     key_sym = XKB_KEY_Tab;
-
   } else if(strcmp(key, "up") == 0) {
     key_sym = XKB_KEY_Up;
   } else if(strcmp(key, "down") == 0) {
@@ -166,6 +165,9 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     .modifiers = modifiers_flag,
     .sym = key_sym,
   };
+
+  /* this is true for most, needs to be set to false if otherwise */
+  k->initialized = true;
 
   if(strcmp(action, "exit") == 0) {
     k->action = keybind_stop_server;
@@ -246,6 +248,7 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     k->action = keybind_change_workspace;
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
+    k->initialized = false;
   } else if(strcmp(action, "move_to_workspace") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", action);
@@ -255,6 +258,7 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     k->action = keybind_move_focused_toplevel_to_workspace;
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
+    k->initialized = false;
   } else {
     wlr_log(WLR_ERROR, "invalid keybind action %s", action);
     free(k);

@@ -7,6 +7,7 @@
 typedef void (*keybind_action_func_t)(void *);
 
 struct keybind {
+  bool initialized;
   uint32_t modifiers;
   uint32_t sym;
   keybind_action_func_t action;

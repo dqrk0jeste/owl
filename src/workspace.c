@@ -3,10 +3,46 @@
 #include "layout.h"
 #include "owl.h"
 #include "ipc.h"
+#include "keybinds.h"
 
 #include <assert.h>
+#include <stdlib.h>
 
 extern struct owl_server server;
+
+void
+workspace_create_for_output(struct owl_output *output, struct workspace_config *config) {
+  struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
+
+  wl_list_init(&workspace->floating_toplevels);
+  wl_list_init(&workspace->masters);
+  wl_list_init(&workspace->slaves);
+  workspace->output = output;
+  workspace->index = config->index;
+
+  wl_list_insert(&output->workspaces, &workspace->link);
+
+  /* if first then set it active */
+  if(output->active_workspace == NULL) {
+    output->active_workspace = workspace;
+  }
+
+  struct keybind *k;
+  wl_list_for_each(k, &server.config->keybinds, link) {
+    /* we didnt have information about what workspace this is going to be,
+     * so we only kept an index. now we replace it with
+     * the actual workspace pointer */
+    if(k->action == keybind_change_workspace
+       && (uint64_t)k->args == workspace->index) {
+      k->args = workspace;
+      k->initialized = true;
+    } else if(k->action == keybind_move_focused_toplevel_to_workspace
+              && (uint64_t)k->args == workspace->index) {
+      k->args = workspace;
+      k->initialized = true;
+    }
+  }
+}
 
 void
 change_workspace(struct owl_workspace *workspace, bool keep_focus) {

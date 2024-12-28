@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include "toplevel.h"
 #include "output.h"
 
@@ -16,6 +17,9 @@ struct owl_workspace {
   struct wl_list floating_toplevels;
   struct owl_toplevel *fullscreen_toplevel;
 };
+
+void
+workspace_create_for_output(struct owl_output *output, struct workspace_config *config);
 
 void
 change_workspace(struct owl_workspace *workspace, bool keep_focus);

@@ -30,6 +30,8 @@ server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
 
   struct keybind *k;
   wl_list_for_each(k, &server.config->keybinds, link) {
+    if(!k->initialized) continue;
+
     if(k->active && k->stop && sym == k->sym
       && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
       k->active = false;
@@ -148,7 +150,7 @@ keybind_close_keyboard_focused_toplevel(void *data) {
 
 void
 keybind_move_focus(void *data) {
-  uint32_t direction = (uint32_t)data;
+  uint64_t direction = (uint64_t)data;
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
 
@@ -297,7 +299,7 @@ keybind_move_focus(void *data) {
 
 void
 keybind_swap_focused_toplevel(void *data) {
-  uint32_t direction = (uint32_t)data;
+  uint64_t direction = (uint64_t)data;
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
 
