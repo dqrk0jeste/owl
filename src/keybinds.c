@@ -7,7 +7,10 @@
 #include "workspace.h"
 #include "layout.h"
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
+#include <wlr/backend/session.h>
 #include <wlr/xcursor.h>
 #include <wlr/types/wlr_cursor.h>
 
@@ -25,29 +28,48 @@ server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
    * instead of
    *   alt+shift 3 <do_something> */
   struct xkb_state *empty = xkb_state_new(keyboard->wlr_keyboard->keymap);
-  xkb_keysym_t sym = xkb_state_key_get_one_sym(empty, keycode);
+
+  const xkb_keysym_t *syms;
+  int count = xkb_state_key_get_syms(empty, keycode, &syms);
   xkb_state_unref(empty);
 
+  bool handled = handle_change_vt_key(syms, count);
+  if(handled) return true;
+
   struct keybind *k;
-  wl_list_for_each(k, &server.config->keybinds, link) {
-    if(!k->initialized) continue;
+  for(size_t i = 0; i < count; i++) {
+    wl_list_for_each(k, &server.config->keybinds, link) {
+      if(!k->initialized) continue;
 
-    if(k->active && k->stop && sym == k->sym
-      && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-      k->active = false;
-      k->stop(k->args);
-      return true;
-    }
+      if(k->active && k->stop && syms[i] == k->sym
+         && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+        k->active = false;
+        k->stop(k->args);
+        return true;
+      }
 
-    if(modifiers == k->modifiers && sym == k->sym
-      && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-      k->active = true;
-      k->action(k->args);
-      return true;
+      if(modifiers == k->modifiers && syms[i] == k->sym
+         && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        k->active = true;
+        k->action(k->args);
+        return true;
+      }
     }
   }
 
   return false;
+}
+
+bool
+handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
+	for(int i = 0; i < count; i++) {
+	  uint32_t vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
+		if (vt >= 1 && vt <= 12) {
+      wlr_session_change_vt(server.session, vt);
+			return true;
+		}
+	}
+	return false;
 }
 
 void

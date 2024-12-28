@@ -34,11 +34,13 @@ keyboard_handle_key(struct wl_listener *listener, void *data) {
   /* translate libinput keycode -> xkbcommon */
   uint32_t keycode = event->keycode + 8;
 
-  /* get a list of keysyms based on the keymap for this keyboard */
   const xkb_keysym_t *syms;
-  xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
+  int count = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
 
-  bool handled = server_handle_keybinds(keyboard, keycode, event->state);
+  bool handled = handle_change_vt_key(syms, count);
+  if(!handled) {
+    handled = server_handle_keybinds(keyboard, keycode, event->state);
+  }
 
   if(!handled) {
     /* otherwise, we pass it along to the client */

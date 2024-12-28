@@ -114,7 +114,8 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
   if(layer_surface == server.layer_exclusive_keyboard) {
     server.layer_exclusive_keyboard = NULL;
 
-    if(server.prev_focused != NULL) {
+    /* dont focus things that are not on the screen */
+    if(server.prev_focused != NULL && server.prev_focused->workspace == server.active_workspace) {
       focus_toplevel(server.prev_focused);
     }
   }
@@ -133,13 +134,15 @@ layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&layer_surface->unmap.link);
   wl_list_remove(&layer_surface->destroy.link);
 
+  /* free out owl_something */
+  free(layer_surface->scene->tree->node.data);
   free(layer_surface);
 }
 
 void
 layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
-  struct owl_layer_surface *layer_surface =
-    wl_container_of(listener, layer_surface, new_popup);
+  struct owl_layer_surface *layer_surface = wl_container_of(listener,
+                                                            layer_surface, new_popup);
   struct wlr_xdg_popup *xdg_popup = data;
 
   /* see server_handle_new_xdg_popup */

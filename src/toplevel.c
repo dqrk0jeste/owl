@@ -304,6 +304,8 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&toplevel->request_maximize.link);
   wl_list_remove(&toplevel->request_fullscreen.link);
 
+  /* free out owl_something */
+  free(toplevel->scene_tree->node.data);
   free(toplevel);
 }
 
@@ -540,8 +542,8 @@ cursor_jump_focused_toplevel(void) {
 
   struct wlr_box geo_box = toplevel_get_geometry(toplevel);
   wlr_cursor_warp(server.cursor, NULL,
-                  toplevel->scene_tree->node.x + geo_box.x + geo_box.width / 2.0,
-                  toplevel->scene_tree->node.y + geo_box.y + geo_box.height / 2.0);
+                  toplevel->scene_tree->node.x + geo_box.x + toplevel->current.width / 2.0,
+                  toplevel->scene_tree->node.y + geo_box.y + toplevel->current.height / 2.0);
 }
 
 void

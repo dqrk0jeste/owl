@@ -22,6 +22,9 @@ server_handle_keybinds(struct owl_keyboard *keyboard,
                        uint32_t keycode,
                        enum wl_keyboard_key_state state);
 
+bool
+handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count);
+
 void
 keybind_stop_server(void *data);
 

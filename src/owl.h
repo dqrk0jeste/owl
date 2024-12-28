@@ -20,6 +20,7 @@ enum owl_direction {
 struct owl_server {
 	struct wl_display *wl_display;
 	struct wl_event_loop *wl_event_loop;
+  struct wlr_session *session;
 	struct wlr_backend *backend;
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;

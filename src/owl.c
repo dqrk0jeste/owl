@@ -18,6 +18,7 @@
 #include <wayland-util.h>
 #include "wlr/util/log.h"
 #include "wlr/types/wlr_seat.h"
+#include <wlr/backend/session.h>
 #include "wlr/types/wlr_cursor.h"
 #include "wlr/types/wlr_data_device.h"
 #include "wlr/backend.h"
@@ -145,7 +146,7 @@ main(int argc, char *argv[]) {
    * output hardware. The autocreate option will choose the most suitable
    * backend based on the current environment, such as opening an X11 window
    * if an X11 server is running. */
-  server.backend = wlr_backend_autocreate(server.wl_event_loop, NULL);
+  server.backend = wlr_backend_autocreate(server.wl_event_loop, &server.session);
   if(server.backend == NULL) {
     wlr_log(WLR_ERROR, "failed to create wlr_backend");
     return 1;

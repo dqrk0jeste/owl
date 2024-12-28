@@ -298,8 +298,8 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   workspace_render_frame(workspace);
   workspace_handle_opacity(workspace);
 
-  struct wlr_scene_output *scene_output =
-    wlr_scene_get_scene_output(server.scene, output->wlr_output);
+  struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(server.scene,
+                                                                     output->wlr_output);
 
   wlr_scene_output_commit(scene_output, NULL);
 
@@ -316,6 +316,7 @@ output_handle_request_state(struct wl_listener *listener, void *data) {
    * when the output window is resized */
   struct owl_output *output = wl_container_of(listener, output, request_state);
   const struct wlr_output_event_request_state *event = data;
+
   wlr_output_commit_state(output->wlr_output, event->state);
 }
 
@@ -329,6 +330,7 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&output->request_state.link);
   wl_list_remove(&output->destroy.link);
   wl_list_remove(&output->link);
+
   free(output);
 }
 
