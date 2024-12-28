@@ -215,12 +215,14 @@ toplevel_handle_opacity(struct owl_toplevel *toplevel) {
   wl_list_for_each(w, &server.config->window_rules.opacity, link) {
     if(toplevel_matches_window_rule(toplevel, &w->condition)) {
       wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, w);
-      float applied_opacity[4];
-      applied_opacity[0] = server.config->placeholder_color[0];
-      applied_opacity[1] = server.config->placeholder_color[1];
-      applied_opacity[2] = server.config->placeholder_color[2];
-      applied_opacity[3] = server.config->placeholder_color[3] * w->value;
-      wlr_scene_rect_set_color(toplevel->placeholder, applied_opacity);
+      if(toplevel->placeholder != NULL) {
+        float applied_opacity[4];
+        applied_opacity[0] = server.config->placeholder_color[0];
+        applied_opacity[1] = server.config->placeholder_color[1];
+        applied_opacity[2] = server.config->placeholder_color[2];
+        applied_opacity[3] = server.config->placeholder_color[3] * w->value;
+        wlr_scene_rect_set_color(toplevel->placeholder, applied_opacity);
+      }
     }
   }
 }
