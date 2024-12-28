@@ -25,13 +25,13 @@ calculate_masters_dimensions(struct owl_output *output, uint32_t master_count,
 
   uint32_t total_decorations = slave_count > 0
     ? outer_gaps // left outer gaps
-    + master_count * 2 * border_width // all borders
-    + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
-    + inner_gaps // right inner gaps 
+      + master_count * 2 * border_width // all borders
+      + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
+      + inner_gaps // right inner gaps 
     : outer_gaps // left outer gaps
-    + master_count * 2 * border_width // all borders
-    + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
-    + outer_gaps; // right outer gaps
+      + master_count * 2 * border_width // all borders
+      + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
+      + outer_gaps; // right outer gaps
 
   *width = (total_width - total_decorations) / master_count;
   *height = output_box.height - 2 * outer_gaps - 2 * border_width;
@@ -73,33 +73,16 @@ toplevel_is_slave(struct owl_toplevel *toplevel) {
   return false;
 }
 
-bool
-layout_is_ready(struct owl_workspace *workspace) {
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->masters, link) {
-    if(!t->mapped || t->dirty) return false;
-  }
-  wl_list_for_each(t, &workspace->slaves, link) {
-    if(!t->mapped || t->dirty) return false;
-  }
-
-  return true;
-}
-
 void
 layout_set_pending_state(struct owl_workspace *workspace) {
   /* if there is a fullscreened toplevel we just skip */
-  wlr_log(WLR_ERROR, "");
   if(workspace->fullscreen_toplevel != NULL) return;
 
-  wlr_log(WLR_ERROR, "");
   /* if there are no masters we are done */
   if(wl_list_empty(&workspace->masters)) return;
 
-  wlr_log(WLR_ERROR, "");
   struct owl_output *output = workspace->output;
 
-  wlr_log(WLR_ERROR, "");
   uint32_t outer_gaps = server.config->outer_gaps;
   uint32_t inner_gaps = server.config->inner_gaps;
   double master_ratio = server.config->master_ratio;
@@ -111,7 +94,6 @@ layout_set_pending_state(struct owl_workspace *workspace) {
   uint32_t master_width, master_height;
   calculate_masters_dimensions(output, master_count, slave_count,
                                &master_width, &master_height);
-  wlr_log(WLR_ERROR, "");
 
   struct owl_toplevel *m;
   size_t i = 0;
@@ -130,15 +112,12 @@ layout_set_pending_state(struct owl_workspace *workspace) {
     }
     i++;
   }
-  wlr_log(WLR_ERROR, "");
 
   if(slave_count == 0) return;
 
-  wlr_log(WLR_ERROR, "");
   /* share the remaining space among slaves */
   uint32_t slave_width, slave_height, slave_x, slave_y;
   calculate_slaves_dimensions(workspace->output, slave_count, &slave_width, &slave_height);
-  wlr_log(WLR_ERROR, "");
 
   struct owl_toplevel *s;
   i = 0;
@@ -155,21 +134,6 @@ layout_set_pending_state(struct owl_workspace *workspace) {
       toplevel_set_initial_state(s, slave_x, slave_y, slave_width, slave_height);
     }
     i++;
-  }
-  wlr_log(WLR_ERROR, "");
-}
-
-void
-layout_commit(struct owl_workspace *workspace) {
-  if(workspace->fullscreen_toplevel != NULL) return;
-
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->masters, link) {
-    toplevel_commit(t);
-  }
-
-  wl_list_for_each(t, &workspace->slaves, link) {
-    toplevel_commit(t);
   }
 }
 

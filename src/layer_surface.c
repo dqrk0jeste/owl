@@ -115,7 +115,8 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     server.layer_exclusive_keyboard = NULL;
 
     /* dont focus things that are not on the screen */
-    if(server.prev_focused != NULL && server.prev_focused->workspace == server.active_workspace) {
+    if(server.prev_focused != NULL) {
+       /*&& server.prev_focused->workspace == server.active_workspace) {*/
       focus_toplevel(server.prev_focused);
     }
   }

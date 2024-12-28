@@ -19,12 +19,6 @@ toplevel_is_master(struct owl_toplevel *toplevel);
 bool
 toplevel_is_slave(struct owl_toplevel *toplevel);
 
-bool
-layout_is_ready(struct owl_workspace *workspace);
-
-void
-layout_commit(struct owl_workspace *workspace);
-
 void
 layout_set_pending_state(struct owl_workspace *workspace);
 
