@@ -468,6 +468,23 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     c->animation_curve[2] = atof(args[2]);
     c->animation_curve[3] = atof(args[3]);
     bake_bezier_curve_points(c);
+  } else if(strcmp(keyword, "placeholder_color") == 0) {
+    if(arg_count < 4) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->placeholder_color[0] = atoi(args[0]) / 256.0;
+    c->placeholder_color[1] = atoi(args[1]) / 256.0;
+    c->placeholder_color[2] = atoi(args[2]) / 256.0;
+    c->placeholder_color[3] = atoi(args[3]) / 256.0;
+  } else if(strcmp(keyword, "client_side_decorations") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->client_side_decorations = atoi(args[0]);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);

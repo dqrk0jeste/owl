@@ -1,5 +1,6 @@
 #include "rendering.h"
 
+#include "helpers.h"
 #include "owl.h"
 #include "config.h"
 #include "toplevel.h"
@@ -9,6 +10,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <wlr/util/log.h>
 
 extern struct owl_server server;
 
@@ -17,7 +19,7 @@ toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t he
   uint32_t border_width = server.config->border_width;
 
   float *border_color = toplevel->fullscreen
-    ? (float[4]){ 0, 0, 0, 0}
+    ? (float[4]){ 0, 0, 0, 0 }
     : toplevel == server.focused_toplevel
       ? server.config->active_border_color
       : server.config->inactive_border_color;
@@ -55,49 +57,22 @@ toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t he
   }
 }
 
-struct wlr_scene_buffer *
-scene_node_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface) {
-  if(node->type == WLR_SCENE_NODE_BUFFER) {
-    struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-
-    struct wlr_scene_surface *scene_surface =
-      wlr_scene_surface_try_from_buffer(scene_buffer);
-    if(!scene_surface) {
-      return NULL;
-    }
-
-    struct wlr_surface *s = scene_surface->surface;
-
-    if(s && s == surface) {
-      return scene_buffer;
-    }
+void
+toplevel_render_placeholder(struct owl_toplevel *toplevel, uint32_t width, uint32_t height) {
+  if(toplevel->placeholder == NULL) {
+    toplevel->placeholder = wlr_scene_rect_create(toplevel->scene_tree, width, height,
+                                                  server.config->placeholder_color);
+    wlr_scene_node_lower_to_bottom(&toplevel->placeholder->node);
   }
-
-  if(node->type == WLR_SCENE_NODE_TREE) {
-    struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
-
-    struct wlr_scene_node *child;
-    wl_list_for_each(child, &scene_tree->children, link) {
-      struct wlr_scene_buffer *found_buffer = scene_node_find_buffer(child, surface);
-      if(found_buffer) {
-        return found_buffer;
-      }
-    }
-  }
-
-  return NULL;
+  wlr_scene_rect_set_size(toplevel->placeholder, width, height);
 }
 
 double
 find_animation_curve_at(double t) {
-  return t;
-  if(t >= 1) return 1.0;
-  if(t <= 0) return 0.0;
-
   size_t down = 0;
   size_t up = BAKED_POINTS_COUNT - 1;
 
-  size_t middle = BAKED_POINTS_COUNT / 2; 
+  size_t middle = (up + down) / 2;
   while(up - down != 1) {
     if(server.config->baked_points[middle].x <= t) {
       down = middle;  
@@ -118,7 +93,6 @@ calculate_animation_passed(struct owl_animation *animation) {
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   double animation_passed = calculate_animation_passed(&toplevel->animation);
-
   double factor = find_animation_curve_at(animation_passed);
 
   uint32_t width = toplevel->animation.initial.width +
@@ -126,14 +100,8 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   uint32_t height = toplevel->animation.initial.height +
     (toplevel->current.height - toplevel->animation.initial.height) * factor;
 
-  if(width > toplevel_get_geometry(toplevel).width 
-     || height > toplevel_get_geometry(toplevel).height) {
-    struct wlr_scene_buffer *buffer = scene_node_find_buffer(&toplevel->scene_tree->node,
-                                                             toplevel->xdg_toplevel->base->surface);
-    wlr_scene_buffer_set_dest_size(buffer, width, height);
-  } else {
-    toplevel_clip_to_size(toplevel, width, height); 
-  }
+  toplevel_clip_to_size(toplevel, width, height); 
+  toplevel_render_placeholder(toplevel, width, height);
 
   uint32_t x = toplevel->animation.initial.x +
     (toplevel->current.x - toplevel->animation.initial.x) * factor;
@@ -153,7 +121,8 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   return animation_passed == 1.0;
 }
 
-bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
+bool
+toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
   bool done = toplevel_animation_next_tick(toplevel);
   if(done) {
     toplevel->animation.running = false;
@@ -167,42 +136,57 @@ bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
   return done;
 }
 
-void workspace_render_frame(struct owl_workspace *workspace) {
+void
+workspace_render_frame(struct owl_workspace *workspace) {
   bool animations_done = true;
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+
     if(t->animation.running) {
       bool done = toplevel_draw_animation_frame(t);
       if(!done) {
         animations_done = false;
       }
     } else {
+      toplevel_unclip_size(t);
+      wlr_scene_node_set_position(&t->scene_tree->node,
+                                  t->current.x, t->current.y);
       toplevel_draw_borders(t, t->current.width, t->current.height);
     }
   }
+
   wl_list_for_each(t, &workspace->masters, link) {
     if(!t->mapped) continue;
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+
     if(t->animation.running) {
       bool done = toplevel_draw_animation_frame(t);
       if(!done) {
         animations_done = false;
       }
     } else {
+      toplevel_clip_to_fit(t);
+      wlr_scene_node_set_position(&t->scene_tree->node,
+                                  t->current.x, t->current.y);
       toplevel_draw_borders(t, t->current.width, t->current.height);
     }
   }
+
   wl_list_for_each(t, &workspace->slaves, link) {
     if(!t->mapped) continue;
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+
     if(t->animation.running) {
       bool done = toplevel_draw_animation_frame(t);
       if(!done) {
         animations_done = false;
       }
     } else {
+      toplevel_clip_to_fit(t);
+      wlr_scene_node_set_position(&t->scene_tree->node,
+                                  t->current.x, t->current.y);
       toplevel_draw_borders(t, t->current.width, t->current.height);
     }
   }
@@ -214,23 +198,35 @@ void workspace_render_frame(struct owl_workspace *workspace) {
   }
 }
 
-void toplevel_handle_opacity(struct owl_toplevel *toplevel) {
+void
+scene_buffer_apply_opacity(struct wlr_scene_buffer *buffer,
+                           int sx, int sy, void *user_data) {
+  struct window_rule_opacity *w = user_data;
+
+  wlr_scene_buffer_set_opacity(buffer, w->value);
+}
+
+void
+toplevel_handle_opacity(struct owl_toplevel *toplevel) {
   assert(toplevel->mapped);
 
- /*check for the opacity window rules */
+  /*check for the opacity window rules */
   struct window_rule_opacity *w;
   wl_list_for_each(w, &server.config->window_rules.opacity, link) {
     if(toplevel_matches_window_rule(toplevel, &w->condition)) {
-      struct wlr_scene_buffer *buffer =
-        scene_node_find_buffer(&toplevel->scene_tree->node,
-                            toplevel->xdg_toplevel->base->surface);
-      assert(buffer != NULL);
-      wlr_scene_buffer_set_opacity(buffer, w->value);
+      wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, w);
+      float applied_opacity[4];
+      applied_opacity[0] = server.config->placeholder_color[0];
+      applied_opacity[1] = server.config->placeholder_color[1];
+      applied_opacity[2] = server.config->placeholder_color[2];
+      applied_opacity[3] = server.config->placeholder_color[3] * w->value;
+      wlr_scene_rect_set_color(toplevel->placeholder, applied_opacity);
     }
   }
 }
 
-void workspace_handle_opacity(struct owl_workspace *workspace) {
+void
+workspace_handle_opacity(struct owl_workspace *workspace) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;

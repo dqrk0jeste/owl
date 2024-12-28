@@ -79,6 +79,8 @@ struct owl_config {
   uint32_t animation_duration;
   double animation_curve[4];
   struct vec2 *baked_points;
+  float placeholder_color[4];
+  bool client_side_decorations;
   char *run[64];
   size_t run_count;
 };

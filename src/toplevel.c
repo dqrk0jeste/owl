@@ -65,8 +65,6 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   /* called when a new surface state is committed */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
-  if(!toplevel->xdg_toplevel->base->initialized) return;
-
   if(toplevel->xdg_toplevel->base->initial_commit) {
     /* when an xdg_surface performs an initial commit, the compositor must
      * reply with a configure so the client can map the surface. */
@@ -91,7 +89,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
     if(!toplevel->floating && toplevel->workspace->fullscreen_toplevel != NULL) {
       /* layout_set_pending_state() does not send any configures if there is
        * a fullscreen toplevel on the workspace, but we need to send something
-       * in order to resepect the protocol. we dont really care,
+       * in order to respect the protocol. we dont really care,
        * as it is not going to be shown anyway*/
       toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
     }
@@ -127,7 +125,6 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   }
 
   toplevel_commit(toplevel);
-  return;
 }
 
 void
@@ -176,20 +173,17 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
-    /* we commit it immediately if floating, but have to set the position before */
-    if(toplevel->pending.width == 0) {
-      /* we now know its size */
-      toplevel->pending.width = toplevel_get_geometry(toplevel).width;
-      toplevel->pending.height = toplevel_get_geometry(toplevel).height;
-    }
+    /* we have sent the configure, but we dont care if it chose some other size */
+    toplevel->pending.width = toplevel_get_geometry(toplevel).width;
+    toplevel->pending.height = toplevel_get_geometry(toplevel).height;
+
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
     toplevel->animation.initial.x = output_box.x + output_box.width / 2;
     toplevel->animation.initial.y = output_box.y + output_box.height / 2;
     toplevel_center_floating(toplevel);
-    toplevel_commit(toplevel);
-  } else if(layout_is_ready(toplevel->workspace)) {
-    layout_commit(toplevel->workspace);
-  }
+  } 
+
+  toplevel_commit(toplevel);
 }
 
 void
@@ -554,10 +548,8 @@ toplevel_center_floating(struct owl_toplevel *toplevel) {
   assert(toplevel->floating);
 
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
-  toplevel->pending.x = output_box.x +
-    (output_box.width - toplevel_get_geometry(toplevel).width) / 2;
-  toplevel->pending.y = output_box.y +
-    (output_box.height - toplevel_get_geometry(toplevel).height) / 2;
+  toplevel->pending.x = output_box.x + (output_box.width - toplevel->current.width) / 2;
+  toplevel->pending.y = output_box.y + (output_box.height - toplevel->current.height) / 2;
 }
 
 void
@@ -576,19 +568,6 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   } else {
     toplevel->animation.should_animate = false;
   }
-
-  /* i dont know if this is needed anymore, but it does not hurt *
-   *
-   * we set this just in case a frame gets called between a toplevel map and
-   * last layout toplevel commit; its better for the toplevel to be flashed at 0, 0
-   * with size 1, 1 then somewhere in the middle of the screen. this generaly rarely
-   * happens, but we should still try to handle it better in the future */
-  toplevel->current = (struct wlr_box){
-    .x = 0,
-    .y = 0,
-    .width = 1,
-    .height = 1,
-  };
 
   toplevel->pending = (struct wlr_box){
     .x = x,
@@ -635,34 +614,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 }
 
 void
-toplevel_patch_dirty(struct owl_toplevel *toplevel) {
-  assert(!toplevel->floating);
-
-  uint32_t width = toplevel->animation.running ?
-    toplevel->animation.current.width : toplevel->current.width;
-  uint32_t height = toplevel->animation.running ?
-    toplevel->animation.current.height : toplevel->current.height;
-
-  if(width > toplevel_get_geometry(toplevel).width 
-     || height > toplevel_get_geometry(toplevel).height) {
-    struct wlr_scene_buffer *buffer = scene_node_find_buffer(&toplevel->scene_tree->node,
-                                                             toplevel->xdg_toplevel->base->surface);
-
-    assert(buffer != NULL);
-    wlr_scene_buffer_set_dest_size(buffer, width, height);
-  } else {
-    toplevel_clip_to_size(toplevel, width, height);
-  }
-
-}
-
-void
 toplevel_commit(struct owl_toplevel *toplevel) {
-  if(!toplevel->floating && !layout_is_ready(toplevel->workspace)) {
-    toplevel_patch_dirty(toplevel);
-  }
-
-  /* we set this state to current */
   toplevel->current = toplevel->pending;
 
   if(toplevel->animation.should_animate) {
@@ -676,17 +628,9 @@ toplevel_commit(struct owl_toplevel *toplevel) {
 
     toplevel->animation.running = true;
     toplevel->animation.should_animate = false;
-    wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
-  } else {
-    if(toplevel->floating) {
-      toplevel_unclip_size(toplevel);
-    } else {
-      toplevel_clip_to_fit(toplevel);
-    }
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->current.x, toplevel->current.y);
-    toplevel_draw_borders(toplevel, toplevel->current.width, toplevel->current.height);
   }
+
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
 }
 
 void
@@ -975,11 +919,12 @@ toplevel_get_primary_output(struct owl_toplevel *toplevel) {
 void
 toplevel_clip_to_size(struct owl_toplevel *toplevel,
                       uint32_t width, uint32_t height) {
+  /* this is good */
   struct wlr_box clip_box = (struct wlr_box){
-    .x = 0,
-    .y = 0,
-    .width = width + toplevel_get_geometry(toplevel).x,
-    .height = height + toplevel_get_geometry(toplevel).y,
+    .x = toplevel_get_geometry(toplevel).x,
+    .y = toplevel_get_geometry(toplevel).y,
+    .width = width,
+    .height = height,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
@@ -991,10 +936,10 @@ toplevel_clip_to_fit(struct owl_toplevel *toplevel) {
   assert(!toplevel->floating);
 
   struct wlr_box clip_box = (struct wlr_box){
-    .x = 0,
-    .y = 0,
-    .width = toplevel->current.width + toplevel_get_geometry(toplevel).x,
-    .height = toplevel->current.height + toplevel_get_geometry(toplevel).y,
+    .x = toplevel_get_geometry(toplevel).x,
+    .y = toplevel_get_geometry(toplevel).y,
+    .width = toplevel->current.width,
+    .height = toplevel->current.height,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
