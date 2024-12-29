@@ -199,9 +199,9 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
   }
 
   /* if its the one focus should be returned to, remove it */
-  if(toplevel == server.prev_focused) {
-    server.prev_focused = NULL;
-  }
+  /*if(toplevel == server.prev_focused) {*/
+  /*  server.prev_focused = NULL;*/
+  /*}*/
 
   if(toplevel == workspace->fullscreen_toplevel) {
     workspace->fullscreen_toplevel = NULL;
@@ -778,7 +778,8 @@ void
 focus_toplevel(struct owl_toplevel *toplevel) {
   assert(toplevel != NULL);
 
-  if(server.layer_exclusive_keyboard != NULL) return;
+  /*if(server.layer_exclusive_keyboard != NULL) return;*/
+  if(server.exclusive) return;
 
   if(toplevel->workspace->fullscreen_toplevel != NULL
     && toplevel != toplevel->workspace->fullscreen_toplevel) return;

@@ -27,6 +27,7 @@ server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
    *   keybind alt+shift # <do_something>
    * instead of
    *   alt+shift 3 <do_something> */
+  /* TODO: cache this */
   struct xkb_state *empty = xkb_state_new(keyboard->wlr_keyboard->keymap);
 
   const xkb_keysym_t *syms;

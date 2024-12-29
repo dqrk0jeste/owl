@@ -41,10 +41,6 @@ struct owl_server {
 
   struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_layer_surface;
-  /* keeps track if there is a layer surface that takes exclusive keyboard focus */
-  struct owl_layer_surface *layer_exclusive_keyboard;
-  /* what to return focus to after its unmapped */
-  struct owl_toplevel *prev_focused;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -86,6 +82,11 @@ struct owl_server {
   struct owl_workspace *active_workspace;
   /* toplevel with keyboard focus */
   struct owl_toplevel *focused_toplevel;
+  /* keeps track if there is a layer surface that takes exclusive keyboard focus */
+  struct owl_layer_surface *focused_layer_surface;
+  bool exclusive;
+  /* last focused toplevel before layer surface was given focus */
+  struct owl_toplevel *prev_focused;
 
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;

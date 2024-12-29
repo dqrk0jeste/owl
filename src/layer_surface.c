@@ -4,6 +4,7 @@
 #include "output.h"
 #include "something.h"
 #include "layout.h"
+#include "toplevel.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
 #include <stdlib.h>
@@ -111,17 +112,55 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
   struct wlr_layer_surface_v1_state *state = &layer_surface->wlr_layer_surface->current;
   struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
 
-  if(layer_surface == server.layer_exclusive_keyboard) {
-    server.layer_exclusive_keyboard = NULL;
+  wl_list_remove(&layer_surface->link);
 
-    /* dont focus things that are not on the screen */
-    if(server.prev_focused != NULL) {
-       /*&& server.prev_focused->workspace == server.active_workspace) {*/
-      focus_toplevel(server.prev_focused);
+  if(layer_surface == server.focused_layer_surface) {
+    /* focusing next will set it */
+    server.exclusive = false;
+    
+    bool focused = false;
+    struct owl_layer_surface *l;
+    wl_list_for_each(l, &output->layers.overlay, link) {
+      if(l->wlr_layer_surface->current.keyboard_interactive) {
+        focus_layer_surface(l);
+        focused = true;
+      }
+    }
+    wl_list_for_each(l, &output->layers.top, link) {
+      if(l->wlr_layer_surface->current.keyboard_interactive) {
+        focus_layer_surface(l);
+        focused = true;
+      }
+    }
+    wl_list_for_each(l, &output->layers.bottom, link) {
+      if(l->wlr_layer_surface->current.keyboard_interactive) {
+        focus_layer_surface(l);
+        focused = true;
+      }
+    }
+    wl_list_for_each(l, &output->layers.background, link) {
+      if(l->wlr_layer_surface->current.keyboard_interactive) {
+        focus_layer_surface(l);
+        focused = true;
+      }
+    }
+
+    if(!focused) {
+      /* dont focus things that are not on the screen */
+      if(server.prev_focused != NULL
+         && server.prev_focused->workspace == server.active_workspace) {
+        focus_toplevel(server.prev_focused);
+      } else if(!wl_list_empty(&server.active_workspace->masters)) {
+        struct owl_toplevel *first = wl_container_of(server.active_workspace->masters.next,
+                                                     first, link);
+        focus_toplevel(first);
+      } else if(!wl_list_empty(&server.active_workspace->floating_toplevels)) {
+        struct owl_toplevel *first = wl_container_of(server.active_workspace->floating_toplevels.next,
+                                                     first, link);
+        focus_toplevel(first);
+      }
     }
   }
-
-  wl_list_remove(&layer_surface->link);
 
   layer_surfaces_commit(output);
 }
@@ -166,33 +205,23 @@ focus_layer_surface(struct owl_layer_surface *layer_surface) {
   enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive =
     layer_surface->wlr_layer_surface->current.keyboard_interactive;
 
-  switch(keyboard_interactive) {
-    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE: {
-      return;
-    }
-    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE: {
-      server.prev_focused = server.focused_toplevel;
-      unfocus_focused_toplevel();
-      server.layer_exclusive_keyboard = layer_surface;
-      struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
-      if(keyboard != NULL) {
-        wlr_seat_keyboard_notify_enter(server.seat, layer_surface->wlr_layer_surface->surface,
-                                       keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-      }
-      return;
-    }
-    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND: {
-      if(server.layer_exclusive_keyboard != NULL) return;
-      server.prev_focused = server.focused_toplevel;
-      unfocus_focused_toplevel();
-      struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
-      if(keyboard != NULL) {
-        wlr_seat_keyboard_notify_enter(server.seat,
-                                       layer_surface->wlr_layer_surface->surface,
-                                       keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
-      }
-      return;
-    }
+  if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) return;
+
+  if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
+     && server.exclusive) return;
+
+  /* unfocus the focused toplevel */
+  if(server.focused_toplevel != NULL) {
+    server.prev_focused = server.focused_toplevel;
+    unfocus_focused_toplevel();
+  }
+
+  server.focused_layer_surface = layer_surface;
+  server.exclusive = keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+  struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
+  if(keyboard != NULL) {
+    wlr_seat_keyboard_notify_enter(server.seat, layer_surface->wlr_layer_surface->surface,
+                                   keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
   }
 }
 
