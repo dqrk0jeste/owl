@@ -23,7 +23,7 @@ calculate_animation_curve_at(struct owl_config *c, double t) {
   return point;
 }
 
-
+/* thanks vaxry */
 void bake_bezier_curve_points(struct owl_config *c) {
   c->baked_points = calloc(BAKED_POINTS_COUNT, sizeof(*c->baked_points));
 
