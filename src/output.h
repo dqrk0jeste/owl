@@ -53,3 +53,6 @@ output_handle_request_state(struct wl_listener *listener, void *data);
 
 void
 output_handle_destroy(struct wl_listener *listener, void *data);
+
+void
+output_move_workspaces(struct owl_output *dest, struct owl_output *src);

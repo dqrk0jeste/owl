@@ -61,7 +61,7 @@ make install
 ```
 it will also install the default config to `/usr/share/owl/default.conf`
 
-> if you want to uninstall it you can do so with `make unistall`.
+> if you wish to uninstall it you can do so with `make unistall`.
 
 ## usage
 ```bash

@@ -41,19 +41,19 @@ build/owl-ipc: owl-ipc/owl-ipc.c
 	$(CC) $< -o $@
 
 install: build/owl build/owl-ipc default.conf owl-portals.conf
-	sudo cp build/owl /usr/local/bin/owl; \
-	sudo cp build/owl-ipc /usr/local/bin/owl-ipc; \
-	sudo mkdir -p /usr/share/owl; \
-	sudo cp default.conf /usr/share/owl/default.conf; \
-	sudo cp owl.desktop /usr/share/wayland-sessions/owl.desktop; \
-	sudo chmod 777 /usr/share/wayland-sessions/owl.desktop; \
-	sudo cp owl-portals.conf /usr/share/xdg-desktop-portal/owl-portals.conf
+	cp build/owl /usr/local/bin/owl; \
+	cp build/owl-ipc /usr/local/bin/owl-ipc; \
+	mkdir -p /usr/share/owl; \
+	cp default.conf /usr/share/owl/default.conf; \
+	cp owl.desktop /usr/share/wayland-sessions/owl.desktop; \
+	chmod 777 /usr/share/wayland-sessions/owl.desktop; \
+	cp owl-portals.conf /usr/share/xdg-desktop-portal/owl-portals.conf
 
 uninstall:
-	sudo rm /usr/local/bin/owl; \
-	sudo rm /usr/local/bin/owl-ipc; \
-	sudo rm -rf /usr/share/owl; \
-	sudo rm /usr/share/xdg-desktop-portal/owl-portals.conf
+	rm /usr/local/bin/owl; \
+	rm /usr/local/bin/owl-ipc; \
+	rm -rf /usr/share/owl; \
+	rm /usr/share/xdg-desktop-portal/owl-portals.conf
 
 clean:
 	rm -rf build 2>/dev/null

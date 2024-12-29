@@ -2,7 +2,6 @@
 
 #include "owl.h"
 #include "config.h"
-#include "keybinds.h"
 #include "layout.h"
 #include "rendering.h"
 #include "workspace.h"
@@ -326,6 +325,19 @@ void
 output_handle_destroy(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, destroy);
 
+  /* we want to transfer all the workspaces to a new output;
+   * if this was the only output then idk what to do honestly, maybe have a temporary
+   * stash thats going to hold them until some output is attached again TODO*/
+  struct wl_list *next = output->link.next;
+  if(next != &server.outputs) {
+    struct owl_output *new = wl_container_of(next, new, link);
+    struct owl_workspace *w;
+    wl_list_for_each(w, &output->workspaces, link) {
+      w->output = new;
+      wl_list_insert(new->workspaces.prev, &w->link);
+    }
+  }
+
   wl_list_remove(&output->frame.link);
   wl_list_remove(&output->request_state.link);
   wl_list_remove(&output->destroy.link);
@@ -334,3 +346,7 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
   free(output);
 }
 
+void
+output_move_workspaces(struct owl_output *dest, struct owl_output *src) {
+  
+}

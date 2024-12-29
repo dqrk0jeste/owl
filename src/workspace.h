@@ -25,5 +25,4 @@ void
 change_workspace(struct owl_workspace *workspace, bool keep_focus);
 
 void
-toplevel_move_to_workspace(struct owl_toplevel *toplevel,
-                           struct owl_workspace *workspace);
+toplevel_move_to_workspace(struct owl_toplevel *toplevel, struct owl_workspace *workspace);
