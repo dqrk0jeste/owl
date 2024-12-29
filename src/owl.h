@@ -100,6 +100,7 @@ struct owl_server {
   struct wlr_viewporter *viewporter;
   struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
   struct wlr_screencopy_manager_v1 *screencopy_manager;
+  struct wlr_export_dmabuf_manager_v1 *dmabuf_manager;
 
   struct owl_config *config;
 };

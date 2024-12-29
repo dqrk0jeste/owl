@@ -33,6 +33,7 @@
 #include "wlr/types/wlr_screencopy_v1.h"
 #include "wlr/types/wlr_viewporter.h"
 #include "wlr/types/wlr_foreign_toplevel_management_v1.h"
+#include <wlr/types/wlr_export_dmabuf_v1.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -244,7 +245,8 @@ main(int argc, char *argv[]) {
    * Xcursor themes to source cursor images from and makes sure that cursor
    * images are available at all scale factors on the screen (necessary for
    * HiDPI support). */
-  server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
+  server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme,
+                                                 server.config->cursor_size);
 
   /*
    * wlr_cursor *only* displays an image on screen. It does not move around
@@ -261,8 +263,7 @@ main(int argc, char *argv[]) {
   server.cursor_motion.notify = server_handle_cursor_motion;
   wl_signal_add(&server.cursor->events.motion, &server.cursor_motion);
   server.cursor_motion_absolute.notify = server_handle_cursor_motion_absolute;
-  wl_signal_add(&server.cursor->events.motion_absolute,
-                &server.cursor_motion_absolute);
+  wl_signal_add(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute);
   server.cursor_button.notify = server_handle_cursor_button;
   wl_signal_add(&server.cursor->events.button, &server.cursor_button);
   server.cursor_axis.notify = server_handle_cursor_axis;
@@ -312,6 +313,7 @@ main(int argc, char *argv[]) {
   server.viewporter = wlr_viewporter_create(server.wl_display);
 
   server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
+  server.dmabuf_manager = wlr_export_dmabuf_manager_v1_create(server.wl_display);
   server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);
 
   /* Add a Unix socket to the Wayland display. */

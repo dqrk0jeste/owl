@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=owl
+Comment=tiled wayland compositor based on wlroots
+Exec=owl
+Type=Application

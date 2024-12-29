@@ -10,10 +10,10 @@
 - tiling and floating toplevels
 - master layout with support for multiple masters, ideal for wide monitors
 - keyboard focused workflow
-- great multitasking with multimonitor support and workspaces out of the box
+- great multitasking with multimonitor and workspaces support
 - smooth and customizable animations
 - easy configuration with custom keybinds, monitor layouts etc
-- ipc for integrating with other apps
+- portals and an ipc for integrating with other apps
 
 > owl is made mainly for myself, implementing just enough for my workflow. that means a lot of things is just not there. if you are looking for something more mature take a look at hyprland, sway or river. 
 
@@ -34,7 +34,12 @@
 - libdrm
 - libinput
 - xkbcommmon
-- wlroots >= 19.0 (git version on aur)
+- wlroots 18.0 
+- xdg-desktop-portal *
+- xdg-desktop-portal-wlr *
+- xdg-desktop-portal-gtk *
+
+> * optional, if you want portals for interacting with sandboxed applications, screensharing etc.
 
 ## building
 ```bash
@@ -78,7 +83,7 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 - [ ] blur
 - [x] drag and drop implementation
 - [ ] monitor hotplugging
-- [ ] complete foreign toplevel implementation
-- [ ] add portals
+- [x] complete foreign toplevel implementation (toplevel enter/leave output missing)
+- [x] add portals
 - [ ] mouse clicks for keybinds (for moving and resizing toplevels)
 - [ ] more ipc capabilities
