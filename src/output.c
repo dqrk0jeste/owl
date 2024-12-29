@@ -55,7 +55,25 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 
   wl_list_init(&output->workspaces);
 
+  /* if this output is reconnected then its workspaces are on some other monitor,
+   * we try to find it; this is not efficient as things could be flagged, i am just lazy rn */
+  bool found = false;
+  struct owl_output *out;
+  struct owl_workspace *ws;
   struct workspace_config *w;
+  wl_list_for_each(out, &server.outputs, link) {
+    wl_list_for_each(ws, &out->workspaces, link) {
+      wl_list_for_each_reverse(w, &server.config->workspaces, link) {
+        if(strcmp(w->output, wlr_output->name) == 0) {
+          /* TODO: some like check for active workspace so it replaced */
+          ws->output = output;
+          wl_list_remove(&ws->link);
+          wl_list_insert(output->workspaces.prev, &w->link);
+        }
+      }
+    }
+  }
+
   /* we go in reverse to first add workspaces that were on top of config */
   wl_list_for_each_reverse(w, &server.config->workspaces, link) {
     if(strcmp(w->output, wlr_output->name) == 0) {
@@ -334,6 +352,7 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
     struct owl_workspace *w;
     wl_list_for_each(w, &output->workspaces, link) {
       w->output = new;
+      wl_list_remove(&w->link);
       wl_list_insert(new->workspaces.prev, &w->link);
     }
   }
@@ -346,7 +365,3 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
   free(output);
 }
 
-void
-output_move_workspaces(struct owl_output *dest, struct owl_output *src) {
-  
-}
