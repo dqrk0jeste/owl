@@ -7,6 +7,7 @@
 #include "output.h"
 #include "something.h"
 #include "dnd.h"
+#include "layer_surface.h"
 
 #include <libinput.h>
 #include <wlr/backend/libinput.h>

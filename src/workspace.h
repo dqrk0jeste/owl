@@ -10,8 +10,11 @@ struct owl_animation;
 
 struct owl_workspace {
   struct wl_list link;
+
   struct owl_output *output;
   uint32_t index;
+  struct workspace_config *config;
+
   struct wl_list masters;
   struct wl_list slaves;
   struct wl_list floating_toplevels;

@@ -55,36 +55,22 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 
   wl_list_init(&output->workspaces);
 
-  /* if this output is reconnected then its workspaces are on some other monitor,
-   * we try to find it; this is not efficient as things could be flagged, i am just lazy rn */
-  bool found = false;
-  struct owl_output *out;
-  struct owl_workspace *ws;
-  struct workspace_config *w;
-  wl_list_for_each(out, &server.outputs, link) {
-    wl_list_for_each(ws, &out->workspaces, link) {
-      wl_list_for_each_reverse(w, &server.config->workspaces, link) {
-        if(strcmp(w->output, wlr_output->name) == 0) {
-          /* TODO: some like check for active workspace so it replaced */
-          ws->output = output;
-          wl_list_remove(&ws->link);
-          wl_list_insert(output->workspaces.prev, &w->link);
-        }
+  /* we check if this output already has some workspaces created */
+  bool found = output_transfer_existing_workspaces(output);
+  if(!found) {
+    struct workspace_config *c;
+    /* we go in reverse to first add workspaces that were on top of config */
+    wl_list_for_each_reverse(c, &server.config->workspaces, link) {
+      if(strcmp(c->output, wlr_output->name) == 0) {
+        workspace_create_for_output(output, c);
       }
     }
   }
 
-  /* we go in reverse to first add workspaces that were on top of config */
-  wl_list_for_each_reverse(w, &server.config->workspaces, link) {
-    if(strcmp(w->output, wlr_output->name) == 0) {
-      workspace_create_for_output(output, w);
-    }
-  }
-
-  /* if we didnt find any workspace config, then we give it workspace with index -1 */
+  /* if we didnt find any workspace config, then we give it workspace with index 0 */
   if(wl_list_empty(&output->workspaces)) {
     wlr_log(WLR_ERROR, "no workspace config specified for output %s."
-            "using default workspace UINT32_MAX. please add a valid workspace config.",
+            "using default workspace 0. please add a valid workspace config.",
             wlr_output->name);
 
     struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
@@ -92,7 +78,7 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
     wl_list_init(&workspace->masters);
     wl_list_init(&workspace->slaves);
     workspace->output = output;
-    workspace->index = UINT32_MAX;
+    workspace->index = 0;
 
     wl_list_insert(&output->workspaces, &workspace->link);
 
@@ -123,10 +109,76 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
   wlr_output_layout_get_box(server.output_layout, wlr_output, &output_box);
   output->usable_area = output_box;
 
+  /* if there were some existing workspaces then we reconfigure them */
+  if(found) {
+    struct owl_workspace *w;
+    wl_list_for_each(w, &output->workspaces, link) {
+      layout_set_pending_state(w);
+      /* this pathces some ghosts that might have been left in the scene */
+      if(w != output->active_workspace) {
+        struct owl_toplevel *t;
+        wl_list_for_each(t, &w->floating_toplevels, link) {
+          wlr_scene_node_set_enabled(&t->scene_tree->node, false);
+        }
+        wl_list_for_each(t, &w->masters, link) {
+          wlr_scene_node_set_enabled(&t->scene_tree->node, false);
+        }
+        wl_list_for_each(t, &w->slaves, link) {
+          wlr_scene_node_set_enabled(&t->scene_tree->node, false);
+        }
+      }
+    }
+  }
+
   /* if first output then set server's active workspace to this one */
   if(server.active_workspace == NULL) {
     server.active_workspace = output->active_workspace;
   }
+}
+
+struct owl_workspace *
+output_find_owned_workspace(struct owl_output *output) {
+  struct owl_workspace *w;
+  wl_list_for_each(w, &output->workspaces, link) {
+    if(w->config->output == output->wlr_output->name) {
+      return w;
+    }
+  }
+
+  return NULL;
+}
+
+bool
+output_transfer_existing_workspaces(struct owl_output *output) {
+  /* if this output is reconnected then its workspaces are on some other monitor,
+   * we try to find it; this is not efficient as things could be flagged, i am just lazy rn */
+  bool found = false;
+  struct owl_output *o;
+  struct owl_workspace *w, *tmp;
+  wl_list_for_each(o, &server.outputs, link) {
+    wl_list_for_each_safe(w, tmp, &o->workspaces, link) {
+      if(strcmp(w->config->output, output->wlr_output->name) == 0) {
+        /* fix that outputs state */
+        if(w == o->active_workspace) {
+          struct owl_workspace *owned_workspace = output_find_owned_workspace(o);
+          /* it should have had its own workspace */
+          assert(owned_workspace != NULL);
+          change_workspace(owned_workspace, true);
+        }
+        /* transfer it to this output */
+        w->output = output;
+        wl_list_remove(&w->link);
+        wl_list_insert(output->workspaces.prev, &w->link);
+        if(output->active_workspace == NULL) {
+          output->active_workspace = w;
+        }
+        found = true;
+      }
+    }
+  }
+
+  return found;
+
 }
 
 bool
@@ -347,13 +399,18 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
    * if this was the only output then idk what to do honestly, maybe have a temporary
    * stash thats going to hold them until some output is attached again TODO*/
   struct wl_list *next = output->link.next;
+  if(next == &server.outputs) {
+    next = output->link.prev;
+  }
+
   if(next != &server.outputs) {
     struct owl_output *new = wl_container_of(next, new, link);
-    struct owl_workspace *w;
-    wl_list_for_each(w, &output->workspaces, link) {
+    struct owl_workspace *w, *tmp;
+    wl_list_for_each_safe(w, tmp, &output->workspaces, link) {
       w->output = new;
       wl_list_remove(&w->link);
       wl_list_insert(new->workspaces.prev, &w->link);
+      layout_set_pending_state(w);
     }
   }
 

@@ -30,6 +30,12 @@ bool
 output_initialize(struct wlr_output *output, struct output_config *config);
 
 bool
+output_transfer_existing_workspaces(struct owl_output *output);
+
+struct owl_workspace *
+output_find_owned_workspace(struct owl_output *output);
+
+bool
 output_apply_preffered_mode(struct wlr_output *wlr_output, struct wlr_output_state *state);
 
 double

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "output.h"
+#include "something.h"
 
 #include <stdbool.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
@@ -9,6 +10,8 @@ struct owl_layer_surface {
   struct wl_list link;
   struct wlr_layer_surface_v1 *wlr_layer_surface;
   struct wlr_scene_layer_surface_v1 *scene;
+
+  struct owl_something something;
 
   struct wl_listener map;
   struct wl_listener unmap;

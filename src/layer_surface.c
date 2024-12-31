@@ -1,6 +1,7 @@
 #include "layer_surface.h"
 
 #include "owl.h"
+#include "popup.h"
 #include "output.h"
 #include "something.h"
 #include "layout.h"
@@ -20,6 +21,9 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
   layer_surface->wlr_layer_surface = wlr_layer_surface;
   layer_surface->wlr_layer_surface->data = layer_surface;
+
+  layer_surface->something.type = OWL_LAYER_SURFACE;
+  layer_surface->something.layer_surface = layer_surface;
   
   if(layer_surface->wlr_layer_surface->output == NULL) {
     /* we give it currently active output */
@@ -35,11 +39,7 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
   struct wl_list *list = layer_get_list(output, layer);
   wl_list_insert(list, &layer_surface->link);
 
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_LAYER_SURFACE;
-  something->layer_surface = layer_surface;
-
-  layer_surface->scene->tree->node.data = something;
+  layer_surface->scene->tree->node.data = &layer_surface->something;
 
   layer_surface->commit.notify = layer_surface_handle_commit;
   wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
@@ -185,17 +185,15 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
                                                             layer_surface, new_popup);
   struct wlr_xdg_popup *xdg_popup = data;
 
-  /* see server_handle_new_xdg_popup */
+  /* see server_handle_new_xdg_popup() */
   struct owl_popup *popup = xdg_popup->base->data;
 
   struct wlr_scene_tree *parent_tree = layer_surface->scene->tree;
   popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
 
-  /* TODO: this is going to be used to get the layer surface from the popup */
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_POPUP;
-  something->popup = popup;
-  popup->scene_tree->node.data = something;
+  popup->something.type = OWL_POPUP;
+  popup->something.popup = popup;
+  popup->scene_tree->node.data = &popup->something;
 
   popup->xdg_popup->base->data = popup->scene_tree;
 }

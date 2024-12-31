@@ -4,6 +4,7 @@
 #include "owl.h"
 #include "pointer.h"
 #include "config.h"
+#include "something.h"
 
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_cursor.h>
@@ -14,6 +15,8 @@ struct owl_toplevel {
   struct owl_workspace *workspace;
   struct wlr_scene_tree *scene_tree;
   struct wlr_scene_rect *borders[4];
+
+  struct owl_something something;
 
   bool mapped;
 

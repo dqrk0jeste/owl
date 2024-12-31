@@ -29,6 +29,9 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
   toplevel->xdg_toplevel = xdg_toplevel;
 
+  toplevel->something.type = OWL_TOPLEVEL;
+  toplevel->something.toplevel = toplevel;
+
   /* listen to the various events it can emit */
   toplevel->map.notify = toplevel_handle_map;
   wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
@@ -156,11 +159,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   /* in the node we want to keep information what that node represents. we do that
    * be keeping owl_something in user data field, which is a union of all possible
    * 'things' we can have on the screen */
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_TOPLEVEL;
-  something->toplevel = toplevel;
-
-  toplevel->scene_tree->node.data = something;
+  toplevel->scene_tree->node.data = &toplevel->something;
 
   /* add foreign toplevel handler */
   toplevel->foreign_toplevel_handle =
@@ -290,7 +289,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 
 void
 toplevel_handle_destroy(struct wl_listener *listener, void *data) {
-  /* called when the xdg_toplevel is destroyed. */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
   wlr_foreign_toplevel_handle_v1_destroy(toplevel->foreign_toplevel_handle);
@@ -304,8 +302,6 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&toplevel->request_maximize.link);
   wl_list_remove(&toplevel->request_fullscreen.link);
 
-  /* free out owl_something */
-  free(toplevel->scene_tree->node.data);
   free(toplevel);
 }
 

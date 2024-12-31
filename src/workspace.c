@@ -17,8 +17,10 @@ workspace_create_for_output(struct owl_output *output, struct workspace_config *
   wl_list_init(&workspace->floating_toplevels);
   wl_list_init(&workspace->masters);
   wl_list_init(&workspace->slaves);
+
   workspace->output = output;
   workspace->index = config->index;
+  workspace->config = config;
 
   wl_list_insert(&output->workspaces, &workspace->link);
 
@@ -32,8 +34,7 @@ workspace_create_for_output(struct owl_output *output, struct workspace_config *
     /* we didnt have information about what workspace this is going to be,
      * so we only kept an index. now we replace it with
      * the actual workspace pointer */
-    if(k->action == keybind_change_workspace
-       && (uint64_t)k->args == workspace->index) {
+    if(k->action == keybind_change_workspace && (uint64_t)k->args == workspace->index) {
       k->args = workspace;
       k->initialized = true;
     } else if(k->action == keybind_move_focused_toplevel_to_workspace
