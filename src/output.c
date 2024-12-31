@@ -140,7 +140,7 @@ struct owl_workspace *
 output_find_owned_workspace(struct owl_output *output) {
   struct owl_workspace *w;
   wl_list_for_each(w, &output->workspaces, link) {
-    if(w->config->output == output->wlr_output->name) {
+    if(strcmp(w->config->output, output->wlr_output->name) == 0) {
       return w;
     }
   }
@@ -163,12 +163,12 @@ output_transfer_existing_workspaces(struct owl_output *output) {
           struct owl_workspace *owned_workspace = output_find_owned_workspace(o);
           /* it should have had its own workspace */
           assert(owned_workspace != NULL);
-          change_workspace(owned_workspace, true);
+          change_workspace(owned_workspace, false);
         }
         /* transfer it to this output */
         w->output = output;
         wl_list_remove(&w->link);
-        wl_list_insert(output->workspaces.prev, &w->link);
+        wl_list_insert(&output->workspaces, &w->link);
         if(output->active_workspace == NULL) {
           output->active_workspace = w;
         }
@@ -397,19 +397,26 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
 
   /* we want to transfer all the workspaces to a new output;
    * if this was the only output then idk what to do honestly, maybe have a temporary
-   * stash thats going to hold them until some output is attached again TODO*/
+   * stash thats going to hold them until some output is attached again? TODO*/
   struct wl_list *next = output->link.next;
   if(next == &server.outputs) {
     next = output->link.prev;
   }
 
+
   if(next != &server.outputs) {
     struct owl_output *new = wl_container_of(next, new, link);
+    bool valid_focus = server.focused_toplevel != NULL
+      && server.focused_toplevel->workspace->output != output;
+    if(!valid_focus) {
+      focus_output(new, OWL_LEFT);
+    }
+
     struct owl_workspace *w, *tmp;
     wl_list_for_each_safe(w, tmp, &output->workspaces, link) {
       w->output = new;
       wl_list_remove(&w->link);
-      wl_list_insert(new->workspaces.prev, &w->link);
+      wl_list_insert(&new->workspaces, &w->link);
       layout_set_pending_state(w);
     }
   }
