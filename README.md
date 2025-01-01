@@ -26,9 +26,9 @@
 </div>
 
 ## dependencies
-- make
-- wayland-protocols
-- wayland-scanner
+- make *
+- wayland-protocols *
+- wayland-scanner *
 - wayland-server
 - pixman
 - libdrm
@@ -39,7 +39,7 @@
 - xdg-desktop-portal-wlr *
 - xdg-desktop-portal-gtk *
 
-> * optional, if you want portals for interacting with sandboxed applications, screensharing etc.
+> \* compile-time dependencies
 
 ## building
 ```bash
@@ -61,7 +61,13 @@ make install
 ```
 it will also install the default config to `/usr/share/owl/default.conf`
 
-> if you wish to uninstall it you can do so with `make unistall`.
+> if you wish to uninstall `owl` you can do so with `make unistall`.
+
+## post-install
+if you need to intract with sandboxed applications and/or screenshare you will need xdg-desktop-portals. install
+- xdg-desktop-portal (base)
+- xdg-desktop-portal-wlr (screensharing)
+- xdg-desktop-portal-gtk (everything else)
 
 ## usage
 ```bash
@@ -75,14 +81,14 @@ configuration is done in a configuration file found at `$XDG_CONFIG_HOME/owl/owl
 
 for detailed documentation see `examples/example.conf`. you can also find the default config in the repo.
 
-## todos
+## todo
 - [ ] fix issues
 - [x] animations
 - [ ] rounded corners
 - [x] transparency
 - [ ] blur
 - [x] drag and drop implementation
-- [ ] monitor hotplugging
+- [x] monitor hotplugging
 - [x] complete foreign toplevel implementation (toplevel enter/leave output missing)
 - [x] add portals
 - [ ] mouse clicks for keybinds (for moving and resizing toplevels)
