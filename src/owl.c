@@ -39,12 +39,12 @@
 struct owl_server server;
 
 /* handles child processes */
-static void
+void
 sigchld_handler(int signo) {
   while(waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-static void
+void
 server_handle_new_input(struct wl_listener *listener, void *data) {
   struct wlr_input_device *input = data;
 
@@ -70,7 +70,7 @@ server_handle_new_input(struct wl_listener *listener, void *data) {
   wlr_seat_set_capabilities(server.seat, caps);
 }
 
-static void 
+void 
 server_handle_request_cursor(struct wl_listener *listener, void *data) {
   struct wlr_seat_pointer_request_set_cursor_event *event = data;
   struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
@@ -88,7 +88,7 @@ server_handle_request_cursor(struct wl_listener *listener, void *data) {
   }
 }
 
-static void
+void
 server_handle_request_set_selection(struct wl_listener *listener, void *data) {
   /* this event is raised by the seat when a client wants to set the selection,
    * usually when the user copies something. wlroots allows compositors to
@@ -169,8 +169,7 @@ main(int argc, char *argv[]) {
    * The allocator is the bridge between the renderer and the backend. It
    * handles the buffer creation, allowing wlroots to render onto the
    * screen */
-  server.allocator = wlr_allocator_autocreate(server.backend,
-                                              server.renderer);
+  server.allocator = wlr_allocator_autocreate(server.backend, server.renderer);
   if(server.allocator == NULL) {
     wlr_log(WLR_ERROR, "failed to create wlr_allocator");
     return 1;
@@ -345,9 +344,12 @@ main(int argc, char *argv[]) {
     run_cmd(server.config->run[i]);
   }
 
+  server.running = true;
+
   /* run the wayland event loop. */
   wlr_log(WLR_INFO, "running owl on WAYLAND_DISPLAY=%s", socket);
   wl_display_run(server.wl_display);
+
 
   /* Once wl_display_run returns, we destroy all clients then shut down the
    * server. */
@@ -359,5 +361,6 @@ main(int argc, char *argv[]) {
   wlr_renderer_destroy(server.renderer);
   wlr_backend_destroy(server.backend);
   wl_display_destroy(server.wl_display);
+
   return 0;
 }

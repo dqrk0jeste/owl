@@ -108,11 +108,18 @@ void
 layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
   struct owl_layer_surface *layer_surface = wl_container_of(listener, layer_surface, unmap);
 
-  struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
-  struct wlr_layer_surface_v1_state *state = &layer_surface->wlr_layer_surface->current;
+  wl_list_remove(&layer_surface->link);
+
   struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
 
-  wl_list_remove(&layer_surface->link);
+  if(output == NULL) {
+    if(layer_surface == server.focused_layer_surface) {
+      server.focused_layer_surface = NULL;
+      server.exclusive = false;
+    }
+    wlr_layer_surface_v1_destroy(layer_surface->wlr_layer_surface);
+    return;
+  }
 
   if(layer_surface == server.focused_layer_surface) {
     /* focusing next will set it */
@@ -173,9 +180,6 @@ layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&layer_surface->unmap.link);
   wl_list_remove(&layer_surface->destroy.link);
 
-  /* this crashes, scene is probably freed before */
-  /* free out owl_something */
-  /*free(layer_surface->scene->tree->node.data);*/
   free(layer_surface);
 }
 

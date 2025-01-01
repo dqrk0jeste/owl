@@ -103,5 +103,7 @@ struct owl_server {
   struct wlr_export_dmabuf_manager_v1 *dmabuf_manager;
 
   struct owl_config *config;
+
+  bool running;
 };
 

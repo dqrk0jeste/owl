@@ -75,6 +75,7 @@ handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
 
 void
 keybind_stop_server(void *data) {
+  server.running = false;
   wl_display_terminate(server.wl_display);
 }
 
