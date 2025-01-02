@@ -46,6 +46,12 @@ make
 
 ## installation
 
+### arch
+`owl` is available on the arch user repository under the name `owl-compositor-git`. you can install it with your favourite aur helper
+```bash
+yay -S owl-compositor-git
+```
+
 ### nixos
 you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) flake! 
 
