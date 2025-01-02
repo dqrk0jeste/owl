@@ -2,7 +2,7 @@ PKG_CONFIG?=pkg-config
 WAYLAND_PROTOCOLS!=$(PKG_CONFIG) --variable=pkgdatadir wayland-protocols
 WAYLAND_SCANNER!=$(PKG_CONFIG) --variable=wayland_scanner wayland-scanner
 
-PKGS="wlroots-0.19" wayland-server xkbcommon libinput
+PKGS="wlroots-0.18" wayland-server xkbcommon libinput
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 CFLAGS+=-Ibuild/protocols
@@ -40,16 +40,20 @@ build/owl: $(OBJ_FILES)
 build/owl-ipc: owl-ipc/owl-ipc.c
 	$(CC) $< -o $@
 
-install: build/owl build/owl-ipc default.conf
-	sudo cp build/owl /usr/local/bin/owl; \
-	sudo cp build/owl-ipc /usr/local/bin/owl-ipc; \
-	sudo mkdir -p /usr/share/owl; \
-	sudo cp default.conf /usr/share/owl/default.conf
+install: build/owl build/owl-ipc default.conf owl-portals.conf owl.desktop
+	install -Dm755 build/owl "/usr/local/bin/owl"; \
+	install -Dm755 build/owl-ipc "/usr/local/bin/owl-ipc"; \
+	install -Dm644 default.conf "/usr/share/owl/default.conf"; \
+  install -Dm644 LICENSE "/usr/share/licenses/owl/LICENSE"; \
+	install -Dm644 owl.desktop "/usr/share/wayland-sessions/owl.desktop"; \
+	install -Dm644 owl-portals.conf "/usr/share/xdg-desktop-portal/owl-portals.conf"
 
 uninstall:
-	sudo rm /usr/local/bin/owl; \
-	sudo rm /usr/local/bin/owl-ipc; \
-	sudo rm -rf /usr/share/owl
+	rm /usr/local/bin/owl; \
+	rm /usr/local/bin/owl-ipc; \
+	rm -rf /usr/share/owl; \
+	rm /usr/share/xdg-desktop-portal/owl-portals.conf; \
+	rm /usr/share/wayland-sessions/owl.desktop
 
 clean:
 	rm -rf build 2>/dev/null

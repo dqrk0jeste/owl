@@ -3,6 +3,7 @@
 #include "owl.h"
 #include "config.h"
 #include "toplevel.h"
+#include "wlr/util/log.h"
 
 #include <wlr/types/wlr_scene.h>
 
@@ -24,13 +25,13 @@ calculate_masters_dimensions(struct owl_output *output, uint32_t master_count,
 
   uint32_t total_decorations = slave_count > 0
     ? outer_gaps // left outer gaps
-    + master_count * 2 * border_width // all borders
-    + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
-    + inner_gaps // right inner gaps 
+      + master_count * 2 * border_width // all borders
+      + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
+      + inner_gaps // right inner gaps 
     : outer_gaps // left outer gaps
-    + master_count * 2 * border_width // all borders
-    + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
-    + outer_gaps; // right outer gaps
+      + master_count * 2 * border_width // all borders
+      + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
+      + outer_gaps; // right outer gaps
 
   *width = (total_width - total_decorations) / master_count;
   *height = output_box.height - 2 * outer_gaps - 2 * border_width;
@@ -63,7 +64,7 @@ toplevel_is_master(struct owl_toplevel *toplevel) {
   return false;
 }
 
-static bool
+bool
 toplevel_is_slave(struct owl_toplevel *toplevel) {
   struct owl_toplevel *t;
   wl_list_for_each(t, &toplevel->workspace->slaves, link) {
@@ -72,35 +73,8 @@ toplevel_is_slave(struct owl_toplevel *toplevel) {
   return false;
 }
 
-bool
-layout_tiled_ready(struct owl_workspace *workspace) {
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->masters, link) {
-    if(!t->mapped || t->dirty) return false;
-  }
-  wl_list_for_each(t, &workspace->slaves, link) {
-    if(!t->mapped || t->dirty) return false;
-  }
-
-  return true;
-}
-
 void
-layout_commit(struct owl_workspace *workspace) {
-  if(workspace->fullscreen_toplevel != NULL) return;
-
-  struct owl_toplevel *t;
-  wl_list_for_each(t, &workspace->masters, link) {
-    toplevel_commit(t);
-  }
-
-  wl_list_for_each(t, &workspace->slaves, link) {
-    toplevel_commit(t);
-  }
-}
-
-void
-layout_send_configure(struct owl_workspace *workspace) {
+layout_set_pending_state(struct owl_workspace *workspace) {
   /* if there is a fullscreened toplevel we just skip */
   if(workspace->fullscreen_toplevel != NULL) return;
 
@@ -173,7 +147,7 @@ layout_swap_tiled_toplevels(struct owl_toplevel *t1, struct owl_toplevel *t2) {
   wl_list_remove(&t2->link);
   wl_list_insert(before_t1, &t2->link);
 
-  layout_send_configure(t1->workspace);
+  layout_set_pending_state(t1->workspace);
 }
 
 struct owl_toplevel *

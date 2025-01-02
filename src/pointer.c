@@ -6,6 +6,8 @@
 #include "toplevel.h"
 #include "output.h"
 #include "something.h"
+#include "dnd.h"
+#include "layer_surface.h"
 
 #include <libinput.h>
 #include <wlr/backend/libinput.h>
@@ -66,6 +68,10 @@ cursor_handle_motion(uint32_t time) {
   } else if (server.cursor_mode == OWL_CURSOR_RESIZE) {
     toplevel_resize();
     return;
+  }
+
+  if(server.drag_active) {
+    dnd_icons_move(server.cursor->x, server.cursor->y);
   }
 
   /* find something under the pointer and send the event along. */

@@ -105,7 +105,7 @@ void *run_ipc(void *args) {
   while(true) {
     int bytes_read = read(fd, buffer, sizeof(buffer) - 1);
     if(bytes_read == -1) {
-      printf("failed to read from the pipe\n");
+      wlr_log(WLR_ERROR, "failed to read from the pipe");
       close(fd);
       return NULL;
     }
@@ -133,11 +133,11 @@ void *run_ipc(void *args) {
 
         int client_pipe_fd = open(token, O_WRONLY | O_NONBLOCK);
         if(client_pipe_fd == -1) {
-          printf("failed to open clients pipe\n");
+          wlr_log(WLR_ERROR, "failed to open clients pipe");
           continue;
         }
 
-        printf("new ipc client subscribed on pipe '%s'\n", token);
+        wlr_log(WLR_INFO, "new ipc client subscribed on pipe '%s'", token);
 
         struct ipc_client *c = calloc(1, sizeof(*c));
         c->fd = client_pipe_fd;

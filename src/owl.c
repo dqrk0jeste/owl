@@ -9,6 +9,7 @@
 #include "popup.h"
 #include "layer_surface.h"
 #include "decoration.h"
+#include "dnd.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -17,6 +18,7 @@
 #include <wayland-util.h>
 #include "wlr/util/log.h"
 #include "wlr/types/wlr_seat.h"
+#include <wlr/backend/session.h>
 #include "wlr/types/wlr_cursor.h"
 #include "wlr/types/wlr_data_device.h"
 #include "wlr/backend.h"
@@ -31,17 +33,18 @@
 #include "wlr/types/wlr_screencopy_v1.h"
 #include "wlr/types/wlr_viewporter.h"
 #include "wlr/types/wlr_foreign_toplevel_management_v1.h"
+#include <wlr/types/wlr_export_dmabuf_v1.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
 
 /* handles child processes */
-static void
+void
 sigchld_handler(int signo) {
   while(waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-static void
+void
 server_handle_new_input(struct wl_listener *listener, void *data) {
   struct wlr_input_device *input = data;
 
@@ -67,7 +70,7 @@ server_handle_new_input(struct wl_listener *listener, void *data) {
   wlr_seat_set_capabilities(server.seat, caps);
 }
 
-static void 
+void 
 server_handle_request_cursor(struct wl_listener *listener, void *data) {
   struct wlr_seat_pointer_request_set_cursor_event *event = data;
   struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
@@ -85,7 +88,7 @@ server_handle_request_cursor(struct wl_listener *listener, void *data) {
   }
 }
 
-static void
+void
 server_handle_request_set_selection(struct wl_listener *listener, void *data) {
   /* this event is raised by the seat when a client wants to set the selection,
    * usually when the user copies something. wlroots allows compositors to
@@ -144,7 +147,7 @@ main(int argc, char *argv[]) {
    * output hardware. The autocreate option will choose the most suitable
    * backend based on the current environment, such as opening an X11 window
    * if an X11 server is running. */
-  server.backend = wlr_backend_autocreate(server.wl_event_loop, NULL);
+  server.backend = wlr_backend_autocreate(server.wl_event_loop, &server.session);
   if(server.backend == NULL) {
     wlr_log(WLR_ERROR, "failed to create wlr_backend");
     return 1;
@@ -166,8 +169,7 @@ main(int argc, char *argv[]) {
    * The allocator is the bridge between the renderer and the backend. It
    * handles the buffer creation, allowing wlroots to render onto the
    * screen */
-  server.allocator = wlr_allocator_autocreate(server.backend,
-                                              server.renderer);
+  server.allocator = wlr_allocator_autocreate(server.backend, server.renderer);
   if(server.allocator == NULL) {
     wlr_log(WLR_ERROR, "failed to create wlr_allocator");
     return 1;
@@ -226,7 +228,7 @@ main(int argc, char *argv[]) {
   server.new_xdg_popup.notify = server_handle_new_popup;
   wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_xdg_popup);
 
-  server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 5);
+  server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 4);
   server.new_layer_surface.notify = server_handle_new_layer_surface;
   server.layer_shell->data = &server;
   wl_signal_add(&server.layer_shell->events.new_surface, &server.new_layer_surface);
@@ -242,7 +244,8 @@ main(int argc, char *argv[]) {
    * Xcursor themes to source cursor images from and makes sure that cursor
    * images are available at all scale factors on the screen (necessary for
    * HiDPI support). */
-  server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
+  server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme,
+                                                 server.config->cursor_size);
 
   /*
    * wlr_cursor *only* displays an image on screen. It does not move around
@@ -259,8 +262,7 @@ main(int argc, char *argv[]) {
   server.cursor_motion.notify = server_handle_cursor_motion;
   wl_signal_add(&server.cursor->events.motion, &server.cursor_motion);
   server.cursor_motion_absolute.notify = server_handle_cursor_motion_absolute;
-  wl_signal_add(&server.cursor->events.motion_absolute,
-                &server.cursor_motion_absolute);
+  wl_signal_add(&server.cursor->events.motion_absolute, &server.cursor_motion_absolute);
   server.cursor_button.notify = server_handle_cursor_button;
   wl_signal_add(&server.cursor->events.button, &server.cursor_button);
   server.cursor_axis.notify = server_handle_cursor_axis;
@@ -277,6 +279,7 @@ main(int argc, char *argv[]) {
   wl_list_init(&server.keyboards);
   server.new_input.notify = server_handle_new_input;
   wl_signal_add(&server.backend->events.new_input, &server.new_input);
+
   server.seat = wlr_seat_create(server.wl_display, "seat0");
   server.request_cursor.notify = server_handle_request_cursor;
   wl_signal_add(&server.seat->events.request_set_cursor,
@@ -284,6 +287,17 @@ main(int argc, char *argv[]) {
   server.request_set_selection.notify = server_handle_request_set_selection;
   wl_signal_add(&server.seat->events.request_set_selection,
                 &server.request_set_selection);
+
+  server.drag_icon_tree = wlr_scene_tree_create(&server.scene->tree);
+	wlr_scene_node_set_enabled(&server.drag_icon_tree->node, false);
+
+	server.request_drag.notify = server_handle_request_drag;
+	wl_signal_add(&server.seat->events.request_start_drag, &server.request_drag);
+
+	server.request_start_drag.notify = server_handle_request_start_drag;
+	wl_signal_add(&server.seat->events.start_drag, &server.request_start_drag);
+
+	server.request_destroy_drag.notify = server_handle_destroy_drag;
 
   /* handles clipboard clients */
   server.data_control_manager = wlr_data_control_manager_v1_create(server.wl_display);
@@ -298,11 +312,12 @@ main(int argc, char *argv[]) {
   server.viewporter = wlr_viewporter_create(server.wl_display);
 
   server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
+  server.dmabuf_manager = wlr_export_dmabuf_manager_v1_create(server.wl_display);
   server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);
 
   /* Add a Unix socket to the Wayland display. */
   const char *socket = wl_display_add_socket_auto(server.wl_display);
-  if (!socket) {
+  if(!socket) {
     wlr_backend_destroy(server.backend);
     return 1;
   }
@@ -329,9 +344,12 @@ main(int argc, char *argv[]) {
     run_cmd(server.config->run[i]);
   }
 
+  server.running = true;
+
   /* run the wayland event loop. */
   wlr_log(WLR_INFO, "running owl on WAYLAND_DISPLAY=%s", socket);
   wl_display_run(server.wl_display);
+
 
   /* Once wl_display_run returns, we destroy all clients then shut down the
    * server. */
@@ -343,5 +361,6 @@ main(int argc, char *argv[]) {
   wlr_renderer_destroy(server.renderer);
   wlr_backend_destroy(server.backend);
   wl_display_destroy(server.wl_display);
+
   return 0;
 }

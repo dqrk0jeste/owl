@@ -1,9 +1,13 @@
 #pragma once
 
+#include "helpers.h"
+
 #include <regex.h>
 #include <stdio.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
+
+#define BAKED_POINTS_COUNT 256
 
 struct window_rule_regex {
   bool has_app_id_regex;
@@ -24,6 +28,12 @@ struct window_rule_size {
   uint32_t width;
   bool relative_height;
   uint32_t height;
+};
+
+struct window_rule_opacity {
+  struct window_rule_regex condition;
+  struct wl_list link;
+  double value;
 };
 
 struct output_config {
@@ -49,6 +59,7 @@ struct owl_config {
   struct {
     struct wl_list floating;
     struct wl_list size;
+    struct wl_list opacity;
   } window_rules;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
@@ -66,10 +77,19 @@ struct owl_config {
   bool tap_to_click;
   bool animations;
   uint32_t animation_duration;
-  double animation_curve[3];
+  double animation_curve[4];
+  struct vec2 *baked_points;
+  float placeholder_color[4];
+  bool client_side_decorations;
   char *run[64];
   size_t run_count;
 };
+
+struct vec2
+calculate_animation_curve_at(struct owl_config *c, double t);
+
+void
+bake_bezier_curve_points(struct owl_config *c);
 
 bool
 config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_regex,
@@ -95,3 +115,6 @@ config_handle_line(char *line, size_t line_number, char **keyword,
 
 bool
 server_load_config();
+
+void
+config_set_default_needed_params(struct owl_config *c);

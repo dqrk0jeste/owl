@@ -20,6 +20,7 @@ enum owl_direction {
 struct owl_server {
 	struct wl_display *wl_display;
 	struct wl_event_loop *wl_event_loop;
+  struct wlr_session *session;
 	struct wlr_backend *backend;
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
@@ -40,10 +41,6 @@ struct owl_server {
 
   struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_layer_surface;
-  /* keeps track if there is a layer surface that takes exclusive keyboard focus */
-  struct owl_layer_surface *layer_exclusive_keyboard;
-  /* what to return focus to after its unmapped */
-  struct owl_toplevel *prev_focused;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
@@ -57,6 +54,13 @@ struct owl_server {
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
+
+  bool drag_active;
+  struct wlr_scene_tree *drag_icon_tree;
+	struct wl_listener request_drag;
+	struct wl_listener request_start_drag;
+  struct wl_listener request_destroy_drag;
+
 	struct wl_list keyboards;
 
 	enum owl_cursor_mode cursor_mode;
@@ -78,6 +82,11 @@ struct owl_server {
   struct owl_workspace *active_workspace;
   /* toplevel with keyboard focus */
   struct owl_toplevel *focused_toplevel;
+  /* keeps track if there is a layer surface that takes exclusive keyboard focus */
+  struct owl_layer_surface *focused_layer_surface;
+  bool exclusive;
+  /* last focused toplevel before layer surface was given focus */
+  struct owl_toplevel *prev_focused;
 
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
@@ -91,7 +100,10 @@ struct owl_server {
   struct wlr_viewporter *viewporter;
   struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
   struct wlr_screencopy_manager_v1 *screencopy_manager;
+  struct wlr_export_dmabuf_manager_v1 *dmabuf_manager;
 
   struct owl_config *config;
+
+  bool running;
 };
 

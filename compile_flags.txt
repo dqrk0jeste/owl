@@ -1,4 +1,4 @@
--I/usr/include/wlroots-0.19
+-I/usr/include/wlroots-0.18
 -I/usr/include/pixman-1
 -I/usr/include/libdrm
 
@@ -6,5 +6,5 @@
 
 -DWLR_USE_UNSTABLE
 
--lwlroots-0.19
+-lwlroots-0.18
 

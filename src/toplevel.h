@@ -1,14 +1,13 @@
 #pragma once
 
-#include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/types/wlr_cursor.h>
-
 #include "rendering.h"
 #include "owl.h"
 #include "pointer.h"
 #include "config.h"
+#include "something.h"
 
-struct owl_animation;
+#include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_cursor.h>
 
 struct owl_toplevel {
   struct wl_list link;
@@ -16,6 +15,8 @@ struct owl_toplevel {
   struct owl_workspace *workspace;
   struct wlr_scene_tree *scene_tree;
   struct wlr_scene_rect *borders[4];
+
+  struct owl_something something;
 
   bool mapped;
 
@@ -29,11 +30,12 @@ struct owl_toplevel {
   uint32_t configure_serial;
   bool dirty;
 
+  struct wlr_box current;
   /* state to be applied to this toplevel; values of 0 mean that the client should
    * choose its size and need to be handled seperately */
   struct wlr_box pending;
-  struct wlr_box last;
 
+  struct wlr_scene_rect *placeholder;
   struct owl_animation animation;
 
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
@@ -50,11 +52,11 @@ struct owl_toplevel {
   struct wl_listener set_title;
 };
 
-/* some macros for commonly accessed fields of a toplevel */
 #define X(t) (t)->scene_tree->node.x
 #define Y(t) (t)->scene_tree->node.y
-#define WIDTH(t) (t)->xdg_toplevel->base->geometry.width
-#define HEIGHT(t) (t)->xdg_toplevel->base->geometry.height
+
+struct wlr_box
+toplevel_get_geometry(struct owl_toplevel *toplevel);
 
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);

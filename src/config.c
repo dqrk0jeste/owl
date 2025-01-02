@@ -8,6 +8,30 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
+struct vec2
+calculate_animation_curve_at(struct owl_config *c, double t) {
+  struct vec2 point;
+
+  point.x = 3 * t * (1 - t) * (1 - t) * c->animation_curve[0]
+    + 3 * t * t * (1 - t) * c->animation_curve[2]
+    + t * t * t;
+
+  point.y = 3 * t * (1 - t) * (1 - t) * c->animation_curve[1]
+    + 3 * t * t * (1 - t) * c->animation_curve[3]
+    + t * t * t;
+
+  return point;
+}
+
+/* thanks vaxry */
+void bake_bezier_curve_points(struct owl_config *c) {
+  c->baked_points = calloc(BAKED_POINTS_COUNT, sizeof(*c->baked_points));
+
+  for(size_t i = 0; i < BAKED_POINTS_COUNT; i++) {
+    c->baked_points[i] = calculate_animation_curve_at(c, (double)i / (BAKED_POINTS_COUNT - 1));
+  }
+}
+
 bool
 config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_regex,
                        char *predicate, char **args, size_t arg_count) {
@@ -64,6 +88,16 @@ config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_reg
     window_rule->height = atoi(args[1]);
 
     wl_list_insert(&c->window_rules.size, &window_rule->link);
+  } else if(strcmp(predicate, "opacity") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to window_rule %s", predicate);
+      return false;
+    }
+    struct window_rule_opacity *window_rule = calloc(1, sizeof(*window_rule));
+    window_rule->condition = condition;
+    window_rule->value = atof(args[0]);
+
+    wl_list_insert(&c->window_rules.opacity, &window_rule->link);
   }
 
   return true;
@@ -110,7 +144,6 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     key_sym = XKB_KEY_Escape;
   } else if(strcmp(key, "tab") == 0) {
     key_sym = XKB_KEY_Tab;
-
   } else if(strcmp(key, "up") == 0) {
     key_sym = XKB_KEY_Up;
   } else if(strcmp(key, "down") == 0) {
@@ -132,6 +165,9 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     .modifiers = modifiers_flag,
     .sym = key_sym,
   };
+
+  /* this is true for most, needs to be set to false if otherwise */
+  k->initialized = true;
 
   if(strcmp(action, "exit") == 0) {
     k->action = keybind_stop_server;
@@ -212,6 +248,7 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     k->action = keybind_change_workspace;
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
+    k->initialized = false;
   } else if(strcmp(action, "move_to_workspace") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", action);
@@ -221,6 +258,7 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     k->action = keybind_move_focused_toplevel_to_workspace;
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
+    k->initialized = false;
   } else {
     wlr_log(WLR_ERROR, "invalid keybind action %s", action);
     free(k);
@@ -399,10 +437,6 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     }
     setenv(args[0], args[1], true);
   } else if(strcmp(keyword, "window_rule") == 0) {
-    /* window_rule *regex* *predicate* *additional_args*
-     * predicates:*
-     *   float(no args),*
-     *   size(two args: width, height) */
     if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
@@ -424,7 +458,7 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     }
     c->animation_duration = atoi(args[0]);
   } else if(strcmp(keyword, "animation_curve") == 0) {
-    if(arg_count < 3) {
+    if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
@@ -432,6 +466,25 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     c->animation_curve[0] = atof(args[0]);
     c->animation_curve[1] = atof(args[1]);
     c->animation_curve[2] = atof(args[2]);
+    c->animation_curve[3] = atof(args[3]);
+    bake_bezier_curve_points(c);
+  } else if(strcmp(keyword, "placeholder_color") == 0) {
+    if(arg_count < 4) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->placeholder_color[0] = atoi(args[0]) / 256.0;
+    c->placeholder_color[1] = atoi(args[1]) / 256.0;
+    c->placeholder_color[2] = atoi(args[2]) / 256.0;
+    c->placeholder_color[3] = atoi(args[3]) / 256.0;
+  } else if(strcmp(keyword, "client_side_decorations") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->client_side_decorations = atoi(args[0]);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);
@@ -543,6 +596,54 @@ config_handle_line(char *line, size_t line_number, char **keyword,
   return true;
 }
 
+void
+config_set_default_needed_params(struct owl_config *c) {
+  /* as we are initializing config with calloc, some fields that are necessary in order
+   * for owl to not crash may be not specified in the config.
+   * we set their values to some default value.*/
+  if(c->keyboard_rate == 0) {
+    c->keyboard_rate = 150;
+    wlr_log(WLR_INFO,
+            "keyboard_rate not specified. using default %ud", c->keyboard_rate);
+  } 
+  if(c->keyboard_delay == 0) {
+    c->keyboard_delay = 50;
+    wlr_log(WLR_INFO,
+            "keyboard_delay not specified. using default %ud", c->keyboard_delay);
+  }
+  if(c->cursor_size == 0) {
+    c->cursor_size = 24;
+    wlr_log(WLR_INFO,
+            "cursor_size not specified. using default %ud", c->cursor_size);
+  }
+  if(c->min_toplevel_size == 0) {
+    c->min_toplevel_size = 10;
+    wlr_log(WLR_INFO,
+            "min_toplevel_size not specified. using default %ud", c->min_toplevel_size);
+  }
+  if(c->master_count == 0) {
+    c->master_count = 1;
+    wlr_log(WLR_INFO,
+            "master_count not specified. using default %lf", c->master_ratio);
+  }
+  if(c->master_ratio == 0) {
+    /* here we evenly space toplevels if there is no master_ratio specified */
+    c->master_ratio = c->master_count / (double)(c->master_count + 1);
+    wlr_log(WLR_INFO,
+            "master_ratio not specified. using default %lf", c->master_ratio);
+  }
+  if(c->animations && c->animation_duration == 0) {
+    c->animation_duration = 500;
+    wlr_log(WLR_INFO,
+            "animation_duration not specified. using default %ud", c->animation_duration);
+  }
+  if(c->animations && c->animation_curve[0] == 0 && c->animation_curve[1] == 0
+     && c->animation_curve[2] == 0 && c->animation_curve[3] == 0) {
+    bake_bezier_curve_points(c);
+    wlr_log(WLR_INFO, "animation_curve not specified. baking default linear");
+  }
+}
+
 extern struct owl_server server;
 
 bool
@@ -575,6 +676,7 @@ server_load_config() {
   wl_list_init(&c->workspaces);
   wl_list_init(&c->window_rules.floating);
   wl_list_init(&c->window_rules.size);
+  wl_list_init(&c->window_rules.opacity);
 
   /* you aint gonna have lines longer than 1kB */
   char line_buffer[1024] = {0};
@@ -582,8 +684,7 @@ server_load_config() {
   size_t args_count;
   size_t line_number = 1;
   while(fgets(line_buffer, 1024, config_file) != NULL) {
-    bool valid =
-      config_handle_line(line_buffer, line_number, &keyword, &args, &args_count);
+    bool valid = config_handle_line(line_buffer, line_number, &keyword, &args, &args_count);
     if(valid) {
       config_handle_value(c, keyword, args, args_count);
     }
@@ -592,40 +693,7 @@ server_load_config() {
 
   fclose(config_file);
 
-  /* as we are initializing config with calloc, some fields that are necessary in order
-   * for owl to not crash may be not specified in the config.
-   * we set their values to some default value.*/
-  if(c->keyboard_rate == 0) {
-    c->keyboard_rate = 150;
-    wlr_log(WLR_INFO,
-            "keyboard_rate not specified. using default %d", c->keyboard_rate);
-  } 
-  if(c->keyboard_delay == 0) {
-    c->keyboard_delay = 50;
-    wlr_log(WLR_INFO,
-            "keyboard_delay not specified. using default %d", c->keyboard_delay);
-  }
-  if(c->master_count == 0) {
-    c->master_count = 1;
-    wlr_log(WLR_INFO,
-            "master_count not specified. using default %lf", c->master_ratio);
-  }
-  if(c->master_ratio == 0) {
-    /* here we evenly space toplevels if there is no master_ratio specified */
-    c->master_ratio = c->master_count / (double)(c->master_count + 1);
-    wlr_log(WLR_INFO,
-            "master_ratio not specified. using default %lf", c->master_ratio);
-  }
-  if(c->cursor_size == 0) {
-    c->cursor_size = 24;
-    wlr_log(WLR_INFO,
-            "cursor_size not specified. using default %d", c->cursor_size);
-  }
-  if(c->min_toplevel_size == 0) {
-    c->min_toplevel_size = 10;
-    wlr_log(WLR_INFO,
-            "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
-  }
+  config_set_default_needed_params(c);
 
   server.config = c;
   return true;

@@ -3,13 +3,50 @@
 #include "layout.h"
 #include "owl.h"
 #include "ipc.h"
+#include "keybinds.h"
 
 #include <assert.h>
+#include <stdlib.h>
 
 extern struct owl_server server;
 
 void
-server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
+workspace_create_for_output(struct owl_output *output, struct workspace_config *config) {
+  struct owl_workspace *workspace = calloc(1, sizeof(*workspace));
+
+  wl_list_init(&workspace->floating_toplevels);
+  wl_list_init(&workspace->masters);
+  wl_list_init(&workspace->slaves);
+
+  workspace->output = output;
+  workspace->index = config->index;
+  workspace->config = config;
+
+  wl_list_insert(&output->workspaces, &workspace->link);
+
+  /* if first then set it active */
+  if(output->active_workspace == NULL) {
+    output->active_workspace = workspace;
+  }
+
+  struct keybind *k;
+  wl_list_for_each(k, &server.config->keybinds, link) {
+    /* we didnt have information about what workspace this is going to be,
+     * so we only kept an index. now we replace it with
+     * the actual workspace pointer */
+    if(k->action == keybind_change_workspace && (uint64_t)k->args == workspace->index) {
+      k->args = workspace;
+      k->initialized = true;
+    } else if(k->action == keybind_move_focused_toplevel_to_workspace
+              && (uint64_t)k->args == workspace->index) {
+      k->args = workspace;
+      k->initialized = true;
+    }
+  }
+}
+
+void
+change_workspace(struct owl_workspace *workspace, bool keep_focus) {
   /* if it is the same as global active workspace, do nothing */
   if(server.active_workspace == workspace) return;
 
@@ -18,7 +55,7 @@ server_change_workspace(struct owl_workspace *workspace, bool keep_focus) {
     server.active_workspace = workspace;
     cursor_jump_output(workspace->output);
     ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-    /* we dont want to keep focus only if he is going to be under a fullscreen toplevel */
+    /* we dont want to keep focus only if it is going to be under a fullscreen toplevel */
     if(workspace->fullscreen_toplevel != NULL) {
       focus_toplevel(workspace->fullscreen_toplevel);
     } else if(keep_focus) {
@@ -153,7 +190,7 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
       toplevel->prev_geometry.x = new_output_x;
       toplevel->prev_geometry.y = new_output_y;
     } else {
-      layout_send_configure(old_workspace);
+      layout_set_pending_state(old_workspace);
     }
   } else if(toplevel->floating && old_workspace->output != workspace->output) {
     /* we want to place the toplevel to the same relative coordinates,
@@ -174,13 +211,13 @@ toplevel_move_to_workspace(struct owl_toplevel *toplevel,
       + relative_y * workspace->output->usable_area.height;
 
     toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
-                               WIDTH(toplevel), HEIGHT(toplevel));
+                               toplevel->current.width, toplevel->current.height);
   } else {
-    layout_send_configure(old_workspace);
-    layout_send_configure(workspace);
+    layout_set_pending_state(old_workspace);
+    layout_set_pending_state(workspace);
   }
 
   /* change active workspace */
-  server_change_workspace(workspace, true);
+  change_workspace(workspace, true);
 }
 

@@ -1,5 +1,10 @@
 #include "something.h"
+
 #include "owl.h"
+
+#include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_scene.h>
 
 extern struct owl_server server;
 

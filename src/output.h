@@ -26,6 +26,18 @@ struct owl_output {
 void
 server_handle_new_output(struct wl_listener *listener, void *data);
 
+bool
+output_initialize(struct wlr_output *output, struct output_config *config);
+
+bool
+output_transfer_existing_workspaces(struct owl_output *output);
+
+struct owl_workspace *
+output_find_owned_workspace(struct owl_output *output);
+
+bool
+output_apply_preffered_mode(struct wlr_output *wlr_output, struct wlr_output_state *state);
+
 double
 output_frame_duration_ms(struct owl_output *output);
 
@@ -47,3 +59,6 @@ output_handle_request_state(struct wl_listener *listener, void *data);
 
 void
 output_handle_destroy(struct wl_listener *listener, void *data);
+
+void
+output_move_workspaces(struct owl_output *dest, struct owl_output *src);

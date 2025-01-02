@@ -1,5 +1,6 @@
 #include "toplevel.h"
 
+#include "config.h"
 #include "ipc.h"
 #include "layout.h"
 #include "owl.h"
@@ -11,9 +12,12 @@
 #include "helpers.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
+#include <wayland-util.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+#include <wlr/util/log.h>
 
 extern struct owl_server server;
 
@@ -21,11 +25,12 @@ void
 server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   /* this event is raised when a client creates a new toplevel */
   struct wlr_xdg_toplevel *xdg_toplevel = data;
-
-  /* allocate a owl_toplevel for this surface */
+  /* allocate an owl_toplevel for this surface */
   struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
-
   toplevel->xdg_toplevel = xdg_toplevel;
+
+  toplevel->something.type = OWL_TOPLEVEL;
+  toplevel->something.toplevel = toplevel;
 
   /* listen to the various events it can emit */
   toplevel->map.notify = toplevel_handle_map;
@@ -77,19 +82,22 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_floating_size(toplevel, &width, &height);
       toplevel_set_initial_state(toplevel, 0, 0, width, height);
     } else if(wl_list_length(&toplevel->workspace->masters)
-      < server.config->master_count) {
+              < server.config->master_count) {
       wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
-      layout_send_configure(toplevel->workspace);
+      layout_set_pending_state(toplevel->workspace);
     } else {
       wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
-      layout_send_configure(toplevel->workspace);
+      layout_set_pending_state(toplevel->workspace);
     }
 
-    if(server.config->animations) {
-      toplevel->animation.should_animate = true;
-    } else {
-      toplevel->animation.should_animate = false;
+    if(!toplevel->floating && toplevel->workspace->fullscreen_toplevel != NULL) {
+      /* layout_set_pending_state() does not send any configures if there is
+       * a fullscreen toplevel on the workspace, but we need to send something
+       * in order to respect the protocol. we dont really care,
+       * as it is not going to be shown anyway*/
+      toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
     }
+
     return;
   }
 
@@ -101,7 +109,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   }
 
   if(!toplevel->dirty || toplevel->xdg_toplevel->base->current.configure_serial
-    != toplevel->configure_serial) return;
+     < toplevel->configure_serial) return;
 
   toplevel->dirty = false;
 
@@ -115,16 +123,12 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       toplevel_center_floating(toplevel);
     }
     if(toplevel->pending.width == 0) {
-      toplevel->pending.width = WIDTH(toplevel);
-      toplevel->pending.height = HEIGHT(toplevel);
+      toplevel->pending.width = toplevel_get_geometry(toplevel).width;
+      toplevel->pending.height = toplevel_get_geometry(toplevel).height;
     }
-    toplevel_commit(toplevel);
-    return;
   }
 
-  if(layout_tiled_ready(toplevel->workspace)) {
-    layout_commit(toplevel->workspace);
-  }
+  toplevel_commit(toplevel);
 }
 
 void
@@ -155,38 +159,31 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   /* in the node we want to keep information what that node represents. we do that
    * be keeping owl_something in user data field, which is a union of all possible
    * 'things' we can have on the screen */
-  struct owl_something *something = calloc(1, sizeof(*something));
-  something->type = OWL_TOPLEVEL;
-  something->toplevel = toplevel;
+  toplevel->scene_tree->node.data = &toplevel->something;
 
-  toplevel->scene_tree->node.data = something;
+  /* add foreign toplevel handler */
+  toplevel->foreign_toplevel_handle =
+    wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
 
-  toplevel_borders_create(toplevel);
+  wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
+                                           toplevel->xdg_toplevel->title);
+  wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
+                                            toplevel->xdg_toplevel->app_id);
+
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
-    /* we commit it immediately if floating, but have to set the position before */
-    if(toplevel->pending.width == 0) {
-      /* we now know its size */
-      toplevel->pending.width = WIDTH(toplevel);
-      toplevel->pending.height = HEIGHT(toplevel);
-    }
-    struct wlr_box output_box = toplevel->workspace->output->usable_area;
-    toplevel->animation.initial_geometry.x = output_box.x + output_box.width / 2;
-    toplevel->animation.initial_geometry.y = output_box.y + output_box.height / 2;
-    toplevel_center_floating(toplevel);
-    toplevel_commit(toplevel);
-  } else if(layout_tiled_ready(toplevel->workspace)) {
-    layout_commit(toplevel->workspace);
-  }
+    /* we have sent the configure, but we dont care if it chose some other size */
+    toplevel->pending.width = toplevel_get_geometry(toplevel).width;
+    toplevel->pending.height = toplevel_get_geometry(toplevel).height;
 
-  /* do the thing for foreign_toplevel_manager */
-  toplevel->foreign_toplevel_handle
-    = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
-  wlr_foreign_toplevel_handle_v1_set_title(
-    toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
-  wlr_foreign_toplevel_handle_v1_set_app_id(
-    toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->app_id);
+    struct wlr_box output_box = toplevel->workspace->output->usable_area;
+    toplevel->animation.initial.x = output_box.x + output_box.width / 2;
+    toplevel->animation.initial.y = output_box.y + output_box.height / 2;
+    toplevel_center_floating(toplevel);
+  } 
+
+  toplevel_commit(toplevel);
 }
 
 void
@@ -201,9 +198,9 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
   }
 
   /* if its the one focus should be returned to, remove it */
-  if(toplevel == server.prev_focused) {
-    server.prev_focused = NULL;
-  }
+  /*if(toplevel == server.prev_focused) {*/
+  /*  server.prev_focused = NULL;*/
+  /*}*/
 
   if(toplevel == workspace->fullscreen_toplevel) {
     workspace->fullscreen_toplevel = NULL;
@@ -237,14 +234,13 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
   }
 
   if(toplevel_is_master(toplevel)) {
+    /* we find a new master to replace him if possible */
+    if(!wl_list_empty(&workspace->slaves)) {
+      struct owl_toplevel *s = wl_container_of(workspace->slaves.prev, s, link);
+      wl_list_remove(&s->link);
+      wl_list_insert(workspace->masters.prev, &s->link);
+    }
     if(toplevel == server.focused_toplevel) {
-      /* we find a new master to replace him if possible */
-      if(!wl_list_empty(&workspace->slaves)) {
-        struct owl_toplevel *s = wl_container_of(workspace->slaves.next, s, link);
-        wl_list_remove(&s->link);
-        wl_list_insert(workspace->masters.prev, &s->link);
-      }
-
       /* we want to give focus to some other toplevel */
       struct wl_list *focus_next = toplevel->link.next;
       if(focus_next == &workspace->masters) {
@@ -288,13 +284,14 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     wl_list_remove(&toplevel->link);
   }
 
-  layout_send_configure(toplevel->workspace);
+  layout_set_pending_state(toplevel->workspace);
 }
 
 void
 toplevel_handle_destroy(struct wl_listener *listener, void *data) {
-  /* called when the xdg_toplevel is destroyed. */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
+
+  wlr_foreign_toplevel_handle_v1_destroy(toplevel->foreign_toplevel_handle);
 
   wl_list_remove(&toplevel->map.link);
   wl_list_remove(&toplevel->unmap.link);
@@ -306,6 +303,13 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&toplevel->request_fullscreen.link);
 
   free(toplevel);
+}
+
+struct wlr_box
+toplevel_get_geometry(struct owl_toplevel *toplevel) {
+  struct wlr_box geometry;
+  wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+  return geometry;
 }
 
 void
@@ -321,8 +325,8 @@ toplevel_start_move_resize(struct owl_toplevel *toplevel,
   server.grab_x = server.cursor->x;
   server.grab_y = server.cursor->y;
 
-  struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-  server.grabbed_toplevel_initial_box = *geo_box;
+  struct wlr_box geo_box = toplevel_get_geometry(toplevel);
+  server.grabbed_toplevel_initial_box = geo_box;
   server.grabbed_toplevel_initial_box.x += toplevel->scene_tree->node.x;
   server.grabbed_toplevel_initial_box.y += toplevel->scene_tree->node.y;
 
@@ -375,8 +379,8 @@ toplevel_handle_request_maximize(struct wl_listener *listener, void *data) {
 
 void
 toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel =
-    wl_container_of(listener, toplevel, request_fullscreen);
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel,
+                                                  request_fullscreen);
 
   struct owl_output *output = toplevel->workspace->output;
   if(toplevel->xdg_toplevel->requested.fullscreen) {
@@ -390,6 +394,11 @@ void
 toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
+  if(toplevel->mapped) {
+    wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
+                                              toplevel->xdg_toplevel->app_id);
+  }
+
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
   }
@@ -399,21 +408,20 @@ void
 toplevel_handle_set_title(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
+  if(toplevel->mapped) {
+    wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
+                                             toplevel->xdg_toplevel->title);
+  }
+
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
   }
 }
 
 bool
-toplevel_position_changed(struct owl_toplevel *toplevel) {
-  return X(toplevel) != toplevel->pending.x
-  || Y(toplevel) != toplevel->pending.y;
-}
-
-bool
 toplevel_size_changed(struct owl_toplevel *toplevel) {
-  return WIDTH(toplevel) != toplevel->pending.width
-  || HEIGHT(toplevel) != toplevel->pending.height;
+  return toplevel_get_geometry(toplevel).width != toplevel->pending.width
+         || toplevel_get_geometry(toplevel).height != toplevel->pending.height;
 }
 
 bool
@@ -475,8 +483,8 @@ toplevel_floating_size(struct owl_toplevel *toplevel, uint32_t *width, uint32_t 
     }
   }
 
-  *width = WIDTH(toplevel);
-  *height = HEIGHT(toplevel);
+  *width = toplevel_get_geometry(toplevel).width;
+  *height = toplevel_get_geometry(toplevel).height;
 }
 
 bool
@@ -522,15 +530,16 @@ get_pointer_focused_toplevel(void) {
   return NULL;
 }
 
+/* TODO: here we should use clipped size for tiled toplevels */
 void
 cursor_jump_focused_toplevel(void) {
   struct owl_toplevel *toplevel = server.focused_toplevel;
   if(toplevel == NULL) return;
 
-  struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
+  struct wlr_box geo_box = toplevel_get_geometry(toplevel);
   wlr_cursor_warp(server.cursor, NULL,
-                  toplevel->scene_tree->node.x + geo_box.x + geo_box.width / 2.0,
-                  toplevel->scene_tree->node.y + geo_box.y + geo_box.height / 2.0);
+                  toplevel->scene_tree->node.x + geo_box.x + toplevel->current.width / 2.0,
+                  toplevel->scene_tree->node.y + geo_box.y + toplevel->current.height / 2.0);
 }
 
 void
@@ -538,8 +547,8 @@ toplevel_center_floating(struct owl_toplevel *toplevel) {
   assert(toplevel->floating);
 
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
-  toplevel->pending.x = output_box.x + (output_box.width - WIDTH(toplevel)) / 2;
-  toplevel->pending.y = output_box.y + (output_box.height - HEIGHT(toplevel)) / 2;
+  toplevel->pending.x = output_box.x + (output_box.width - toplevel->pending.width) / 2;
+  toplevel->pending.y = output_box.y + (output_box.height - toplevel->pending.height) / 2;
 }
 
 void
@@ -549,7 +558,7 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 
   if(server.config->animations) {
     toplevel->animation.should_animate = true;
-    toplevel->animation.initial_geometry = (struct wlr_box){
+    toplevel->animation.initial = (struct wlr_box){
       .x = x + width / 2,
       .y = y + height / 2,
       .width = 1,
@@ -576,13 +585,6 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
                            uint32_t width, uint32_t height) {
   assert(toplevel->mapped);
 
-  struct wlr_box current = {
-    .x = X(toplevel),
-    .y = Y(toplevel),
-    .width = WIDTH(toplevel),
-    .height = HEIGHT(toplevel),
-  };
-
   struct wlr_box pending = {
     .x = x,
     .y = y,
@@ -591,18 +593,16 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   };
 
   toplevel->pending = pending;
-  toplevel->last = current;
 
   if(!server.config->animations || toplevel == server.grabbed_toplevel
-    || wlr_box_equal(&current, &pending)) {
+     || wlr_box_equal(&toplevel->current, &pending)) {
     toplevel->animation.should_animate = false;
   } else {
     toplevel->animation.should_animate = true;
-    toplevel->animation.initial_geometry = current;
+    toplevel->animation.initial = toplevel->current;
   }
 
-  if((toplevel->floating || toplevel->fullscreen)
-     && !toplevel_size_changed(toplevel)) {
+  if((toplevel->floating || toplevel->fullscreen) && !toplevel_size_changed(toplevel)) {
     toplevel_commit(toplevel);
     return;
   };
@@ -614,11 +614,12 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
 
 void
 toplevel_commit(struct owl_toplevel *toplevel) {
+  toplevel->current = toplevel->pending;
+
   if(toplevel->animation.should_animate) {
     if(toplevel->animation.running) {
       /* if there is already an animation running, we start this one from the current state */
-      toplevel->animation.initial_geometry.width = toplevel->animation.current_geometry.width;
-      toplevel->animation.initial_geometry.height = toplevel->animation.current_geometry.height;
+      toplevel->animation.initial = toplevel->animation.current;
     }
     toplevel->animation.passed_frames = 0;
     toplevel->animation.total_frames = server.config->animation_duration
@@ -626,17 +627,9 @@ toplevel_commit(struct owl_toplevel *toplevel) {
 
     toplevel->animation.running = true;
     toplevel->animation.should_animate = false;
-    wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
-  } else {
-    if(toplevel->floating) {
-      toplevel_unclip_size(toplevel);
-    } else {
-      toplevel_clip_to_fit(toplevel);
-    }
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->pending.x, toplevel->pending.y);
-    toplevel_borders_update(toplevel);
   }
+
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
 }
 
 void
@@ -652,22 +645,17 @@ toplevel_set_fullscreen(struct owl_toplevel *toplevel) {
   wlr_output_layout_get_box(server.output_layout,
                             output->wlr_output, &output_box);
 
-  toplevel->prev_geometry = (struct wlr_box){
-    .x = X(toplevel),
-    .y = Y(toplevel),
-    .width = WIDTH(toplevel),
-    .height = HEIGHT(toplevel),
-  };
+  toplevel->prev_geometry = toplevel->current;
 
   workspace->fullscreen_toplevel = toplevel;
   toplevel->fullscreen = true;
-
-  toplevel_borders_set_state(toplevel, OWL_BORDER_INVISIBLE);
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
   toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
                              output_box.width, output_box.height);
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
+
+  wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, true);
 }
 
 void
@@ -682,12 +670,6 @@ toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
 
   wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
 
-  if(server.focused_toplevel == toplevel) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  } else {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
-
   if(toplevel->floating) {
     toplevel_set_pending_state(toplevel,
                                toplevel->prev_geometry.x, toplevel->prev_geometry.y,
@@ -697,15 +679,16 @@ toplevel_unset_fullscreen(struct owl_toplevel *toplevel) {
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
   }
 
-  layout_send_configure(workspace);
+  layout_set_pending_state(workspace);
+  
+  wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
 }
 
-/* TODO: probably should change this so it does less */
 void
 toplevel_move(void) {
   /* move the grabbed toplevel to the new position */
   struct owl_toplevel *toplevel = server.grabbed_toplevel;
-  struct wlr_box geometry = toplevel->xdg_toplevel->base->geometry;
+  struct wlr_box geometry = toplevel_get_geometry(toplevel);
 
   int new_x = server.grabbed_toplevel_initial_box.x + (server.cursor->x - server.grab_x);
   int new_y = server.grabbed_toplevel_initial_box.y + (server.cursor->y - server.grab_y);
@@ -764,9 +747,8 @@ toplevel_resize(void) {
     }
   }
 
-  struct wlr_box *geometry = &toplevel->xdg_toplevel->base->geometry;
-  toplevel_set_pending_state(toplevel,
-                             new_x - geometry->x, new_y - geometry->y,
+  struct wlr_box geometry = toplevel_get_geometry(toplevel);
+  toplevel_set_pending_state(toplevel, new_x - geometry.x, new_y - geometry.y,
                              new_width, new_height);
 }
 
@@ -781,19 +763,19 @@ unfocus_focused_toplevel(void) {
   /* clear all focus on the keyboard, focusing new should set new toplevel focus */
   wlr_seat_keyboard_clear_focus(server.seat);
 
-  if(!toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_INACTIVE);
-  }
-
-  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
+
+  /* we schedule a frame in order for borders to be redrawn */
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
 }
 
 void
 focus_toplevel(struct owl_toplevel *toplevel) {
   assert(toplevel != NULL);
 
-  if(server.layer_exclusive_keyboard != NULL) return;
+  /*if(server.layer_exclusive_keyboard != NULL) return;*/
+  if(server.exclusive) return;
 
   if(toplevel->workspace->fullscreen_toplevel != NULL
     && toplevel != toplevel->workspace->fullscreen_toplevel) return;
@@ -803,9 +785,7 @@ focus_toplevel(struct owl_toplevel *toplevel) {
 
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
-    if(!prev_toplevel->fullscreen) {
-      toplevel_borders_set_state(prev_toplevel, OWL_BORDER_INACTIVE);
-    }
+    wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
   }
 
   server.focused_toplevel = toplevel;
@@ -815,12 +795,8 @@ focus_toplevel(struct owl_toplevel *toplevel) {
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
   }
 
-  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
-
-  if(!toplevel->fullscreen) {
-    toplevel_borders_set_state(toplevel, OWL_BORDER_ACTIVE);
-  }
+  wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
   struct wlr_seat *seat = server.seat;
   struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -830,8 +806,11 @@ focus_toplevel(struct owl_toplevel *toplevel) {
                                    &keyboard->modifiers);
   }
 
-  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
   ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+  wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, true);
+
+  /* we schedule a frame in order for borders to be redrawn */
+  wlr_output_schedule_frame(toplevel->workspace->output->wlr_output);
 }
 
 
@@ -848,7 +827,7 @@ toplevel_find_closest_floating_on_workspace(struct owl_toplevel *toplevel,
   switch(direction) {
     case OWL_UP: {
       wl_list_for_each(t, &workspace->floating_toplevels, link) {
-        if(t == toplevel || Y(t) > Y(toplevel)) continue;
+        if(t == toplevel || X(t) > Y(toplevel)) continue;
 
         uint32_t dy = abs((int)Y(toplevel) - Y(t));
         if(dy < min_val) {
@@ -899,20 +878,6 @@ toplevel_find_closest_floating_on_workspace(struct owl_toplevel *toplevel,
 
 struct owl_output *
 toplevel_get_primary_output(struct owl_toplevel *toplevel) {
-  uint32_t toplevel_x =
-    toplevel->scene_tree->node.x +
-    toplevel->xdg_toplevel->base->geometry.x;
-  uint32_t toplevel_y =
-    toplevel->scene_tree->node.y +
-    toplevel->xdg_toplevel->base->geometry.y;
-
-  struct wlr_box toplevel_box = {
-    .x = toplevel_x,
-    .y = toplevel_y,
-    .width = WIDTH(toplevel),
-    .height = HEIGHT(toplevel),
-  };
-
   struct wlr_box intersection_box;
   struct wlr_box output_box;
   uint32_t max_area = 0;
@@ -922,7 +887,7 @@ toplevel_get_primary_output(struct owl_toplevel *toplevel) {
   wl_list_for_each(o, &server.outputs, link) {
     wlr_output_layout_get_box(server.output_layout, o->wlr_output, &output_box);
     bool intersects =
-      wlr_box_intersection(&intersection_box, &toplevel_box, &output_box);
+      wlr_box_intersection(&intersection_box, &toplevel->current, &output_box);
     if(intersects && box_area(&intersection_box) > max_area) {
       max_area = box_area(&intersection_box);
       max_area_output = o;
@@ -936,13 +901,21 @@ void
 toplevel_clip_to_size(struct owl_toplevel *toplevel,
                       uint32_t width, uint32_t height) {
   struct wlr_box clip_box = (struct wlr_box){
-    .x = 0,
-    .y = 0,
-    .width = width + toplevel->xdg_toplevel->base->geometry.x,
-    .height = height + toplevel->xdg_toplevel->base->geometry.y,
+    .x = toplevel_get_geometry(toplevel).x,
+    .y = toplevel_get_geometry(toplevel).y,
+    .width = width,
+    .height = height,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+
+  struct wlr_scene_node *n;
+  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+    struct owl_something *view = n->data;
+    if(view != NULL && view->type == OWL_POPUP) {
+      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+    }
+  }
 }
 
 void
@@ -951,13 +924,20 @@ toplevel_clip_to_fit(struct owl_toplevel *toplevel) {
   assert(!toplevel->floating);
 
   struct wlr_box clip_box = (struct wlr_box){
-    .x = 0,
-    .y = 0,
-    .width = toplevel->pending.width + toplevel->xdg_toplevel->base->geometry.x,
-    .height = toplevel->pending.height + toplevel->xdg_toplevel->base->geometry.y,
+    .x = toplevel_get_geometry(toplevel).x,
+    .y = toplevel_get_geometry(toplevel).y,
+    .width = toplevel->current.width,
+    .height = toplevel->current.height,
   };
 
   wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+  struct wlr_scene_node *n;
+  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+    struct owl_something *thing = n->data;
+    if(thing != NULL && thing->type == OWL_POPUP) {
+      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+    }
+  }
 }
 
 void
@@ -968,7 +948,7 @@ toplevel_unclip_size(struct owl_toplevel *toplevel) {
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor,
                             struct owl_toplevel *toplevel) {
-  struct wlr_box geometry = toplevel->xdg_toplevel->base->geometry;
+  struct wlr_box geometry = toplevel_get_geometry(toplevel);
 
   uint32_t toplevel_x = toplevel->scene_tree->node.x + geometry.x;
   uint32_t toplevel_y = toplevel->scene_tree->node.y + geometry.y;

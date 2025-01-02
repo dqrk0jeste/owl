@@ -15,37 +15,36 @@ struct owl_animation {
   bool running;
   uint32_t total_frames;
   uint32_t passed_frames;
-  struct wlr_box initial_geometry;
-  struct wlr_box current_geometry;
+  struct wlr_box initial;
+  struct wlr_box current;
 };
 
 struct owl_toplevel;
 
-float *
-border_get_color(enum owl_border_state state);
+void
+toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t height);
 
 void
-toplevel_borders_create(struct owl_toplevel *toplevel);
-
-void
-toplevel_borders_set_size(struct owl_toplevel *toplevel,
-                          uint32_t width, uint32_t height);
-
-void
-toplevel_borders_update(struct owl_toplevel *toplevel);
-
-void
-toplevel_borders_set_state(struct owl_toplevel *toplevel,
-                           enum owl_border_state state);
-
-struct wlr_scene_buffer *
-surface_find_buffer(struct wlr_scene_node *node, struct wlr_surface *surface);
+toplevel_render_placeholder(struct owl_toplevel *toplevel, uint32_t width, uint32_t height);
 
 double
-calculate_animation_curve_at(double x);
+find_animation_curve_at(double t);
 
 double
 calculate_animation_passed(struct owl_animation *animation);
 
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel);
+
+bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel);
+
+struct owl_workspace;
+void workspace_render_frame(struct owl_workspace *workspace);
+
+void
+scene_buffer_apply_opacity(struct wlr_scene_buffer *buffer,
+                           int sx, int sy, void *user_data);
+
+void toplevel_handle_opacity(struct owl_toplevel *toplevel);
+
+void workspace_handle_opacity(struct owl_workspace *workspace);

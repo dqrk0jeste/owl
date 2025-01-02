@@ -4,6 +4,7 @@
 #include "something.h"
 #include "toplevel.h"
 #include "workspace.h"
+#include "layer_surface.h"
 
 #include <stdlib.h>
 #include <wlr/types/wlr_scene.h>
@@ -18,6 +19,9 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
 
   struct owl_popup *popup = calloc(1, sizeof(*popup));
   popup->xdg_popup = xdg_popup;
+  
+  popup->something.type = OWL_POPUP;
+  popup->something.popup = popup;
 
   if(xdg_popup->parent != NULL) {
     struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
@@ -25,10 +29,7 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
     popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
 
     xdg_popup->base->data = popup->scene_tree;
-    struct owl_something *something = calloc(1, sizeof(*something));
-    something->type = OWL_POPUP;
-    something->popup = popup;
-    popup->scene_tree->node.data = something;
+    popup->scene_tree->node.data = &popup->something;
   } else {
     /* if there is no parent, than we keep the reference to our owl_popup state in this */
     /* user data pointer, in order to later reparent this popup (see layer_surface_handle_new_popup) */
@@ -44,17 +45,11 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
 
 void
 xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
-  /* Called when a new surface state is committed. */
   struct owl_popup *popup = wl_container_of(listener, popup, commit);
 
   if(!popup->xdg_popup->base->initialized) return;
 
   if(popup->xdg_popup->base->initial_commit) {
-    /* When an xdg_surface performs an initial commit, the compositor must
-     * reply with a configure so the client can map the surface.
-     * owl sends an empty configure. A more sophisticated compositor
-     * might change an xdg_popup's geometry to ensure it's not positioned
-     * off-screen, for example. */
     struct owl_something *root = root_parent_of_surface(popup->xdg_popup->base->surface);
 
     if(root == NULL) {
@@ -83,7 +78,6 @@ xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
 
 void
 xdg_popup_handle_destroy(struct wl_listener *listener, void *data) {
-  /* Called when the xdg_popup is destroyed. */
   struct owl_popup *popup = wl_container_of(listener, popup, destroy);
 
   wl_list_remove(&popup->commit.link);

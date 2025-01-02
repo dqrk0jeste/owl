@@ -7,15 +7,17 @@
 #include "workspace.h"
 #include "layout.h"
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
+#include <wlr/backend/session.h>
 #include <wlr/xcursor.h>
 #include <wlr/types/wlr_cursor.h>
 
 extern struct owl_server server;
 
 bool
-server_handle_keybinds(struct owl_keyboard *keyboard,
-                       uint32_t keycode,
+server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
                        enum wl_keyboard_key_state state) {
   uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
   /* we create new empty state so we can get raw, unmodified key.
@@ -25,32 +27,55 @@ server_handle_keybinds(struct owl_keyboard *keyboard,
    *   keybind alt+shift # <do_something>
    * instead of
    *   alt+shift 3 <do_something> */
+  /* TODO: cache this */
   struct xkb_state *empty = xkb_state_new(keyboard->wlr_keyboard->keymap);
-  xkb_keysym_t sym = xkb_state_key_get_one_sym(empty, keycode);
+
+  const xkb_keysym_t *syms;
+  int count = xkb_state_key_get_syms(empty, keycode, &syms);
   xkb_state_unref(empty);
 
-  struct keybind *k;
-  wl_list_for_each(k, &server.config->keybinds, link) {
-    if(k->active && k->stop && sym == k->sym
-      && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-      k->active = false;
-      k->stop(k->args);
-      return true;
-    }
+  bool handled = handle_change_vt_key(syms, count);
+  if(handled) return true;
 
-    if(modifiers == k->modifiers && sym == k->sym
-      && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-      k->active = true;
-      k->action(k->args);
-      return true;
+  struct keybind *k;
+  for(size_t i = 0; i < count; i++) {
+    wl_list_for_each(k, &server.config->keybinds, link) {
+      if(!k->initialized) continue;
+
+      if(k->active && k->stop && syms[i] == k->sym
+         && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+        k->active = false;
+        k->stop(k->args);
+        return true;
+      }
+
+      if(modifiers == k->modifiers && syms[i] == k->sym
+         && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        k->active = true;
+        k->action(k->args);
+        return true;
+      }
     }
   }
 
   return false;
 }
 
+bool
+handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
+	for(int i = 0; i < count; i++) {
+	  uint32_t vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
+		if (vt >= 1 && vt <= 12) {
+      wlr_session_change_vt(server.session, vt);
+			return true;
+		}
+	}
+	return false;
+}
+
 void
 keybind_stop_server(void *data) {
+  server.running = false;
   wl_display_terminate(server.wl_display);
 }
 
@@ -62,7 +87,7 @@ keybind_run(void *data) {
 void
 keybind_change_workspace(void *data) {
   struct owl_workspace *workspace = data;
-  server_change_workspace(workspace, false);
+  change_workspace(workspace, false);
 }
 
 void
@@ -149,7 +174,7 @@ keybind_close_keyboard_focused_toplevel(void *data) {
 
 void
 keybind_move_focus(void *data) {
-  uint32_t direction = (uint32_t)data;
+  uint64_t direction = (uint64_t)data;
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
 
@@ -298,7 +323,7 @@ keybind_move_focus(void *data) {
 
 void
 keybind_swap_focused_toplevel(void *data) {
-  uint32_t direction = (uint32_t)data;
+  uint64_t direction = (uint64_t)data;
 
   struct owl_toplevel *toplevel = server.focused_toplevel;
 
@@ -427,14 +452,14 @@ keybind_switch_focused_toplevel_state(void *data) {
 
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-    layout_send_configure(toplevel->workspace);
+    layout_set_pending_state(toplevel->workspace);
     return;
   }
 
   toplevel->floating = true;
   if(toplevel_is_master(toplevel)) {
     if(!wl_list_empty(&toplevel->workspace->slaves)) {
-      struct owl_toplevel *s = wl_container_of(toplevel->workspace->slaves.next, s, link);
+      struct owl_toplevel *s = wl_container_of(toplevel->workspace->slaves.prev, s, link);
       wl_list_remove(&s->link);
       wl_list_insert(toplevel->workspace->masters.prev, &s->link);
     }
@@ -448,11 +473,12 @@ keybind_switch_focused_toplevel_state(void *data) {
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
   uint32_t width, height;
   toplevel_floating_size(toplevel, &width, &height);
-  toplevel_set_pending_state(toplevel, output_box.x + (output_box.width - WIDTH(toplevel)) / 2,
-                             output_box.y + (output_box.height - HEIGHT(toplevel)) / 2,
-                             WIDTH(toplevel), HEIGHT(toplevel));
+  toplevel_set_pending_state(toplevel,
+                             output_box.x + (output_box.width - width) / 2,
+                             output_box.y + (output_box.height - height) / 2,
+                             width, height);
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-  layout_send_configure(toplevel->workspace);
+  layout_set_pending_state(toplevel->workspace);
 }
 
