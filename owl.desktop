@@ -1,5 +1,7 @@
 [Desktop Entry]
 Name=owl
-Comment=tiled wayland compositor based on wlroots
+Comment=tiling wayland compositor based on wlroots
 Exec=owl
 Type=Application
+DesktopNames=owl
+Keywords=tiling;wayland;compositor;

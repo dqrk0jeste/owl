@@ -115,3 +115,6 @@ config_handle_line(char *line, size_t line_number, char **keyword,
 
 bool
 server_load_config();
+
+void
+config_set_default_needed_params(struct owl_config *c);

@@ -44,6 +44,7 @@ install: build/owl build/owl-ipc default.conf owl-portals.conf owl.desktop
 	install -Dm755 build/owl "/usr/local/bin/owl"; \
 	install -Dm755 build/owl-ipc "/usr/local/bin/owl-ipc"; \
 	install -Dm644 default.conf "/usr/share/owl/default.conf"; \
+  install -Dm644 LICENSE "/usr/share/licenses/owl/LICENSE"; \
 	install -Dm644 owl.desktop "/usr/share/wayland-sessions/owl.desktop"; \
 	install -Dm644 owl-portals.conf "/usr/share/xdg-desktop-portal/owl-portals.conf"
 

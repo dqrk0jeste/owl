@@ -437,10 +437,6 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     }
     setenv(args[0], args[1], true);
   } else if(strcmp(keyword, "window_rule") == 0) {
-    /* window_rule *regex* *predicate* *additional_args*
-     * predicates:*
-     *   float(no args),*
-     *   size(two args: width, height) */
     if(arg_count < 3) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
@@ -600,6 +596,54 @@ config_handle_line(char *line, size_t line_number, char **keyword,
   return true;
 }
 
+void
+config_set_default_needed_params(struct owl_config *c) {
+  /* as we are initializing config with calloc, some fields that are necessary in order
+   * for owl to not crash may be not specified in the config.
+   * we set their values to some default value.*/
+  if(c->keyboard_rate == 0) {
+    c->keyboard_rate = 150;
+    wlr_log(WLR_INFO,
+            "keyboard_rate not specified. using default %ud", c->keyboard_rate);
+  } 
+  if(c->keyboard_delay == 0) {
+    c->keyboard_delay = 50;
+    wlr_log(WLR_INFO,
+            "keyboard_delay not specified. using default %ud", c->keyboard_delay);
+  }
+  if(c->cursor_size == 0) {
+    c->cursor_size = 24;
+    wlr_log(WLR_INFO,
+            "cursor_size not specified. using default %ud", c->cursor_size);
+  }
+  if(c->min_toplevel_size == 0) {
+    c->min_toplevel_size = 10;
+    wlr_log(WLR_INFO,
+            "min_toplevel_size not specified. using default %ud", c->min_toplevel_size);
+  }
+  if(c->master_count == 0) {
+    c->master_count = 1;
+    wlr_log(WLR_INFO,
+            "master_count not specified. using default %lf", c->master_ratio);
+  }
+  if(c->master_ratio == 0) {
+    /* here we evenly space toplevels if there is no master_ratio specified */
+    c->master_ratio = c->master_count / (double)(c->master_count + 1);
+    wlr_log(WLR_INFO,
+            "master_ratio not specified. using default %lf", c->master_ratio);
+  }
+  if(c->animations && c->animation_duration == 0) {
+    c->animation_duration = 500;
+    wlr_log(WLR_INFO,
+            "animation_duration not specified. using default %ud", c->animation_duration);
+  }
+  if(c->animations && c->animation_curve[0] == 0 && c->animation_curve[1] == 0
+     && c->animation_curve[2] == 0 && c->animation_curve[3] == 0) {
+    bake_bezier_curve_points(c);
+    wlr_log(WLR_INFO, "animation_curve not specified. baking default linear");
+  }
+}
+
 extern struct owl_server server;
 
 bool
@@ -640,8 +684,7 @@ server_load_config() {
   size_t args_count;
   size_t line_number = 1;
   while(fgets(line_buffer, 1024, config_file) != NULL) {
-    bool valid =
-      config_handle_line(line_buffer, line_number, &keyword, &args, &args_count);
+    bool valid = config_handle_line(line_buffer, line_number, &keyword, &args, &args_count);
     if(valid) {
       config_handle_value(c, keyword, args, args_count);
     }
@@ -650,40 +693,7 @@ server_load_config() {
 
   fclose(config_file);
 
-  /* as we are initializing config with calloc, some fields that are necessary in order
-   * for owl to not crash may be not specified in the config.
-   * we set their values to some default value.*/
-  if(c->keyboard_rate == 0) {
-    c->keyboard_rate = 150;
-    wlr_log(WLR_INFO,
-            "keyboard_rate not specified. using default %d", c->keyboard_rate);
-  } 
-  if(c->keyboard_delay == 0) {
-    c->keyboard_delay = 50;
-    wlr_log(WLR_INFO,
-            "keyboard_delay not specified. using default %d", c->keyboard_delay);
-  }
-  if(c->master_count == 0) {
-    c->master_count = 1;
-    wlr_log(WLR_INFO,
-            "master_count not specified. using default %lf", c->master_ratio);
-  }
-  if(c->master_ratio == 0) {
-    /* here we evenly space toplevels if there is no master_ratio specified */
-    c->master_ratio = c->master_count / (double)(c->master_count + 1);
-    wlr_log(WLR_INFO,
-            "master_ratio not specified. using default %lf", c->master_ratio);
-  }
-  if(c->cursor_size == 0) {
-    c->cursor_size = 24;
-    wlr_log(WLR_INFO,
-            "cursor_size not specified. using default %d", c->cursor_size);
-  }
-  if(c->min_toplevel_size == 0) {
-    c->min_toplevel_size = 10;
-    wlr_log(WLR_INFO,
-            "min_toplevel_size not specified. using default %d", c->min_toplevel_size);
-  }
+  config_set_default_needed_params(c);
 
   server.config = c;
   return true;
