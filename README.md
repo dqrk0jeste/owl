@@ -28,16 +28,12 @@
 ## dependencies
 - make *
 - wayland-protocols *
-- wayland-scanner *
-- wayland-server
-- pixman
-- libdrm
+- wayland
 - libinput
-- xkbcommmon
+- libdrm
+- pixman
+- libxkbcommmon
 - wlroots 18.0 
-- xdg-desktop-portal *
-- xdg-desktop-portal-wlr *
-- xdg-desktop-portal-gtk *
 
 > \* compile-time dependencies
 
@@ -59,15 +55,15 @@ for now `owl` exist only as `owl-wlr_git` package, just add it into your nixos /
 ```bash
 make install
 ```
-it will also install the default config to `/usr/share/owl/default.conf`
+note: you will need sudo privilages to do so
 
 > if you wish to uninstall `owl` you can do so with `make unistall`.
 
-## post-install
-if you need to intract with sandboxed applications and/or screenshare you will need xdg-desktop-portals. install
+## post install
+if you need to intract with sandboxed applications and/or screenshare you will need xdg-desktop-portals. by default `owl` needs
 - xdg-desktop-portal (base)
-- xdg-desktop-portal-wlr (screensharing)
-- xdg-desktop-portal-gtk (everything else)
+- xdg-desktop-portal-wlr (for screensharing)
+- xdg-desktop-portal-gtk (for everything else)
 
 ## usage
 ```bash
