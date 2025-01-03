@@ -52,7 +52,7 @@ make
 yay -S owl-compositor-git
 ```
 
-### nixos
+### nixos (outdated)
 you can install `owl` by using [chaotic-cx/nyx](https://github.com/chaotic-cx/nyx) flake! 
 
 for now `owl` exist only as `owl-wlr_git` package, just add it into your nixos / home-manager configuration and follow **usage** and **configuration** parts of `README.md`!
