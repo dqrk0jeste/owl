@@ -216,6 +216,7 @@ toplevel_handle_opacity(struct owl_toplevel *toplevel) {
   /*check for the opacity window rules */
   struct window_rule_opacity *w;
   wl_list_for_each(w, &server.config->window_rules.opacity, link) {
+    /* cache this value in toplevel_handle_set_title() and toplevel_handle_set_app_id() */
     if(toplevel_matches_window_rule(toplevel, &w->condition)) {
       wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, w);
       /* apply opacity to the placeholder rect so the surface is actually transperent */
