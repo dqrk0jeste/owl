@@ -485,6 +485,13 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       return false;
     }
     c->client_side_decorations = atoi(args[0]);
+  } else if(strcmp(keyword, "only_switch_to_workspaces_on_same_output") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->only_switch_to_workspaces_on_same_output = atoi(args[0]);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);

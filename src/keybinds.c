@@ -87,7 +87,19 @@ keybind_run(void *data) {
 void
 keybind_change_workspace(void *data) {
   struct owl_workspace *workspace = data;
-  change_workspace(workspace, false);
+
+  if(server.config->only_switch_to_workspaces_on_same_output
+     && workspace->output != server.active_workspace->output) {
+    struct owl_workspace *w;
+    wl_list_for_each(w, &server.active_workspace->output->workspaces, link) {
+      if(w->index == workspace->index) {
+        change_workspace(w, false);
+        return;
+      }
+    }
+  } else {
+    change_workspace(workspace, false);
+  }
 }
 
 void

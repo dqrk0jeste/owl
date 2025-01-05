@@ -81,6 +81,7 @@ struct owl_config {
   struct vec2 *baked_points;
   float placeholder_color[4];
   bool client_side_decorations;
+  bool only_switch_to_workspaces_on_same_output;
   char *run[64];
   size_t run_count;
 };
