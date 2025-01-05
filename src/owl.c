@@ -34,6 +34,8 @@
 #include "wlr/types/wlr_viewporter.h"
 #include "wlr/types/wlr_foreign_toplevel_management_v1.h"
 #include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -184,6 +186,7 @@ main(int argc, char *argv[]) {
    * see the handling of the request_set_selection event below.*/
   wlr_compositor_create(server.wl_display, 5, server.renderer);
   wlr_subcompositor_create(server.wl_display);
+
   wlr_data_device_manager_create(server.wl_display);
 
   /* Creates an output layout, which a wlroots utility for working with an
@@ -314,6 +317,9 @@ main(int argc, char *argv[]) {
   server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
   server.dmabuf_manager = wlr_export_dmabuf_manager_v1_create(server.wl_display);
   server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);
+
+  server.virtual_pointer_manager = wlr_virtual_pointer_manager_v1_create(server.wl_display);
+  server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.wl_display);
 
   /* Add a Unix socket to the Wayland display. */
   const char *socket = wl_display_add_socket_auto(server.wl_display);
