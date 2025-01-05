@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <wayland-util.h>
 #include <wlr/backend/session.h>
 #include <wlr/xcursor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -88,6 +89,28 @@ void
 keybind_change_workspace(void *data) {
   struct owl_workspace *workspace = data;
   change_workspace(workspace, false);
+}
+
+void
+keybind_next_workspace(void *data) {
+  struct owl_workspace *current = server.active_workspace;
+  struct wl_list *next = current->link.next;
+  if(next == &current->output->workspaces) {
+    next = current->output->workspaces.next;
+  }
+  struct owl_workspace *next_workspace = wl_container_of(next, next_workspace, link);
+  change_workspace(next_workspace, false);
+}
+
+void
+keybind_prev_workspace(void *data) {
+  struct owl_workspace *current = server.active_workspace;
+  struct wl_list *prev = current->link.prev;
+  if(prev == &current->output->workspaces) {
+    prev = current->output->workspaces.prev;
+  }
+  struct owl_workspace *prev_workspace = wl_container_of(prev, prev_workspace, link);
+  change_workspace(prev_workspace, false);
 }
 
 void

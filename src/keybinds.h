@@ -35,6 +35,12 @@ void
 keybind_change_workspace(void *data);
 
 void
+keybind_next_workspace(void *data);
+
+void
+keybind_prev_workspace(void *data);
+
+void
 keybind_move_focused_toplevel_to_workspace(void *data);
 
 void

@@ -259,6 +259,10 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
     k->args = (void*)atoi(args[0]);
     k->initialized = false;
+  } else if(strcmp(action, "next_workspace") == 0) {
+    k->action = keybind_next_workspace;
+  } else if(strcmp(action, "prev_workspace") == 0) {
+    k->action = keybind_prev_workspace;
   } else {
     wlr_log(WLR_ERROR, "invalid keybind action %s", action);
     free(k);
