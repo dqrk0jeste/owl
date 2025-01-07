@@ -6,7 +6,6 @@
 #include "owl.h"
 #include "rendering.h"
 #include "something.h"
-#include "wlr/util/edges.h"
 #include "workspace.h"
 #include "output.h"
 #include "helpers.h"
@@ -18,6 +17,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/util/log.h>
+#include <wlr/util/edges.h>
 
 extern struct owl_server server;
 
@@ -69,6 +69,8 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   /* called when a new surface state is committed */
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
+  if(!toplevel->xdg_toplevel->base->initialized) return;
+
   if(toplevel->xdg_toplevel->base->initial_commit) {
     /* when an xdg_surface performs an initial commit, the compositor must
      * reply with a configure so the client can map the surface. */
@@ -95,7 +97,10 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
        * a fullscreen toplevel on the workspace, but we need to send something
        * in order to respect the protocol. we dont really care,
        * as it is not going to be shown anyway*/
-      toplevel_set_initial_state(toplevel, 0, 0, 0, 0);
+    /* note: using just 0, 0, 0, 0 caused the toplevel to become unresponsive, because wlr_scene
+     * wouldnt send frame done events. we fix this by setting the position to something on the current output */
+      struct owl_output *output = toplevel->workspace->output;
+      toplevel_set_initial_state(toplevel, output->usable_area.x, output->usable_area.y, 0, 0);
     }
 
     return;
@@ -173,9 +178,10 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
-    /* we have sent the configure, but we dont care if it chose some other size */
-    toplevel->pending.width = toplevel_get_geometry(toplevel).width;
-    toplevel->pending.height = toplevel_get_geometry(toplevel).height;
+    if(toplevel->pending.width == 0) {
+      toplevel->pending.width = toplevel_get_geometry(toplevel).width;
+      toplevel->pending.height = toplevel_get_geometry(toplevel).height;
+    }
 
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
     toplevel->animation.initial.x = output_box.x + output_box.width / 2;
@@ -514,7 +520,6 @@ toplevel_should_float(struct owl_toplevel *toplevel) {
   return false;
 }
 
-/* TODO: return owl_something and check for layer_surfaces */
 struct owl_toplevel *
 get_pointer_focused_toplevel(void) {
   struct wlr_surface *focused_surface = server.seat->pointer_state.focused_surface;
@@ -530,7 +535,6 @@ get_pointer_focused_toplevel(void) {
   return NULL;
 }
 
-/* TODO: here we should use clipped size for tiled toplevels */
 void
 cursor_jump_focused_toplevel(void) {
   struct owl_toplevel *toplevel = server.focused_toplevel;
@@ -602,7 +606,7 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.initial = toplevel->current;
   }
 
-  if((toplevel->floating || toplevel->fullscreen) && !toplevel_size_changed(toplevel)) {
+  if(!toplevel_size_changed(toplevel)) {
     toplevel_commit(toplevel);
     return;
   };

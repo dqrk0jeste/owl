@@ -139,7 +139,27 @@ toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
 void
 workspace_render_frame(struct owl_workspace *workspace) {
   bool animations_done = true;
+
   struct owl_toplevel *t;
+  if(workspace->fullscreen_toplevel != NULL) {
+    t = workspace->fullscreen_toplevel;
+    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+
+    if(t->animation.running) {
+      bool done = toplevel_draw_animation_frame(t);
+      if(!done) {
+        animations_done = false;
+      }
+    } else {
+      toplevel_unclip_size(t);
+      wlr_scene_node_set_position(&t->scene_tree->node,
+                                  t->current.x, t->current.y);
+      toplevel_draw_borders(t, t->current.width, t->current.height);
+      toplevel_render_placeholder(t, t->current.width, t->current.height);
+    }
+    return;
+  }
+  
   wl_list_for_each(t, &workspace->floating_toplevels, link) {
     if(!t->mapped) continue;
     wlr_scene_node_set_enabled(&t->scene_tree->node, true);

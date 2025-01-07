@@ -366,14 +366,14 @@ keybind_swap_focused_toplevel(void *data) {
 
   struct wl_list *next;
   if(toplevel_is_master(toplevel)) {
-    switch (direction) {
+    switch(direction) {
       case OWL_RIGHT: {
         next = toplevel->link.next;
         if(next == &workspace->masters) {
           next = workspace->slaves.prev;
           if(next == &workspace->slaves) {
             if(relative_output != NULL
-              && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+               && relative_output->active_workspace->fullscreen_toplevel == NULL) {
               toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
             }
             return;
@@ -381,28 +381,26 @@ keybind_swap_focused_toplevel(void *data) {
         }
         struct owl_toplevel *t = wl_container_of(next, t, link);
         layout_swap_tiled_toplevels(toplevel, t);
-        cursor_jump_focused_toplevel();
         return;
       }
       case OWL_LEFT: {
         next = toplevel->link.prev;
         if(next == &workspace->masters) {
           if(relative_output != NULL
-            && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+             && relative_output->active_workspace->fullscreen_toplevel == NULL) {
             toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
           }
           return;
         }
         struct owl_toplevel *t = wl_container_of(next, t, link);
         layout_swap_tiled_toplevels(t, toplevel);
-        cursor_jump_focused_toplevel();
         return;
       }
       default: {
         struct owl_output *relative_output =
           output_get_relative(workspace->output, direction);
         if(relative_output != NULL
-          && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+           && relative_output->active_workspace->fullscreen_toplevel == NULL) {
           toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         }
         return;
@@ -410,19 +408,18 @@ keybind_swap_focused_toplevel(void *data) {
     }
   }
 
-  switch (direction) {
+  switch(direction) {
     case OWL_LEFT: {
       struct owl_toplevel *last_master =
         wl_container_of(workspace->masters.prev, last_master, link);
       layout_swap_tiled_toplevels(toplevel, last_master);
-      cursor_jump_focused_toplevel();
       return;
     }
     case OWL_RIGHT: {
       struct owl_output *relative_output =
         output_get_relative(workspace->output, direction);
       if(relative_output != NULL
-        && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+         && relative_output->active_workspace->fullscreen_toplevel == NULL) {
         toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
       }
       return;
@@ -431,28 +428,26 @@ keybind_swap_focused_toplevel(void *data) {
       next = toplevel->link.prev;
       if(next == &workspace->slaves) {
         if(relative_output != NULL
-          && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+           && relative_output->active_workspace->fullscreen_toplevel == NULL) {
           toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         }
         return;
       }
       struct owl_toplevel *t = wl_container_of(next, t, link);
       layout_swap_tiled_toplevels(t, toplevel);
-      cursor_jump_focused_toplevel();
       return;
     }
     case OWL_DOWN: {
       next = toplevel->link.next;
       if(next == &workspace->slaves) {
         if(relative_output != NULL
-          && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+           && relative_output->active_workspace->fullscreen_toplevel == NULL) {
           toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         }
         return;
       }
       struct owl_toplevel *t = wl_container_of(next, t, link);
       layout_swap_tiled_toplevels(toplevel, t);
-      cursor_jump_focused_toplevel();
       return;
     }
   }
