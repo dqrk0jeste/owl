@@ -15,7 +15,7 @@
 extern struct owl_server server;
 
 void
-toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t height) {
+toplevel_draw_borders(struct owl_toplevel *toplevel) {
   uint32_t border_width = server.config->border_width;
 
   float *border_color = toplevel->fullscreen
@@ -23,6 +23,9 @@ toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t he
     : toplevel == server.focused_toplevel
       ? server.config->active_border_color
       : server.config->inactive_border_color;
+
+  uint32_t width, height;
+  toplevel_get_actual_size(toplevel, &width, &height);
   
   if(toplevel->borders[0] == NULL) {
     toplevel->borders[0] = wlr_scene_rect_create(toplevel->scene_tree,
@@ -58,7 +61,10 @@ toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t he
 }
 
 void
-toplevel_render_placeholder(struct owl_toplevel *toplevel, uint32_t width, uint32_t height) {
+toplevel_draw_placeholder(struct owl_toplevel *toplevel) {
+  uint32_t width, height;
+  toplevel_get_actual_size(toplevel, &width, &height);
+
   if(toplevel->placeholder == NULL) {
     toplevel->placeholder = wlr_scene_rect_create(toplevel->scene_tree, width, height,
                                                   server.config->placeholder_color);
@@ -92,7 +98,8 @@ calculate_animation_passed(struct owl_animation *animation) {
 
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
-  double animation_passed = calculate_animation_passed(&toplevel->animation);
+  double animation_passed =
+    (double)toplevel->animation.passed_frames / toplevel->animation.total_frames;
   double factor = find_animation_curve_at(animation_passed);
 
   uint32_t width = toplevel->animation.initial.width +
@@ -100,16 +107,12 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
   uint32_t height = toplevel->animation.initial.height +
     (toplevel->current.height - toplevel->animation.initial.height) * factor;
 
-  toplevel_clip_to_size(toplevel, width, height); 
-  toplevel_render_placeholder(toplevel, width, height);
-
   uint32_t x = toplevel->animation.initial.x +
     (toplevel->current.x - toplevel->animation.initial.x) * factor;
   uint32_t y = toplevel->animation.initial.y +
     (toplevel->current.y - toplevel->animation.initial.y) * factor;
 
   wlr_scene_node_set_position(&toplevel->scene_tree->node, x, y);
-  toplevel_draw_borders(toplevel, width, height);
 
   toplevel->animation.current = (struct wlr_box){
     .x = x,
@@ -118,105 +121,67 @@ toplevel_animation_next_tick(struct owl_toplevel *toplevel) {
     .height = height,
   };
 
-  return animation_passed == 1.0;
+  if(animation_passed == 1.0) {
+    toplevel->animation.running = false;
+    return false;
+  } else {
+    toplevel->animation.passed_frames++;
+    return true;
+  }
 }
 
 bool
-toplevel_draw_animation_frame(struct owl_toplevel *toplevel) {
-  bool done = toplevel_animation_next_tick(toplevel);
-  if(done) {
-    toplevel->animation.running = false;
-    if(toplevel->floating) {
-      toplevel_unclip_size(toplevel);
+toplevel_draw_frame(struct owl_toplevel *toplevel) {
+  if(!toplevel->mapped) return false;
+  wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+
+  bool need_more_frames = false;
+  if(toplevel->animation.running) {
+    if(toplevel_animation_next_tick(toplevel)) {
+      need_more_frames = true;
     }
   } else {
-    toplevel->animation.passed_frames++;
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+                                toplevel->current.x, toplevel->current.y);
   }
 
-  return done;
+  toplevel_draw_borders(toplevel);
+  toplevel_draw_placeholder(toplevel);
+  toplevel_apply_clip(toplevel);
+
+  return need_more_frames;
 }
 
 void
-workspace_render_frame(struct owl_workspace *workspace) {
-  bool animations_done = true;
+workspace_draw_frame(struct owl_workspace *workspace) {
+  bool need_more_frames = false;
 
   struct owl_toplevel *t;
   if(workspace->fullscreen_toplevel != NULL) {
-    t = workspace->fullscreen_toplevel;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-
-    if(t->animation.running) {
-      bool done = toplevel_draw_animation_frame(t);
-      if(!done) {
-        animations_done = false;
-      }
-    } else {
-      toplevel_unclip_size(t);
-      wlr_scene_node_set_position(&t->scene_tree->node,
-                                  t->current.x, t->current.y);
-      toplevel_draw_borders(t, t->current.width, t->current.height);
-      toplevel_render_placeholder(t, t->current.width, t->current.height);
+    if(toplevel_draw_frame(workspace->fullscreen_toplevel)) {
+      need_more_frames = true;
     }
-    return;
-  }
-  
-  wl_list_for_each(t, &workspace->floating_toplevels, link) {
-    if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-
-    if(t->animation.running) {
-      bool done = toplevel_draw_animation_frame(t);
-      if(!done) {
-        animations_done = false;
+  } else {
+    wl_list_for_each(t, &workspace->floating_toplevels, link) {
+      if(toplevel_draw_frame(t)) {
+        need_more_frames = true;
       }
-    } else {
-      toplevel_unclip_size(t);
-      wlr_scene_node_set_position(&t->scene_tree->node,
-                                  t->current.x, t->current.y);
-      toplevel_draw_borders(t, t->current.width, t->current.height);
-      toplevel_render_placeholder(t, t->current.width, t->current.height);
     }
-  }
-
-  wl_list_for_each(t, &workspace->masters, link) {
-    if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-
-    if(t->animation.running) {
-      bool done = toplevel_draw_animation_frame(t);
-      if(!done) {
-        animations_done = false;
+    wl_list_for_each(t, &workspace->masters, link) {
+      if(toplevel_draw_frame(t)) {
+        need_more_frames = true;
       }
-    } else {
-      toplevel_clip_to_fit(t);
-      wlr_scene_node_set_position(&t->scene_tree->node,
-                                  t->current.x, t->current.y);
-      toplevel_draw_borders(t, t->current.width, t->current.height);
-      toplevel_render_placeholder(t, t->current.width, t->current.height);
     }
-  }
-
-  wl_list_for_each(t, &workspace->slaves, link) {
-    if(!t->mapped) continue;
-    wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-
-    if(t->animation.running) {
-      bool done = toplevel_draw_animation_frame(t);
-      if(!done) {
-        animations_done = false;
+    wl_list_for_each(t, &workspace->slaves, link) {
+      if(toplevel_draw_frame(t)) {
+        need_more_frames = true;
       }
-    } else {
-      toplevel_clip_to_fit(t);
-      wlr_scene_node_set_position(&t->scene_tree->node,
-                                  t->current.x, t->current.y);
-      toplevel_draw_borders(t, t->current.width, t->current.height);
-      toplevel_render_placeholder(t, t->current.width, t->current.height);
     }
   }
 
   /* if there are animation that are not finished we request more frames
    * for the output, until all the animations are done */
-  if(!animations_done) {
+  if(need_more_frames) {
     wlr_output_schedule_frame(workspace->output->wlr_output);
   }
 }

@@ -19,16 +19,17 @@ struct owl_animation {
   struct wlr_box current;
 };
 
-struct owl_toplevel;
-
-void
-toplevel_draw_borders(struct owl_toplevel *toplevel, uint32_t width, uint32_t height);
-
-void
-toplevel_render_placeholder(struct owl_toplevel *toplevel, uint32_t width, uint32_t height);
 
 double
 find_animation_curve_at(double t);
+
+struct owl_toplevel;
+
+void
+toplevel_draw_borders(struct owl_toplevel *toplevel);
+
+void
+toplevel_draw_placeholder(struct owl_toplevel *toplevel);
 
 double
 calculate_animation_passed(struct owl_animation *animation);
@@ -36,15 +37,20 @@ calculate_animation_passed(struct owl_animation *animation);
 bool
 toplevel_animation_next_tick(struct owl_toplevel *toplevel);
 
-bool toplevel_draw_animation_frame(struct owl_toplevel *toplevel);
+bool
+toplevel_draw_frame(struct owl_toplevel *toplevel);
 
 struct owl_workspace;
-void workspace_render_frame(struct owl_workspace *workspace);
+
+void
+workspace_draw_frame(struct owl_workspace *workspace);
 
 void
 scene_buffer_apply_opacity(struct wlr_scene_buffer *buffer,
                            int sx, int sy, void *user_data);
 
-void toplevel_handle_opacity(struct owl_toplevel *toplevel);
+void
+toplevel_handle_opacity(struct owl_toplevel *toplevel);
 
-void workspace_handle_opacity(struct owl_workspace *workspace);
+void
+workspace_handle_opacity(struct owl_workspace *workspace);

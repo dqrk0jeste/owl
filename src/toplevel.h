@@ -6,6 +6,7 @@
 #include "config.h"
 #include "something.h"
 
+#include <stdint.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_cursor.h>
 
@@ -54,6 +55,9 @@ struct owl_toplevel {
 
 #define X(t) (t)->scene_tree->node.x
 #define Y(t) (t)->scene_tree->node.y
+
+void
+toplevel_get_actual_size(struct owl_toplevel *toplevel, uint32_t *width, uint32_t *height);
 
 struct wlr_box
 toplevel_get_geometry(struct owl_toplevel *toplevel);
@@ -148,6 +152,9 @@ toplevel_find_closest_floating_on_workspace(struct owl_toplevel *toplevel,
 
 struct owl_output *
 toplevel_get_primary_output(struct owl_toplevel *toplevel);
+
+void
+toplevel_apply_clip(struct owl_toplevel *toplevel);
 
 void
 toplevel_clip_to_size(struct owl_toplevel *toplevel,

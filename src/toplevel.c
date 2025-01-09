@@ -12,8 +12,10 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <wayland-util.h>
+#include <wctype.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/util/log.h>
@@ -899,6 +901,29 @@ toplevel_get_primary_output(struct owl_toplevel *toplevel) {
   }
 
   return max_area_output;
+}
+
+void
+toplevel_get_actual_size(struct owl_toplevel *toplevel, uint32_t *width, uint32_t *height) {
+  *width = toplevel->animation.running
+    ? toplevel->animation.current.width
+    : toplevel->current.width;
+
+  *height = toplevel->animation.running
+    ? toplevel->animation.current.height
+    : toplevel->current.height;
+}
+
+void
+toplevel_apply_clip(struct owl_toplevel *toplevel) {
+  uint32_t actual_width, actual_height;
+  toplevel_get_actual_size(toplevel, &actual_width, &actual_height);
+
+  if(toplevel->animation.running || toplevel->fullscreen || !toplevel->floating) {
+    toplevel_clip_to_size(toplevel, actual_width, actual_height);
+  } else {
+    toplevel_unclip_size(toplevel);
+  }
 }
 
 void

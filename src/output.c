@@ -363,7 +363,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
   struct owl_output *output = wl_container_of(listener, output, frame);
   struct owl_workspace *workspace = output->active_workspace;
 
-  workspace_render_frame(workspace);
+  workspace_draw_frame(workspace);
   workspace_handle_opacity(workspace);
 
   struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(server.scene,
