@@ -232,12 +232,16 @@ scene_buffer_apply_opacity(struct wlr_scene_buffer *buffer,
 
 void
 toplevel_handle_opacity(struct owl_toplevel *toplevel) {
-  double opacity = toplevel->fullscreen ? 1.0 : toplevel->opacity;
+  double opacity = toplevel->fullscreen
+    ? 1.0
+    : toplevel == server.focused_toplevel
+      ? toplevel->active_opacity
+      : toplevel->inactive_opacity;
 
   wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, &opacity);
   /* apply opacity to the placeholder rect so the surface is actually transperent */
+  float applied_opacity[4];
   if(toplevel->placeholder != NULL) {
-    float applied_opacity[4];
     applied_opacity[0] = server.config->placeholder_color[0];
     applied_opacity[1] = server.config->placeholder_color[1];
     applied_opacity[2] = server.config->placeholder_color[2];

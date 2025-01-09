@@ -29,12 +29,12 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   /* allocate an owl_toplevel for this surface */
   struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
   toplevel->xdg_toplevel = xdg_toplevel;
-  wlr_log(WLR_ERROR, "on created:%p", xdg_toplevel);
 
   toplevel->something.type = OWL_TOPLEVEL;
   toplevel->something.toplevel = toplevel;
 
-  toplevel->opacity = 1.0;
+  toplevel->active_opacity = server.config->inactive_opacity;
+  toplevel->inactive_opacity = server.config->active_opacity;
 
   /* listen to the various events it can emit */
   toplevel->map.notify = toplevel_handle_map;
@@ -401,23 +401,30 @@ toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
 }
 
 void
-toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
-
+toplevel_recheck_opacity_rules(struct owl_toplevel *toplevel) {
   /* check if it satisfies some window rule */
   struct window_rule_opacity *w;
   bool set = false;
-  wl_list_for_each_reverse(w, &server.config->window_rules.opacity, link) {
+  wl_list_for_each(w, &server.config->window_rules.opacity, link) {
     if(toplevel_matches_window_rule(toplevel, &w->condition)) {
-      toplevel->opacity = w->value;
+      toplevel->inactive_opacity = w->inactive_value;
+      toplevel->active_opacity = w->active_value;
       set = true;
       break;
     }
   }
 
   if(!set) {
-    toplevel->opacity = 1.0;
+    toplevel->inactive_opacity = server.config->inactive_opacity;
+    toplevel->active_opacity = server.config->active_opacity;
   }
+}
+
+void
+toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
+
+  toplevel_recheck_opacity_rules(toplevel);
 
   if(toplevel->mapped) {
     wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
@@ -433,20 +440,7 @@ void
 toplevel_handle_set_title(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
-  /* check if it satisfies some window rule */
-  struct window_rule_opacity *w;
-  bool set = false;
-  wl_list_for_each(w, &server.config->window_rules.opacity, link) {
-    if(toplevel_matches_window_rule(toplevel, &w->condition)) {
-      toplevel->opacity = w->value;
-      set = true;
-      break;
-    }
-  }
-
-  if(!set) {
-    toplevel->opacity = 1.0;
-  }
+  toplevel_recheck_opacity_rules(toplevel);
 
   if(toplevel->mapped) {
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,

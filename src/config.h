@@ -33,7 +33,8 @@ struct window_rule_size {
 struct window_rule_opacity {
   struct window_rule_regex condition;
   struct wl_list link;
-  double value;
+  double inactive_value;
+  double active_value;
 };
 
 struct output_config {
@@ -68,6 +69,8 @@ struct owl_config {
   uint32_t min_toplevel_size;
   float inactive_border_color[4];
   float active_border_color[4];
+  double inactive_opacity;
+  double active_opacity;
   uint32_t border_width;
   uint32_t outer_gaps;
   uint32_t inner_gaps;

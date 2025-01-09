@@ -31,7 +31,8 @@ struct owl_toplevel {
   uint32_t configure_serial;
   bool dirty;
 
-  double opacity;
+  double inactive_opacity;
+  double active_opacity;
 
   struct wlr_box current;
   /* state to be applied to this toplevel; values of 0 mean that the client should

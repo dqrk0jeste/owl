@@ -95,7 +95,9 @@ config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_reg
     }
     struct window_rule_opacity *window_rule = calloc(1, sizeof(*window_rule));
     window_rule->condition = condition;
-    window_rule->value = atof(args[0]);
+
+    window_rule->active_value = atof(args[0]);
+    window_rule->inactive_value = arg_count > 1 ? atof(args[1]) : window_rule->active_value;
 
     wl_list_insert(&c->window_rules.opacity, &window_rule->link);
   }
@@ -489,6 +491,20 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       return false;
     }
     c->client_side_decorations = atoi(args[0]);
+  } else if(strcmp(keyword, "inactive_opacity") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->inactive_opacity = atof(args[0]);
+  } else if(strcmp(keyword, "active_opacity") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->active_opacity = atof(args[0]);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);
@@ -645,6 +661,18 @@ config_set_default_needed_params(struct owl_config *c) {
      && c->animation_curve[2] == 0 && c->animation_curve[3] == 0) {
     bake_bezier_curve_points(c);
     wlr_log(WLR_INFO, "animation_curve not specified. baking default linear");
+  }
+  if(c->inactive_opacity == 0) {
+    /* here we evenly space toplevels if there is no master_ratio specified */
+    c->inactive_opacity = 1.0;
+    wlr_log(WLR_INFO,
+            "inactive_opacity not specified. using default %lf", c->inactive_opacity);
+  }
+  if(c->active_opacity == 0) {
+    /* here we evenly space toplevels if there is no master_ratio specified */
+    c->active_opacity = 1.0;
+    wlr_log(WLR_INFO,
+            "active_opacity not specified. using default %lf", c->active_opacity);
   }
 }
 
