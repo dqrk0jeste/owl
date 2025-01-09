@@ -15,7 +15,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <wayland-util.h>
-#include <wctype.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/util/log.h>
@@ -30,9 +29,12 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   /* allocate an owl_toplevel for this surface */
   struct owl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
   toplevel->xdg_toplevel = xdg_toplevel;
+  wlr_log(WLR_ERROR, "on created:%p", xdg_toplevel);
 
   toplevel->something.type = OWL_TOPLEVEL;
   toplevel->something.toplevel = toplevel;
+
+  toplevel->opacity = 1.0;
 
   /* listen to the various events it can emit */
   toplevel->map.notify = toplevel_handle_map;
@@ -400,7 +402,22 @@ toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
 
 void
 toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
-  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
+  struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
+
+  /* check if it satisfies some window rule */
+  struct window_rule_opacity *w;
+  bool set = false;
+  wl_list_for_each_reverse(w, &server.config->window_rules.opacity, link) {
+    if(toplevel_matches_window_rule(toplevel, &w->condition)) {
+      toplevel->opacity = w->value;
+      set = true;
+      break;
+    }
+  }
+
+  if(!set) {
+    toplevel->opacity = 1.0;
+  }
 
   if(toplevel->mapped) {
     wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
@@ -416,6 +433,21 @@ void
 toplevel_handle_set_title(struct wl_listener *listener, void *data) {
   struct owl_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
+  /* check if it satisfies some window rule */
+  struct window_rule_opacity *w;
+  bool set = false;
+  wl_list_for_each(w, &server.config->window_rules.opacity, link) {
+    if(toplevel_matches_window_rule(toplevel, &w->condition)) {
+      toplevel->opacity = w->value;
+      set = true;
+      break;
+    }
+  }
+
+  if(!set) {
+    toplevel->opacity = 1.0;
+  }
+
   if(toplevel->mapped) {
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
                                              toplevel->xdg_toplevel->title);
@@ -429,7 +461,7 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
 bool
 toplevel_size_changed(struct owl_toplevel *toplevel) {
   return toplevel_get_geometry(toplevel).width != toplevel->pending.width
-         || toplevel_get_geometry(toplevel).height != toplevel->pending.height;
+    || toplevel_get_geometry(toplevel).height != toplevel->pending.height;
 }
 
 bool
@@ -460,11 +492,7 @@ toplevel_matches_window_rule(struct owl_toplevel *toplevel,
     matches_title = true;
   }
 
-  if(matches_app_id && matches_title) {
-    return true;
-  }
-
-  return false;
+  return matches_app_id && matches_title;
 }
 
 void
