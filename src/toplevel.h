@@ -125,7 +125,7 @@ toplevel_center_floating(struct owl_toplevel *toplevel);
 
 void
 toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y,
-    uint32_t width, uint32_t height);
+                           uint32_t width, uint32_t height);
 
 void
 toplevel_commit(struct owl_toplevel *toplevel);
@@ -154,19 +154,6 @@ toplevel_find_closest_floating_on_workspace(struct owl_toplevel *toplevel,
 
 struct owl_output *
 toplevel_get_primary_output(struct owl_toplevel *toplevel);
-
-void
-toplevel_apply_clip(struct owl_toplevel *toplevel);
-
-void
-toplevel_clip_to_size(struct owl_toplevel *toplevel,
-                      uint32_t width, uint32_t height);
-
-void
-toplevel_clip_to_fit(struct owl_toplevel *toplevel);
-
-void
-toplevel_unclip_size(struct owl_toplevel *toplevel);
 
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor,

@@ -61,6 +61,44 @@ toplevel_draw_borders(struct owl_toplevel *toplevel) {
 }
 
 void
+toplevel_apply_clip(struct owl_toplevel *toplevel) {
+  uint32_t actual_width, actual_height;
+  toplevel_get_actual_size(toplevel, &actual_width, &actual_height);
+
+  if(toplevel->animation.running || toplevel->fullscreen || !toplevel->floating) {
+    toplevel_clip_to_size(toplevel, actual_width, actual_height);
+  } else {
+    toplevel_unclip_size(toplevel);
+  }
+}
+
+void
+toplevel_clip_to_size(struct owl_toplevel *toplevel,
+                      uint32_t width, uint32_t height) {
+  struct wlr_box clip_box = (struct wlr_box){
+    .x = toplevel_get_geometry(toplevel).x,
+    .y = toplevel_get_geometry(toplevel).y,
+    .width = width,
+    .height = height,
+  };
+
+  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+
+  struct wlr_scene_node *n;
+  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+    struct owl_something *view = n->data;
+    if(view != NULL && view->type == OWL_POPUP) {
+      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+    }
+  }
+}
+
+void
+toplevel_unclip_size(struct owl_toplevel *toplevel) {
+  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
+}
+
+void
 toplevel_draw_placeholder(struct owl_toplevel *toplevel) {
   uint32_t width, height;
   toplevel_get_actual_size(toplevel, &width, &height);
@@ -194,14 +232,16 @@ scene_buffer_apply_opacity(struct wlr_scene_buffer *buffer,
 
 void
 toplevel_handle_opacity(struct owl_toplevel *toplevel) {
-  wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, &toplevel->opacity);
+  double opacity = toplevel->fullscreen ? 1.0 : toplevel->opacity;
+
+  wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, &opacity);
   /* apply opacity to the placeholder rect so the surface is actually transperent */
   if(toplevel->placeholder != NULL) {
     float applied_opacity[4];
     applied_opacity[0] = server.config->placeholder_color[0];
     applied_opacity[1] = server.config->placeholder_color[1];
     applied_opacity[2] = server.config->placeholder_color[2];
-    applied_opacity[3] = server.config->placeholder_color[3] * toplevel->opacity;
+    applied_opacity[3] = server.config->placeholder_color[3] * opacity;
     wlr_scene_rect_set_color(toplevel->placeholder, applied_opacity);
   }
 }

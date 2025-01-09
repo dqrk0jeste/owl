@@ -942,66 +942,6 @@ toplevel_get_actual_size(struct owl_toplevel *toplevel, uint32_t *width, uint32_
     : toplevel->current.height;
 }
 
-void
-toplevel_apply_clip(struct owl_toplevel *toplevel) {
-  uint32_t actual_width, actual_height;
-  toplevel_get_actual_size(toplevel, &actual_width, &actual_height);
-
-  if(toplevel->animation.running || toplevel->fullscreen || !toplevel->floating) {
-    toplevel_clip_to_size(toplevel, actual_width, actual_height);
-  } else {
-    toplevel_unclip_size(toplevel);
-  }
-}
-
-void
-toplevel_clip_to_size(struct owl_toplevel *toplevel,
-                      uint32_t width, uint32_t height) {
-  struct wlr_box clip_box = (struct wlr_box){
-    .x = toplevel_get_geometry(toplevel).x,
-    .y = toplevel_get_geometry(toplevel).y,
-    .width = width,
-    .height = height,
-  };
-
-  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
-
-  struct wlr_scene_node *n;
-  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
-    struct owl_something *view = n->data;
-    if(view != NULL && view->type == OWL_POPUP) {
-      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
-    }
-  }
-}
-
-void
-toplevel_clip_to_fit(struct owl_toplevel *toplevel) {
-  /* we only clip tiled toplevels if they are too big to fit the layout */
-  assert(!toplevel->floating);
-
-  struct wlr_box clip_box = (struct wlr_box){
-    .x = toplevel_get_geometry(toplevel).x,
-    .y = toplevel_get_geometry(toplevel).y,
-    .width = toplevel->current.width,
-    .height = toplevel->current.height,
-  };
-
-  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
-  struct wlr_scene_node *n;
-  wl_list_for_each(n, &toplevel->scene_tree->children, link) {
-    struct owl_something *thing = n->data;
-    if(thing != NULL && thing->type == OWL_POPUP) {
-      wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
-    }
-  }
-}
-
-void
-toplevel_unclip_size(struct owl_toplevel *toplevel) {
-  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
-}
-
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor,
                             struct owl_toplevel *toplevel) {
