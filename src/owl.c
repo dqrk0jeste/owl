@@ -314,6 +314,12 @@ main(int argc, char *argv[]) {
 
   server.viewporter = wlr_viewporter_create(server.wl_display);
 
+  server.kde_server_decorations_manager = wlr_server_decoration_manager_create(server.wl_display);
+  wlr_server_decoration_manager_set_default_mode(server.kde_server_decorations_manager,
+                                                 server.config->client_side_decorations
+                                                 ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
+                                                 : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+
   server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
   server.dmabuf_manager = wlr_export_dmabuf_manager_v1_create(server.wl_display);
   server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);

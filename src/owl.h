@@ -4,6 +4,7 @@
 
 #include <wayland-server-protocol.h>
 #include <wlr/util/box.h>
+#include <wlr/types/wlr_server_decoration.h>
 
 #define max(a, b) (a) > (b) ? (a) : (b)
 #define min(a, b) (a) < (b) ? (a) : (b)
@@ -103,6 +104,8 @@ struct owl_server {
   struct wlr_export_dmabuf_manager_v1 *dmabuf_manager;
   struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
   struct wlr_virtual_pointer_manager_v1 *virtual_pointer_manager;
+  struct wlr_server_decoration_manager *kde_server_decorations_manager;
+
   struct owl_config *config;
 
   bool running;
