@@ -62,6 +62,9 @@ struct owl_config {
     struct wl_list size;
     struct wl_list opacity;
   } window_rules;
+  char *keymap_layouts;
+  char *keymap_variants;
+  char *keymap_options;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
   char *cursor_theme;

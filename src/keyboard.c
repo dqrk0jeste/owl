@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <wlr/types/wlr_seat.h>
 #include <libinput.h>
+#include <xkbcommon/xkbcommon.h>
 
 extern struct owl_server server;
 
@@ -45,10 +46,7 @@ keyboard_handle_key(struct wl_listener *listener, void *data) {
   if(!handled) {
     /* otherwise, we pass it along to the client */
     wlr_seat_set_keyboard(server.seat, keyboard->wlr_keyboard);
-    wlr_seat_keyboard_notify_key(server.seat,
-                                 event->time_msec,
-                                 event->keycode,
-                                 event->state);
+    wlr_seat_keyboard_notify_key(server.seat, event->time_msec, event->keycode, event->state);
   }
 }
 
@@ -70,10 +68,14 @@ server_handle_new_keyboard(struct wlr_input_device *device) {
   struct owl_keyboard *keyboard = calloc(1, sizeof(*keyboard));
   keyboard->wlr_keyboard = wlr_keyboard;
 
-  /* we need to prepare an XKB keymap and assign it to the keyboard. this
-   * assumes the defaults (e.g. layout = "us"). */
   struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-  struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, NULL,
+  struct xkb_rule_names rule_names = {
+    .layout = server.config->keymap_layouts,
+    .variant = server.config->keymap_variants,
+    .options = server.config->keymap_options,
+  };
+
+  struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &rule_names,
                                                         XKB_KEYMAP_COMPILE_NO_FLAGS);
 
   wlr_keyboard_set_keymap(wlr_keyboard, keymap);

@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
@@ -103,6 +104,54 @@ config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_reg
   }
 
   return true;
+}
+
+char *
+string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
+  /* append this while making sure there is enough space */
+  size_t a_len = strlen(a);
+  size_t b_len = strlen(b);
+  while(*cap < a_len + b_len + 2) {
+    *cap *= 2;
+    a = realloc(a, *cap);
+  }
+
+  /* now there is enough space to fit the new one; we add , if its not the first one */
+  if(comma) {
+    a[a_len] = ',';
+    a_len++;
+  }
+  /* and then copy the thing over */
+  char *p = b;
+  char *q = &a[a_len];
+  while(*p != 0) {
+    *q = *p;
+    p++;
+    q++;
+  }
+  *q = 0;
+
+  return a;
+}
+
+void
+config_add_keymap(struct owl_config *c, char *layout, char *variant) {
+  /* everything here is ugly */
+  static size_t layout_cap, variant_cap;
+  static size_t count;
+  if(c->keymap_layouts == 0) {
+    /* it has not been allocated yet */
+    layout_cap = STRING_INITIAL_LENGTH;
+    c->keymap_layouts = calloc(layout_cap, sizeof(char));
+    variant_cap = STRING_INITIAL_LENGTH;
+    c->keymap_variants = calloc(variant_cap, sizeof(char));
+    count = 0;
+  }
+
+  c->keymap_layouts = string_append_with_comma(c->keymap_layouts, layout, &layout_cap, count);
+  c->keymap_variants = string_append_with_comma(c->keymap_variants, variant, &variant_cap, count);
+
+  count++;
 }
 
 bool
@@ -505,6 +554,21 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       return false;
     }
     c->active_opacity = atof(args[0]);
+  } else if(strcmp(keyword, "keymap") == 0) {
+    if(arg_count < 2) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    /* handle appending to this string */
+    config_add_keymap(c, args[0], args[1]);
+  } else if(strcmp(keyword, "keymap_options") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->keymap_options = strdup(args[0]);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
     config_free_args(args, arg_count);
