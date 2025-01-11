@@ -39,7 +39,7 @@ struct owl_toplevel {
    * choose its size and need to be handled seperately */
   struct wlr_box pending;
 
-  struct wlr_scene_rect *placeholder;
+  struct wlr_scene_rect *placeholders[2];
   struct owl_animation animation;
 
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;

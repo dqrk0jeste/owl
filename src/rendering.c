@@ -103,12 +103,34 @@ toplevel_draw_placeholder(struct owl_toplevel *toplevel) {
   uint32_t width, height;
   toplevel_get_actual_size(toplevel, &width, &height);
 
-  if(toplevel->placeholder == NULL) {
-    toplevel->placeholder = wlr_scene_rect_create(toplevel->scene_tree, width, height,
-                                                  server.config->placeholder_color);
-    wlr_scene_node_lower_to_bottom(&toplevel->placeholder->node);
+  if(toplevel->placeholders[0] == NULL) {
+    toplevel->placeholders[0] = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
+                                                      server.config->placeholder_color);
+    toplevel->placeholders[1] = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
+                                                      server.config->placeholder_color);
+    wlr_scene_node_lower_to_bottom(&toplevel->placeholders[0]->node);
+    wlr_scene_node_lower_to_bottom(&toplevel->placeholders[1]->node);
   }
-  wlr_scene_rect_set_size(toplevel->placeholder, width, height);
+
+  struct wlr_box geometry = toplevel_get_geometry(toplevel);
+
+  if(width > geometry.width) {
+    wlr_scene_node_set_position(&toplevel->placeholders[0]->node,
+                                geometry.width, 0);
+    wlr_scene_rect_set_size(toplevel->placeholders[0],
+                            width - geometry.width, min(geometry.height, height));
+  } else {
+    wlr_scene_rect_set_size(toplevel->placeholders[0], 0, 0);
+  }
+
+  if(height > geometry.height) {
+    wlr_scene_node_set_position(&toplevel->placeholders[1]->node,
+                                0, geometry.height);
+    wlr_scene_rect_set_size(toplevel->placeholders[1],
+                            width, height - geometry.height);
+  } else {
+    wlr_scene_rect_set_size(toplevel->placeholders[1], 0, 0);
+  }
 }
 
 double
@@ -239,15 +261,15 @@ toplevel_handle_opacity(struct owl_toplevel *toplevel) {
       : toplevel->inactive_opacity;
 
   wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scene_buffer_apply_opacity, &opacity);
-  /* apply opacity to the placeholder rect so the surface is actually transperent */
+  /* apply opacity to placeholders rects so the surface is actually transparent */
   float applied_opacity[4];
-  if(toplevel->placeholder != NULL) {
-    applied_opacity[0] = server.config->placeholder_color[0];
-    applied_opacity[1] = server.config->placeholder_color[1];
-    applied_opacity[2] = server.config->placeholder_color[2];
-    applied_opacity[3] = server.config->placeholder_color[3] * opacity;
-    wlr_scene_rect_set_color(toplevel->placeholder, applied_opacity);
-  }
+  applied_opacity[0] = server.config->placeholder_color[0];
+  applied_opacity[1] = server.config->placeholder_color[1];
+  applied_opacity[2] = server.config->placeholder_color[2];
+  applied_opacity[3] = server.config->placeholder_color[3] * opacity;
+
+  wlr_scene_rect_set_color(toplevel->placeholders[0], applied_opacity);
+  wlr_scene_rect_set_color(toplevel->placeholders[1], applied_opacity);
 }
 
 void

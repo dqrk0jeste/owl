@@ -423,20 +423,20 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->inactive_border_color[0] = atoi(args[0]) / 256.0;
-    c->inactive_border_color[1] = atoi(args[1]) / 256.0;
-    c->inactive_border_color[2] = atoi(args[2]) / 256.0;
-    c->inactive_border_color[3] = atoi(args[3]) / 256.0;
+    c->inactive_border_color[0] = atoi(args[0]) / 255.0;
+    c->inactive_border_color[1] = atoi(args[1]) / 255.0;
+    c->inactive_border_color[2] = atoi(args[2]) / 255.0;
+    c->inactive_border_color[3] = atoi(args[3]) / 255.0;
   } else if(strcmp(keyword, "active_border_color") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->active_border_color[0] = atoi(args[0]) / 256.0;
-    c->active_border_color[1] = atoi(args[1]) / 256.0;
-    c->active_border_color[2] = atoi(args[2]) / 256.0;
-    c->active_border_color[3] = atoi(args[3]) / 256.0;
+    c->active_border_color[0] = atoi(args[0]) / 255.0;
+    c->active_border_color[1] = atoi(args[1]) / 255.0;
+    c->active_border_color[2] = atoi(args[2]) / 255.0;
+    c->active_border_color[3] = atoi(args[3]) / 255.0;
   } else if(strcmp(keyword, "output") == 0) {
     if(arg_count < 6) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -529,10 +529,10 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->placeholder_color[0] = atoi(args[0]) / 256.0;
-    c->placeholder_color[1] = atoi(args[1]) / 256.0;
-    c->placeholder_color[2] = atoi(args[2]) / 256.0;
-    c->placeholder_color[3] = atoi(args[3]) / 256.0;
+    c->placeholder_color[0] = atoi(args[0]) / 255.0;
+    c->placeholder_color[1] = atoi(args[1]) / 255.0;
+    c->placeholder_color[2] = atoi(args[2]) / 255.0;
+    c->placeholder_color[3] = atoi(args[3]) / 255.0;
   } else if(strcmp(keyword, "client_side_decorations") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
