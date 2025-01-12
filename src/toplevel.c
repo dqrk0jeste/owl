@@ -100,9 +100,9 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
       /* layout_set_pending_state() does not send any configures if there is
        * a fullscreen toplevel on the workspace, but we need to send something
        * in order to respect the protocol. we dont really care,
-       * as it is not going to be shown anyway*/
-    /* note: using just 0, 0, 0, 0 caused the toplevel to become unresponsive, because wlr_scene
-     * wouldnt send frame done events. we fix this by setting the position to something on the current output */
+       * as it is not going to be shown anyway
+       * note: using just 0, 0, 0, 0 caused the toplevel to become unresponsive, because wlr_scene
+       * wouldnt send frame done events. we fix this by setting the position to something on the current output */
       struct owl_output *output = toplevel->workspace->output;
       toplevel_set_initial_state(toplevel, output->usable_area.x, output->usable_area.y, 0, 0);
     }
