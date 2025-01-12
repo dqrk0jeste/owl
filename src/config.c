@@ -3,11 +3,14 @@
 #include "owl.h"
 
 #include <stddef.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
+
+#define clamp(v, a, b) (max((a), min((v), (b))))
 
 struct vec2
 calculate_animation_curve_at(struct owl_config *c, double t) {
@@ -85,8 +88,8 @@ config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_reg
       window_rule->relative_height = true;
     }
 
-    window_rule->width = atoi(args[0]);
-    window_rule->height = atoi(args[1]);
+    window_rule->width = clamp(atoi(args[0]), 0, INT_MAX);
+    window_rule->height = clamp(atoi(args[1]), 0, INT_MAX);
 
     wl_list_insert(&c->window_rules.size, &window_rule->link);
   } else if(strcmp(predicate, "opacity") == 0) {
@@ -97,8 +100,8 @@ config_add_window_rule(struct owl_config *c, char *app_id_regex, char *title_reg
     struct window_rule_opacity *window_rule = calloc(1, sizeof(*window_rule));
     window_rule->condition = condition;
 
-    window_rule->active_value = atof(args[0]);
-    window_rule->inactive_value = arg_count > 1 ? atof(args[1]) : window_rule->active_value;
+    window_rule->active_value = clamp(atof(args[0]), 0.0, 1.0);
+    window_rule->inactive_value = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : window_rule->active_value;
 
     wl_list_insert(&c->window_rules.opacity, &window_rule->link);
   }
@@ -339,21 +342,21 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->min_toplevel_size = atoi(args[0]);
+    c->min_toplevel_size = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "keyboard_rate") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->keyboard_rate = atoi(args[0]);
+    c->keyboard_rate = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "keyboard_delay") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->keyboard_delay = atoi(args[0]);
+    c->keyboard_delay = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "natural_scroll") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -374,35 +377,35 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->border_width = atoi(args[0]);
+    c->border_width = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "outer_gaps") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->outer_gaps = atoi(args[0]);
+    c->outer_gaps = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "inner_gaps") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->inner_gaps = atoi(args[0]);
+    c->inner_gaps = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "master_ratio") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->master_ratio = atof(args[0]);
+    c->master_ratio = clamp(atof(args[0]), 0, 1);
   } else if(strcmp(keyword, "master_count") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->master_count = atoi(args[0]);
+    c->master_count = clamp(atoi(args[0]), 1, INT_MAX);
   } else if(strcmp(keyword, "cursor_theme") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -416,27 +419,27 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->cursor_size = atoi(args[0]);
+    c->cursor_size = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "inactive_border_color") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->inactive_border_color[0] = atoi(args[0]) / 255.0;
-    c->inactive_border_color[1] = atoi(args[1]) / 255.0;
-    c->inactive_border_color[2] = atoi(args[2]) / 255.0;
-    c->inactive_border_color[3] = atoi(args[3]) / 255.0;
+    c->inactive_border_color[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
+    c->inactive_border_color[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
+    c->inactive_border_color[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
+    c->inactive_border_color[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
   } else if(strcmp(keyword, "active_border_color") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->active_border_color[0] = atoi(args[0]) / 255.0;
-    c->active_border_color[1] = atoi(args[1]) / 255.0;
-    c->active_border_color[2] = atoi(args[2]) / 255.0;
-    c->active_border_color[3] = atoi(args[3]) / 255.0;
+    c->active_border_color[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
+    c->active_border_color[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
+    c->active_border_color[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
+    c->active_border_color[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
   } else if(strcmp(keyword, "output") == 0) {
     if(arg_count < 6) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -511,7 +514,7 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->animation_duration = atoi(args[0]);
+    c->animation_duration = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "animation_curve") == 0) {
     if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -529,10 +532,10 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->placeholder_color[0] = atoi(args[0]) / 255.0;
-    c->placeholder_color[1] = atoi(args[1]) / 255.0;
-    c->placeholder_color[2] = atoi(args[2]) / 255.0;
-    c->placeholder_color[3] = atoi(args[3]) / 255.0;
+    c->placeholder_color[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
+    c->placeholder_color[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
+    c->placeholder_color[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
+    c->placeholder_color[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
   } else if(strcmp(keyword, "client_side_decorations") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -546,14 +549,14 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       config_free_args(args, arg_count);
       return false;
     }
-    c->inactive_opacity = atof(args[0]);
+    c->inactive_opacity = clamp(atof(args[0]), 0.0, 1.0);
   } else if(strcmp(keyword, "active_opacity") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->active_opacity = atof(args[0]);
+    c->active_opacity = clamp(atof(args[0]), 0.0, 1.0);
   } else if(strcmp(keyword, "keymap") == 0) {
     if(arg_count < 2) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
