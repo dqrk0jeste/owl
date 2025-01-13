@@ -10,11 +10,13 @@
 #include "layer_surface.h"
 #include "decoration.h"
 #include "dnd.h"
+#include "gamma_control.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <wayland-server-core.h>
 #include <wayland-util.h>
 #include "wlr/util/log.h"
 #include "wlr/types/wlr_seat.h"
@@ -36,6 +38,7 @@
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -326,6 +329,11 @@ main(int argc, char *argv[]) {
 
   server.virtual_pointer_manager = wlr_virtual_pointer_manager_v1_create(server.wl_display);
   server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.wl_display);
+
+  server.gamma_control_manager = wlr_gamma_control_manager_v1_create(server.wl_display);
+
+  server.set_gamma.notify = gamma_control_set_gamma;
+  wl_signal_add(&server.gamma_control_manager->events.set_gamma, &server.set_gamma);
 
   /* Add a Unix socket to the Wayland display. */
   const char *socket = wl_display_add_socket_auto(server.wl_display);

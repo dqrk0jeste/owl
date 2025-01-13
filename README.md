@@ -47,7 +47,7 @@ make
 ## installation
 
 ### arch
-`owl` is available on the arch user repository under the name `owl-compositor-git`. you can install it with your favourite aur helper
+`owl` is available in the arch user repository under the name `owl-compositor-git`. you can install it with your favourite aur helper
 ```bash
 yay -S owl-compositor-git
 ```
@@ -61,12 +61,12 @@ for now `owl` exist only as `owl-wlr_git` package, just add it into your nixos /
 ```bash
 make install
 ```
-note: you will need sudo privilages to do so
+note: you will need sudo privileges to do so
 
 > if you wish to uninstall `owl` you can do so with `make unistall`.
 
 ## post install
-if you need to intract with sandboxed applications and/or screenshare you will need xdg-desktop-portals. by default `owl` needs
+if you need to interact with sandboxed applications and/or screenshare you will need xdg-desktop-portals. by default `owl` needs
 - xdg-desktop-portal (base)
 - xdg-desktop-portal-wlr (for screensharing)
 - xdg-desktop-portal-gtk (for everything else)

@@ -5,6 +5,7 @@
 #include <wayland-server-protocol.h>
 #include <wlr/util/box.h>
 #include <wlr/types/wlr_server_decoration.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
 
 #define max(a, b) (a) > (b) ? (a) : (b)
 #define min(a, b) (a) < (b) ? (a) : (b)
@@ -105,6 +106,9 @@ struct owl_server {
   struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
   struct wlr_virtual_pointer_manager_v1 *virtual_pointer_manager;
   struct wlr_server_decoration_manager *kde_server_decorations_manager;
+
+  struct wlr_gamma_control_manager_v1 *gamma_control_manager;
+  struct wl_listener set_gamma;
 
   struct owl_config *config;
 
