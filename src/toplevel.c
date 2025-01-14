@@ -606,6 +606,12 @@ toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
   toplevel->configure_serial = wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
                                                          width, height);
   toplevel->dirty = true;
+
+  if(!toplevel->floating) {
+    wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
+    wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP & WLR_EDGE_RIGHT
+                               & WLR_EDGE_BOTTOM & WLR_EDGE_LEFT);
+  }
 }
 
 void

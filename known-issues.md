@@ -1,7 +1,8 @@
-- hotpluging monitors does not work
-- zen browser does not respect the initial size the compositor sends him, idk what to do, check on map and send again?
-- waybar rounded corners leave black background behind instead of being transparent. maybe caused by exclusive area?
-- mpv gets black bars on top and bottom on hyprland, but not on owl, missing protocol?
+- (fixed*) waybar rounded corners leave black background behind instead of being transparent. maybe caused by exclusive area?
+/* you need to use rgba color with alpha value less then 1, 0.999 works
+- (fixed) hotpluging monitors does not work
+- (fixed) zen browser does not respect the initial size the compositor sends him, idk what to do, check on map and send again?
+- (fixed) mpv gets black bars on top and bottom on hyprland, but not on owl, missing protocol?
 - (fixed) when a client requests a cursor it may render two cursors for some reason
 - (fixed) if owl is run after some other compositor monitors work, but if it is the first one to be run one monitor just stays in tty, but is able to be hovered over, placed toplevels on etc. does not happen with default config tho, so the problem is somewhere in the server_handle_new_output() (mode selection probably)
 - (fixed) dunst notification becomes stuck when it should be replaced by another. surely an issue on our part.
