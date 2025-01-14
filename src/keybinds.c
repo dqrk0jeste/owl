@@ -471,10 +471,6 @@ keybind_switch_focused_toplevel_state(void *data) {
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
-    wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
-    wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP & WLR_EDGE_RIGHT
-                               & WLR_EDGE_BOTTOM & WLR_EDGE_LEFT);
-
     layout_set_pending_state(toplevel->workspace);
     return;
   }
@@ -496,15 +492,10 @@ keybind_switch_focused_toplevel_state(void *data) {
   struct wlr_box output_box = toplevel->workspace->output->usable_area;
   uint32_t width, height;
   toplevel_floating_size(toplevel, &width, &height);
-  toplevel_set_pending_state(toplevel,
-                             output_box.x + (output_box.width - width) / 2,
-                             output_box.y + (output_box.height - height) / 2,
-                             width, height);
+  toplevel_set_pending_state(toplevel, UINT32_MAX, UINT32_MAX, width, height);
+
   wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
   wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-
-  wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, false);
-  wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, 0);
 
   layout_set_pending_state(toplevel->workspace);
 }
