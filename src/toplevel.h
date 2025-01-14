@@ -69,13 +69,16 @@ void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
 
 void
+toplevel_handle_commit(struct wl_listener *listener, void *data);
+
+void
+toplevel_handle_initial_commit(struct owl_toplevel *toplevel);
+
+void
 toplevel_handle_map(struct wl_listener *listener, void *data);
 
 void
 toplevel_handle_unmap(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_commit(struct wl_listener *listener, void *data);
 
 void
 toplevel_handle_destroy(struct wl_listener *listener, void *data);
@@ -106,9 +109,6 @@ bool
 toplevel_position_changed(struct owl_toplevel *toplevel);
 
 bool
-toplevel_size_changed(struct owl_toplevel *toplevel);
-
-bool
 toplevel_matches_window_rule(struct owl_toplevel *toplevel,
                              struct window_rule_regex *condition);
 
@@ -122,7 +122,8 @@ void
 cursor_jump_focused_toplevel(void);
 
 void
-toplevel_center_floating(struct owl_toplevel *toplevel);
+toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y,
+                           uint32_t width, uint32_t height);
 
 void
 toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y,
@@ -163,6 +164,3 @@ toplevel_get_closest_corner(struct wlr_cursor *cursor,
 struct owl_toplevel *
 get_pointer_focused_toplevel(void);
 
-void
-toplevel_set_initial_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y,
-                           uint32_t width, uint32_t height);

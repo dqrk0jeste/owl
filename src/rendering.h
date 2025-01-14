@@ -44,10 +44,6 @@ void
 toplevel_apply_clip(struct owl_toplevel *toplevel);
 
 void
-toplevel_clip_to_size(struct owl_toplevel *toplevel,
-                      uint32_t width, uint32_t height);
-
-void
 toplevel_unclip_size(struct owl_toplevel *toplevel);
 
 struct owl_workspace;

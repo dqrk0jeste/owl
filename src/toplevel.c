@@ -126,9 +126,6 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   if(!toplevel->mapped) return;
 
   if(toplevel->resizing) {
-    struct wlr_box geometry = toplevel_get_geometry(toplevel);
-    toplevel->pending.width = geometry.width;
-    toplevel->pending.height = geometry.height;
     toplevel_commit(toplevel);
     return;
   }
@@ -137,9 +134,11 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
   if(!toplevel->dirty || serial < toplevel->configure_serial) return;
 
   if(toplevel->floating && !toplevel->fullscreen) {
-    struct wlr_box geometry = toplevel_get_geometry(toplevel);
-    toplevel->pending.width = geometry.width;
-    toplevel->pending.height = geometry.height;
+    if(toplevel->pending.width == 0) {
+      struct wlr_box geometry = toplevel_get_geometry(toplevel);
+      toplevel->pending.width = geometry.width;
+      toplevel->pending.height = geometry.height;
+    }
 
     if(toplevel->pending.x == UINT32_MAX) {
       struct wlr_box output_box = toplevel->workspace->output->usable_area;
@@ -166,6 +165,15 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
    * so we disable it until the next frame */
   wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
 
+  /* we also create placeholders; they are rendered as part of a toplevel when
+   * it cannot fit its box. e.g. while animating from a larger size to a smaller size */
+  toplevel->placeholders[0] = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
+                                                    server.config->placeholder_color);
+  toplevel->placeholders[1] = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
+                                                    server.config->placeholder_color);
+  wlr_scene_node_lower_to_bottom(&toplevel->placeholders[0]->node);
+  wlr_scene_node_lower_to_bottom(&toplevel->placeholders[1]->node);
+
   /* we are keeping toplevels scene_tree in this free user data field, it is used in 
    * assigning parents to popups */
   toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
@@ -178,18 +186,21 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
   focus_toplevel(toplevel);
 
   if(toplevel->floating) {
-    struct wlr_box geometry = toplevel_get_geometry(toplevel);
-    toplevel->pending.width = geometry.width;
-    toplevel->pending.height = geometry.height;
+    if(toplevel->pending.width == 0) {
+      struct wlr_box geometry = toplevel_get_geometry(toplevel);
+      toplevel->pending.width = geometry.width;
+      toplevel->pending.height = geometry.height;
+    }
 
     struct wlr_box output_box = toplevel->workspace->output->usable_area;
-    toplevel->animation.initial.x = output_box.x + output_box.width / 2;
-    toplevel->animation.initial.y = output_box.y + output_box.height / 2;
-
     if(toplevel->pending.x == UINT32_MAX) {
       toplevel->pending.x = output_box.x + (output_box.width - toplevel->pending.width) / 2;
       toplevel->pending.y = output_box.y + (output_box.height - toplevel->pending.height) / 2;
     }
+
+    toplevel->animation.initial.x = output_box.x + output_box.width / 2;
+    toplevel->animation.initial.y = output_box.y + output_box.height / 2;
+
   } 
 
   toplevel_commit(toplevel);
@@ -425,10 +436,8 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
 
   toplevel_recheck_opacity_rules(toplevel);
 
-  if(toplevel->mapped) {
-    wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
-                                              toplevel->xdg_toplevel->app_id);
-  }
+  wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle,
+                                            toplevel->xdg_toplevel->app_id);
 
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
@@ -441,20 +450,12 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
 
   toplevel_recheck_opacity_rules(toplevel);
 
-  if(toplevel->mapped) {
-    wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
-                                             toplevel->xdg_toplevel->title);
-  }
+  wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
+                                           toplevel->xdg_toplevel->title);
 
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
   }
-}
-
-bool
-toplevel_size_changed(struct owl_toplevel *toplevel) {
-  return toplevel_get_geometry(toplevel).width != toplevel->pending.width
-    || toplevel_get_geometry(toplevel).height != toplevel->pending.height;
 }
 
 bool
@@ -629,7 +630,8 @@ toplevel_set_pending_state(struct owl_toplevel *toplevel, uint32_t x, uint32_t y
     toplevel->animation.initial = toplevel->current;
   }
 
-  if(!toplevel_size_changed(toplevel)) {
+  if(toplevel->current.width == toplevel->pending.width
+     && toplevel->current.height == toplevel->pending.height) {
     toplevel_commit(toplevel);
     return;
   };

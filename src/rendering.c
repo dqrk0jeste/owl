@@ -62,22 +62,13 @@ toplevel_draw_borders(struct owl_toplevel *toplevel) {
 
 void
 toplevel_apply_clip(struct owl_toplevel *toplevel) {
-  uint32_t actual_width, actual_height;
-  toplevel_get_actual_size(toplevel, &actual_width, &actual_height);
+  uint32_t width, height;
+  toplevel_get_actual_size(toplevel, &width, &height);
 
-  if(toplevel->animation.running || toplevel->fullscreen || !toplevel->floating) {
-    toplevel_clip_to_size(toplevel, actual_width, actual_height);
-  } else {
-    toplevel_unclip_size(toplevel);
-  }
-}
-
-void
-toplevel_clip_to_size(struct owl_toplevel *toplevel,
-                      uint32_t width, uint32_t height) {
+  struct wlr_box geometry = toplevel_get_geometry(toplevel);
   struct wlr_box clip_box = (struct wlr_box){
-    .x = toplevel_get_geometry(toplevel).x,
-    .y = toplevel_get_geometry(toplevel).y,
+    .x = geometry.x,
+    .y = geometry.y,
     .width = width,
     .height = height,
   };
@@ -94,26 +85,11 @@ toplevel_clip_to_size(struct owl_toplevel *toplevel,
 }
 
 void
-toplevel_unclip_size(struct owl_toplevel *toplevel) {
-  wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, NULL);
-}
-
-void
 toplevel_draw_placeholder(struct owl_toplevel *toplevel) {
   uint32_t width, height;
   toplevel_get_actual_size(toplevel, &width, &height);
 
-  if(toplevel->placeholders[0] == NULL) {
-    toplevel->placeholders[0] = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
-                                                      server.config->placeholder_color);
-    toplevel->placeholders[1] = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
-                                                      server.config->placeholder_color);
-    wlr_scene_node_lower_to_bottom(&toplevel->placeholders[0]->node);
-    wlr_scene_node_lower_to_bottom(&toplevel->placeholders[1]->node);
-  }
-
   struct wlr_box geometry = toplevel_get_geometry(toplevel);
-
   if(width > geometry.width) {
     wlr_scene_node_set_position(&toplevel->placeholders[0]->node,
                                 geometry.width, 0);
