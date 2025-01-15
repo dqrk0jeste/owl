@@ -5,6 +5,8 @@
 struct owl_keyboard {
 	struct wl_list link;
 	struct wlr_keyboard *wlr_keyboard;
+  /* used for getting raw keysyms for keybinds */
+  struct xkb_state *empty;
 
 	struct wl_listener modifiers;
 	struct wl_listener key;

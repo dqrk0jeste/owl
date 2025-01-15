@@ -30,11 +30,9 @@ server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
    *   alt+shift 3 <do_something> */
   /* TODO: cache this */
   /*FIXME*/
-  struct xkb_state *empty = xkb_state_new(keyboard->wlr_keyboard->keymap);
 
   const xkb_keysym_t *syms;
-  int count = xkb_state_key_get_syms(empty, keycode, &syms);
-  xkb_state_unref(empty);
+  int count = xkb_state_key_get_syms(keyboard->empty, keycode, &syms);
 
   bool handled = handle_change_vt_key(syms, count);
   if(handled) return true;

@@ -85,6 +85,8 @@ server_handle_new_keyboard(struct wlr_input_device *device) {
   xkb_keymap_unref(keymap);
   xkb_context_unref(context);
 
+  keyboard->empty = xkb_state_new(keymap);
+
   uint32_t rate = server.config->keyboard_rate;
   uint32_t delay = server.config->keyboard_delay;
   wlr_keyboard_set_repeat_info(wlr_keyboard, rate, delay);
