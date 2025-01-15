@@ -683,8 +683,16 @@ config_handle_line(char *line, size_t line_number, char **keyword,
         ars[ars_len] = realloc(ars[ars_len], cap);
         q = &ars[ars_len][len];
       }
-      *q = *p;
-      p++;
+      if(word && *p == '\\' && *(p + 1) == '\"') {
+        *q = '\"';
+        p += 2;
+      } else if(word && *p == '\\' && *(p + 1) == '\\') {
+        *q = '\\';
+        p += 2;
+      } else {
+        *q = *p;
+        p++;
+      }
       q++;
       len++;
     }
