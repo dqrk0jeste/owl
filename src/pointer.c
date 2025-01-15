@@ -1,6 +1,7 @@
 #include "pointer.h"
 
 #include "config.h"
+#include "keybinds.h"
 #include "ipc.h"
 #include "owl.h"
 #include "toplevel.h"
@@ -10,8 +11,10 @@
 #include "layer_surface.h"
 
 #include <libinput.h>
+#include <wayland-util.h>
 #include <wlr/backend/libinput.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/util/log.h>
 
 extern struct owl_server server;
 
@@ -120,6 +123,27 @@ server_handle_cursor_motion_absolute(
 void
 server_handle_cursor_button(struct wl_listener *listener, void *data) {
   struct wlr_pointer_button_event *event = data;
+
+  uint32_t modifiers = wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard);
+
+  struct keybind *k;
+  wl_list_for_each(k, &server.config->mouse_keybinds, link) {
+    if(!k->initialized) continue;
+
+    if(k->active && k->stop && event->button == k->key
+       && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      k->active = false;
+      k->stop(k->args);
+      return;
+    }
+
+    if(modifiers == k->modifiers && event->button == k->key
+       && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+      k->active = true;
+      k->action(k->args);
+      return;
+    }
+  }
 
   /* notify the client with pointer focus that a button press has occurred */
   wlr_seat_pointer_notify_button(server.seat, event->time_msec,

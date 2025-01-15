@@ -56,6 +56,7 @@ struct workspace_config {
 struct owl_config {
   struct wl_list outputs;
   struct wl_list keybinds;
+  struct wl_list mouse_keybinds;
   struct wl_list workspaces;
   struct {
     struct wl_list floating;

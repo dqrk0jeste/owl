@@ -29,6 +29,7 @@ server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
    * instead of
    *   alt+shift 3 <do_something> */
   /* TODO: cache this */
+  /*FIXME*/
   struct xkb_state *empty = xkb_state_new(keyboard->wlr_keyboard->keymap);
 
   const xkb_keysym_t *syms;
@@ -43,14 +44,14 @@ server_handle_keybinds(struct owl_keyboard *keyboard, uint32_t keycode,
     wl_list_for_each(k, &server.config->keybinds, link) {
       if(!k->initialized) continue;
 
-      if(k->active && k->stop && syms[i] == k->sym
+      if(k->active && k->stop && syms[i] == k->key
          && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
         k->active = false;
         k->stop(k->args);
         return true;
       }
 
-      if(modifiers == k->modifiers && syms[i] == k->sym
+      if(modifiers == k->modifiers && syms[i] == k->key
          && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         k->active = true;
         k->action(k->args);

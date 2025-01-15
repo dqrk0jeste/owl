@@ -188,36 +188,51 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
   }
 
   uint32_t key_sym = 0;
-  if(strcmp(key, "return") == 0 || strcmp(key, "enter") == 0) {
-    key_sym = XKB_KEY_Return;
-  } else if(strcmp(key, "backspace") == 0) {
-    key_sym = XKB_KEY_BackSpace;
-  } else if(strcmp(key, "delete") == 0) {
-    key_sym = XKB_KEY_Delete;
-  } else if(strcmp(key, "escape") == 0) {
-    key_sym = XKB_KEY_Escape;
-  } else if(strcmp(key, "tab") == 0) {
-    key_sym = XKB_KEY_Tab;
-  } else if(strcmp(key, "up") == 0) {
-    key_sym = XKB_KEY_Up;
-  } else if(strcmp(key, "down") == 0) {
-    key_sym = XKB_KEY_Down;
-  } else if(strcmp(key, "left") == 0) {
-    key_sym = XKB_KEY_Left;
-  } else if(strcmp(key, "right") == 0) {
-    key_sym = XKB_KEY_Right;
+  bool mouse = false;
+  if(strstr(key, "mouse_") == key) {
+    mouse = true;
+    key = key + strlen("mouse_");
+    if(strcmp(key, "left_click") == 0) {
+      key_sym = 272;
+    } else if(strcmp(key, "right_click") == 0) {
+      key_sym = 273;
+    } else if(strcmp(key, "middle_click") == 0) {
+      key_sym = 274;
+    } else {
+      key_sym = atoi(key);
+    }
   } else {
-    key_sym = xkb_keysym_from_name(key, 0);
-    if(key_sym == 0) {
-      wlr_log(WLR_ERROR, "key %s doesn't seem right", key);
-      return false;
+    if(strcmp(key, "return") == 0 || strcmp(key, "enter") == 0) {
+      key_sym = XKB_KEY_Return;
+    } else if(strcmp(key, "backspace") == 0) {
+      key_sym = XKB_KEY_BackSpace;
+    } else if(strcmp(key, "delete") == 0) {
+      key_sym = XKB_KEY_Delete;
+    } else if(strcmp(key, "escape") == 0) {
+      key_sym = XKB_KEY_Escape;
+    } else if(strcmp(key, "tab") == 0) {
+      key_sym = XKB_KEY_Tab;
+    } else if(strcmp(key, "up") == 0) {
+      key_sym = XKB_KEY_Up;
+    } else if(strcmp(key, "down") == 0) {
+      key_sym = XKB_KEY_Down;
+    } else if(strcmp(key, "left") == 0) {
+      key_sym = XKB_KEY_Left;
+    } else if(strcmp(key, "right") == 0) {
+      key_sym = XKB_KEY_Right;
+    } else {
+      key_sym = xkb_keysym_from_name(key, 0);
+      if(key_sym == 0) {
+        wlr_log(WLR_ERROR, "key %s doesn't seem right", key);
+        return false;
+      }
     }
   }
 
   struct keybind *k = calloc(1, sizeof(*k));
   *k = (struct keybind){
     .modifiers = modifiers_flag,
-    .sym = key_sym,
+    .key = key_sym,
   };
 
   /* this is true for most, needs to be set to false if otherwise */
@@ -323,7 +338,11 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     return false;
   }
 
-  wl_list_insert(&c->keybinds, &k->link);
+  if(mouse) {
+    wl_list_insert(&c->mouse_keybinds, &k->link);
+  } else {
+    wl_list_insert(&c->keybinds, &k->link);
+  }
   return true;
 }
 
@@ -771,6 +790,7 @@ server_load_config() {
   }
 
   wl_list_init(&c->keybinds);
+  wl_list_init(&c->mouse_keybinds);
   wl_list_init(&c->outputs);
   wl_list_init(&c->workspaces);
   wl_list_init(&c->window_rules.floating);

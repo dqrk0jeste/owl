@@ -1,5 +1,6 @@
 #pragma once
 
+#include "keyboard.h"
 #include "pointer.h"
 
 #include <wayland-server-protocol.h>
@@ -64,6 +65,7 @@ struct owl_server {
   struct wl_listener request_destroy_drag;
 
 	struct wl_list keyboards;
+  struct owl_keyboard *last_used_keyboard;
 
 	enum owl_cursor_mode cursor_mode;
   /* this keeps state when the compositor is in the state of moving or
