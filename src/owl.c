@@ -5,6 +5,7 @@
 #include "keyboard.h"
 #include "config.h"
 #include "output.h"
+#include "rendering.h"
 #include "toplevel.h"
 #include "popup.h"
 #include "layer_surface.h"
@@ -39,6 +40,8 @@
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
+#include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
 
 /* we initialize an instance of our global state */
 struct owl_server server;
@@ -202,10 +205,6 @@ main(int argc, char *argv[]) {
   server.new_output.notify = server_handle_new_output;
   wl_signal_add(&server.backend->events.new_output, &server.new_output);
 
-  /* create a manager used for comunicating with the clients */
-  server.xdg_output_manager = wlr_xdg_output_manager_v1_create(server.wl_display,
-                                                               server.output_layout);
-
   /* Create a scene graph. This is a wlroots abstraction that handles all
    * rendering and damage tracking. All the compositor author needs to do
    * is add things that should be rendered to the scene graph at the proper
@@ -306,7 +305,7 @@ main(int argc, char *argv[]) {
 	server.request_destroy_drag.notify = server_handle_destroy_drag;
 
   /* handles clipboard clients */
-  server.data_control_manager = wlr_data_control_manager_v1_create(server.wl_display);
+  wlr_data_control_manager_v1_create(server.wl_display);
 
   /* configures decorations */
   server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.wl_display);
@@ -315,20 +314,23 @@ main(int argc, char *argv[]) {
   wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
                 &server.request_xdg_decoration);
 
-  server.viewporter = wlr_viewporter_create(server.wl_display);
+  wlr_xdg_output_manager_v1_create(server.wl_display, server.output_layout);
+  wlr_viewporter_create(server.wl_display);
+	wlr_presentation_create(server.wl_display, server.backend);
 
-  server.kde_server_decorations_manager = wlr_server_decoration_manager_create(server.wl_display);
-  wlr_server_decoration_manager_set_default_mode(server.kde_server_decorations_manager,
+  wlr_server_decoration_manager_set_default_mode(wlr_server_decoration_manager_create(server.wl_display),
                                                  server.config->client_side_decorations
                                                  ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
                                                  : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
-  server.screencopy_manager = wlr_screencopy_manager_v1_create(server.wl_display);
-  server.dmabuf_manager = wlr_export_dmabuf_manager_v1_create(server.wl_display);
+  wlr_screencopy_manager_v1_create(server.wl_display);
+  wlr_export_dmabuf_manager_v1_create(server.wl_display);
   server.foreign_toplevel_manager = wlr_foreign_toplevel_manager_v1_create(server.wl_display);
 
-  server.virtual_pointer_manager = wlr_virtual_pointer_manager_v1_create(server.wl_display);
-  server.virtual_keyboard_manager = wlr_virtual_keyboard_manager_v1_create(server.wl_display);
+  wlr_fractional_scale_manager_v1_create(server.wl_display, 1);
+
+  wlr_virtual_pointer_manager_v1_create(server.wl_display);
+  wlr_virtual_keyboard_manager_v1_create(server.wl_display);
 
   server.gamma_control_manager = wlr_gamma_control_manager_v1_create(server.wl_display);
 

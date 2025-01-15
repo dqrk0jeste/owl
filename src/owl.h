@@ -99,15 +99,7 @@ struct owl_server {
   struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
   struct wl_listener request_xdg_decoration;
 
-  struct wlr_xdg_output_manager_v1 *xdg_output_manager;
-  struct wlr_data_control_manager_v1 *data_control_manager;
-  struct wlr_viewporter *viewporter;
   struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
-  struct wlr_screencopy_manager_v1 *screencopy_manager;
-  struct wlr_export_dmabuf_manager_v1 *dmabuf_manager;
-  struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
-  struct wlr_virtual_pointer_manager_v1 *virtual_pointer_manager;
-  struct wlr_server_decoration_manager *kde_server_decorations_manager;
 
   struct wlr_gamma_control_manager_v1 *gamma_control_manager;
   struct wl_listener set_gamma;
