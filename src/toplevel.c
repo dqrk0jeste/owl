@@ -17,6 +17,7 @@
 #include <wayland-util.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/util/log.h>
 #include <wlr/util/edges.h>
 
@@ -36,6 +37,10 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
   toplevel->active_opacity = server.config->active_opacity;
   toplevel->inactive_opacity = server.config->inactive_opacity;
 
+  toplevel->workspace = server.active_workspace;
+
+  wlr_fractional_scale_v1_notify_scale(toplevel->xdg_toplevel->base->surface,
+                                       toplevel->workspace->output->wlr_output->scale);
   /* add foreign toplevel handler */
   toplevel->foreign_toplevel_handle =
     wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
@@ -76,7 +81,6 @@ void
 toplevel_handle_initial_commit(struct owl_toplevel *toplevel) {
   /* when an xdg_surface performs an initial commit, the compositor must
      * reply with a configure so the client can map the surface. */
-  toplevel->workspace = server.active_workspace;
   toplevel->floating = toplevel_should_float(toplevel);
 
   if(toplevel->floating) {

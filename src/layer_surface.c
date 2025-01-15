@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <wayland-util.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
 
 extern struct owl_server server;
 
@@ -31,6 +32,9 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
   }
 
   struct owl_output *output = layer_surface->wlr_layer_surface->output->data;
+  wlr_fractional_scale_v1_notify_scale(layer_surface->wlr_layer_surface->surface,
+                                       output->wlr_output->scale);
+
   enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
 
   struct wlr_scene_tree *scene = layer_get_scene(layer);

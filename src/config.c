@@ -473,7 +473,10 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       .width = atoi(args[3]),
       .height = atoi(args[4]),
       .refresh_rate = atoi(args[5]) * 1000,
+      /* scale is optional, defaults to 1 */
+      .scale = arg_count > 6 ? atof(args[6]) : 1,
     };
+
     wl_list_insert(&c->outputs, &m->link);
   } else if(strcmp(keyword, "workspace") == 0) {
     if(arg_count < 2) {

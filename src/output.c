@@ -188,6 +188,7 @@ output_initialize(struct wlr_output *wlr_output, struct output_config *config) {
   struct wlr_output_state state;
   wlr_output_state_init(&state);
   wlr_output_state_set_enabled(&state, true);
+  wlr_output_state_set_scale(&state, config->scale);
 
   if(config != NULL) {
     /* we try to find the closest supported mode for this output, that means:

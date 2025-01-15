@@ -93,5 +93,5 @@ for detailed documentation see `examples/example.conf`. you can also find the de
 - [x] monitor hotplugging
 - [x] complete foreign toplevel implementation (toplevel enter/leave output missing)
 - [x] add portals
-- [ ] mouse clicks for keybinds (for moving and resizing toplevels)
+- [x] mouse clicks for keybinds (for moving and resizing toplevels)
 - [ ] more ipc capabilities

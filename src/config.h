@@ -45,6 +45,7 @@ struct output_config {
   uint32_t refresh_rate;
   uint32_t x;
   uint32_t y;
+  double scale;
 };
 
 struct workspace_config {
