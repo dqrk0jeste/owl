@@ -626,91 +626,104 @@ try_open_config_file() {
 bool
 config_handle_line(char *line, size_t line_number, char **keyword,
                    char ***args, size_t *args_count) {
-  char *p = line;
+	char *p = line;
 
-  /* skip whitespace */
-  while(*p == ' ') p++;
+	/* Skip leading whitespace and tabs */
+	while (*p == ' ' || *p == '\t') p++;
 
-  /* if its an empty line or it starts with '#' (comment) skip */
-  if(*p == '\n' || *p == '#') {
-    return false; 
-  }
+	/* If it's an empty line or a comment, skip */
+	if (*p == '\n' || *p == '#') {
+		return false;
+	}
 
-  size_t len = 0, cap = STRING_INITIAL_LENGTH;
-  char *kw = calloc(cap, sizeof(char));
-  size_t ars_len = 0, ars_cap = 8;
-  char **ars = calloc(ars_cap, sizeof(*args));
+	/* Allocate memory for the keyword and arguments */
+	size_t len = 0, cap = STRING_INITIAL_LENGTH;
+	char *kw = calloc(cap, sizeof(char));
+	size_t ars_len = 0, ars_cap = 8;
+	char **ars = calloc(ars_cap, sizeof(*args));
 
-  char *q = kw;
-  while(*p != ' ') {
-    if(len >= cap) {
-      cap *= 2;
-      keyword = realloc(keyword, cap);
-      q = &kw[len];
-    }
-    *q = *p;
-    p++;
-    q++;
-    len++;
-  }
-  *q = 0;
+	/* Extract the keyword */
+	char *q = kw;
+	while (*p != ' ' && *p != '\t' && *p != '\n') {
+		if (len >= cap) {
+			cap *= 2;
+			kw = realloc(kw, cap);
+			q = &kw[len];
+		}
+		*q = *p;
+		p++;
+		q++;
+		len++;
+	}
+	*q = 0; // Null-terminate the keyword
 
-  /* skip whitespace */
-  while(*p == ' ') p++;
+	/* Skip whitespace and tabs */
+	while (*p == ' ' || *p == '\t') p++;
 
-  if(*p == '\n') {
-    wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, kw);
-    return false;
-  }
+	/* If no arguments are provided, log an error and return */
+	if (*p == '\n') {
+		wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, kw);
+		free(kw);
+		free(ars);
+		return false;
+	}
 
-  while(*p != '\n') {
-    if(ars_len >= ars_cap) {
-      ars_cap *= 2;
-      ars = realloc(ars, ars_cap * sizeof(*ars));
-    }
+	/* Extract the arguments */
+	while (*p != '\n') {
+		/* Skip whitespace and tabs */
+		while (*p == ' ' || *p == '\t') p++;
+		if (*p == '\n') break; // End of line check
 
-    len = 0;
-    cap = STRING_INITIAL_LENGTH;
-    ars[ars_len] = calloc(cap, sizeof(char));
+		/* Resize the arguments array if necessary */
+		if (ars_len >= ars_cap) {
+			ars_cap *= 2;
+			ars = realloc(ars, ars_cap * sizeof(*ars));
+		}
 
-    q = ars[ars_len];
-    bool word = false;
-    if(*p == '\"') {
-      word = true;
-      p++;
-    };
+		len = 0;
+		cap = STRING_INITIAL_LENGTH;
+		ars[ars_len] = calloc(cap, sizeof(char));
 
-    while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\n')) {
-      if(len >= cap) {
-        cap *= 2;
-        ars[ars_len] = realloc(ars[ars_len], cap);
-        q = &ars[ars_len][len];
-      }
-      if(word && *p == '\\' && *(p + 1) == '\"') {
-        *q = '\"';
-        p += 2;
-      } else if(word && *p == '\\' && *(p + 1) == '\\') {
-        *q = '\\';
-        p += 2;
-      } else {
-        *q = *p;
-        p++;
-      }
-      q++;
-      len++;
-    }
-    *q = 0;
-    ars_len++;
+		q = ars[ars_len];
+		bool word = false;
 
-    if(word) p++;
-    /* skip whitespace */
-    while(*p == ' ') p++;
-  }
+		/* Handle quoted arguments */
+		if (*p == '\"') {
+			word = true;
+			p++;
+		}
 
-  *args_count = ars_len;
-  *keyword = kw;
-  *args = ars;
-  return true;
+		/* Extract a single argument */
+		while ((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\t' && *p != '\n')) {
+			if (len >= cap) {
+				cap *= 2;
+				ars[ars_len] = realloc(ars[ars_len], cap);
+				q = &ars[ars_len][len];
+			}
+			if (word && *p == '\\' && *(p + 1) == '\"') {
+				*q = '\"';
+				p += 2;
+			} else if (word && *p == '\\' && *(p + 1) == '\\') {
+				*q = '\\';
+				p += 2;
+			} else {
+				*q = *p;
+				p++;
+			}
+			q++;
+			len++;
+		}
+		*q = 0; // Null-terminate the argument
+		ars_len++;
+
+		if (word) p++;
+	}
+
+	/* Assign outputs */
+	*args_count = ars_len;
+	*keyword = kw;
+	*args = ars;
+	return true;
 }
 
 void
@@ -722,7 +735,7 @@ config_set_default_needed_params(struct owl_config *c) {
     c->keyboard_rate = 150;
     wlr_log(WLR_INFO,
             "keyboard_rate not specified. using default %ud", c->keyboard_rate);
-  } 
+  }
   if(c->keyboard_delay == 0) {
     c->keyboard_delay = 50;
     wlr_log(WLR_INFO,
@@ -828,4 +841,3 @@ server_load_config() {
   server.config = c;
   return true;
 }
-
