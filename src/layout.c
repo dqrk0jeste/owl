@@ -11,7 +11,10 @@ extern struct owl_server server;
 void
 calculate_masters_dimensions(struct owl_output *output, uint32_t master_count,
                              uint32_t slave_count, uint32_t *width, uint32_t *height) {
-  uint32_t outer_gaps = server.config->outer_gaps;
+	uint32_t outer_gap_top    = server.config->outer_gaps[0];
+	uint32_t outer_gap_bottom = server.config->outer_gaps[1];
+	uint32_t outer_gap_left   = server.config->outer_gaps[2];
+	uint32_t outer_gap_right  = server.config->outer_gaps[3];
   uint32_t inner_gaps = server.config->inner_gaps;
   double master_ratio = server.config->master_ratio;
   double border_width = server.config->border_width;
@@ -23,23 +26,26 @@ calculate_masters_dimensions(struct owl_output *output, uint32_t master_count,
     : output_box.width;
 
   uint32_t total_decorations = slave_count > 0
-    ? outer_gaps // left outer gaps
+    ? outer_gap_left // left outer gaps
       + master_count * 2 * border_width // all borders
       + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
-      + inner_gaps // right inner gaps 
-    : outer_gaps // left outer gaps
+      + inner_gaps // right inner gaps
+    : outer_gap_left // left outer gaps
       + master_count * 2 * border_width // all borders
       + (master_count - 1) * 2 * inner_gaps // inner gaps between masters
-      + outer_gaps; // right outer gaps
+      + outer_gap_right; // right outer gaps
 
   *width = (total_width - total_decorations) / master_count;
-  *height = output_box.height - 2 * outer_gaps - 2 * border_width;
+  *height = output_box.height - (outer_gap_top + outer_gap_bottom) - 2 * border_width;
 }
 
 void
 calculate_slaves_dimensions(struct owl_output *output, uint32_t slave_count,
                             uint32_t *width, uint32_t *height) {
-  uint32_t outer_gaps = server.config->outer_gaps;
+	uint32_t outer_gap_top    = server.config->outer_gaps[0];
+	uint32_t outer_gap_bottom = server.config->outer_gaps[1];
+	uint32_t outer_gap_left   = server.config->outer_gaps[2];
+	uint32_t outer_gap_right  = server.config->outer_gaps[3];
   uint32_t inner_gaps = server.config->inner_gaps;
   double master_ratio = server.config->master_ratio;
   double border_width = server.config->border_width;
@@ -47,9 +53,9 @@ calculate_slaves_dimensions(struct owl_output *output, uint32_t slave_count,
   struct wlr_box output_box = output->usable_area;
 
   *width = output_box.width * (1 - master_ratio)
-    - outer_gaps - inner_gaps
+    - outer_gap_right - inner_gaps
     - 2 * border_width;
-  *height = (output_box.height - 2 * outer_gaps
+  *height = (output_box.height - (outer_gap_top + outer_gap_bottom)
     - (slave_count - 1) * 2 * inner_gaps
     - slave_count * 2 * border_width) / slave_count;
 }
@@ -82,7 +88,10 @@ layout_set_pending_state(struct owl_workspace *workspace) {
 
   struct owl_output *output = workspace->output;
 
-  uint32_t outer_gaps = server.config->outer_gaps;
+	uint32_t outer_gap_top    = server.config->outer_gaps[0];
+	uint32_t outer_gap_bottom = server.config->outer_gaps[1];
+	uint32_t outer_gap_left   = server.config->outer_gaps[2];
+	uint32_t outer_gap_right  = server.config->outer_gaps[3];
   uint32_t inner_gaps = server.config->inner_gaps;
   double master_ratio = server.config->master_ratio;
   double border_width = server.config->border_width;
@@ -97,11 +106,11 @@ layout_set_pending_state(struct owl_workspace *workspace) {
   struct owl_toplevel *m;
   size_t i = 0;
   wl_list_for_each(m, &workspace->masters, link) {
-    uint32_t master_x = output->usable_area.x + outer_gaps
+    uint32_t master_x = output->usable_area.x + outer_gap_left
       + (master_width + 2 * border_width) * i
       + 2 * inner_gaps * i
       + border_width;
-    uint32_t master_y = output->usable_area.y + outer_gaps
+    uint32_t master_y = output->usable_area.y + outer_gap_top
       + border_width;
 
     if(m->mapped) {
@@ -123,7 +132,7 @@ layout_set_pending_state(struct owl_workspace *workspace) {
   wl_list_for_each(s, &workspace->slaves, link) {
     slave_x = output->usable_area.x + output->usable_area.width * master_ratio
       + inner_gaps + border_width;
-    slave_y = output->usable_area.y + outer_gaps
+    slave_y = output->usable_area.y + outer_gap_top
       + i * (slave_height + inner_gaps * 2 + 2 * border_width)
       + border_width;
 
@@ -219,4 +228,3 @@ layout_find_closest_floating_toplevel(struct owl_workspace *workspace,
     case OWL_RIGHT: return max_x;
   }
 }
-
