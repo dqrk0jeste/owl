@@ -479,12 +479,15 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     }
     c->border_width = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "outer_gaps") == 0) {
-    if(arg_count < 1) {
+    if(arg_count < 4) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->outer_gaps = clamp(atoi(args[0]), 0, INT_MAX);
+		c->outer_gaps[0] = clamp(atoi(args[0]), 0, INT_MAX);
+		c->outer_gaps[1] = clamp(atoi(args[1]), 0, INT_MAX);
+		c->outer_gaps[2] = clamp(atoi(args[2]), 0, INT_MAX);
+		c->outer_gaps[3] = clamp(atoi(args[3]), 0, INT_MAX);
   } else if(strcmp(keyword, "inner_gaps") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -714,7 +717,7 @@ config_handle_line(char *line, size_t line_number, char **keyword,
 
   /* if its an empty line or it starts with '#' (comment) skip */
   if(*p == '\n' || *p == '#') {
-    return false; 
+    return false;
   }
 
   size_t len = 0, cap = STRING_INITIAL_LENGTH;
@@ -803,7 +806,7 @@ config_set_default_needed_params(struct owl_config *c) {
     c->keyboard_rate = 150;
     wlr_log(WLR_INFO,
             "keyboard_rate not specified. using default %ud", c->keyboard_rate);
-  } 
+  }
   if(c->keyboard_delay == 0) {
     c->keyboard_delay = 50;
     wlr_log(WLR_INFO,
@@ -911,4 +914,3 @@ server_load_config() {
   server.config = c;
   return true;
 }
-

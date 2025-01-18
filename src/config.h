@@ -113,7 +113,7 @@ struct owl_config {
   double inactive_opacity;
   double active_opacity;
   uint32_t border_width;
-  uint32_t outer_gaps;
+  uint32_t outer_gaps[4];
   uint32_t inner_gaps;
   uint32_t master_count;
   double master_ratio;
