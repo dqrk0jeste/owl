@@ -1,5 +1,5 @@
 root = true
 
-[*.{c,h,cmake,txt,conf,md}]
-indent_style = tab
+[*.{c,h,sh,conf}]
+indent_style = space
 indent_size = 4
