@@ -1,0 +1,5 @@
+root = true
+
+[*.{c,h,cmake,txt,conf,md}]
+indent_style = tab
+indent_size = 4
