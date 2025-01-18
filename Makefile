@@ -6,6 +6,9 @@ PKGS="wlroots-0.18" wayland-server xkbcommon libinput
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 CFLAGS+=-Ibuild/protocols
+ifdef DEBUG
+CFLAGS += -fsanitize=address,undefined
+endif
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 
 SRC_FILES := $(wildcard src/*.c)

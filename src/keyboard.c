@@ -57,6 +57,10 @@ void
 keyboard_handle_destroy(struct wl_listener *listener, void *data) {
   struct owl_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
 
+  if(server.last_used_keyboard == keyboard) {
+    server.last_used_keyboard = NULL;
+  }
+
   wl_list_remove(&keyboard->modifiers.link);
   wl_list_remove(&keyboard->key.link);
   wl_list_remove(&keyboard->destroy.link);

@@ -23,18 +23,77 @@ server_handle_new_pointer(struct wlr_input_device *device) {
   /* enable natural scrolling and tap to click*/
   if(wlr_input_device_is_libinput(device)) {
     struct libinput_device *libinput_device = wlr_libinput_get_device_handle(device);
-
-    if(libinput_device_config_scroll_has_natural_scroll(libinput_device)
-      && server.config->natural_scroll) {
-      libinput_device_config_scroll_set_natural_scroll_enabled(libinput_device, true);
-    }
-    if(libinput_device_config_tap_get_finger_count(libinput_device)
-      && server.config->tap_to_click) {
-      libinput_device_config_tap_set_enabled(libinput_device, true);
-    }
+    libinput_device_ref(libinput_device);
+    pointer_device_configure(libinput_device);
+    libinput_device_unref(libinput_device);
   }
 
   wlr_cursor_attach_input_device(server.cursor, device);
+}
+
+void
+pointer_device_configure(struct libinput_device *device) {
+  const char *name = libinput_device_get_name(device);
+
+  enum libinput_config_accel_profile accel;
+  double sensitivity;
+  /* we configure accelation and sensitivity of the pointer by
+   * first looking at specific pointer configurations */
+  bool found = false;
+  struct pointer_config *p;
+  wl_list_for_each(p, &server.config->pointers, link) {
+    if(strcmp(p->name, name) == 0) {
+      accel = p->acceleration;
+      sensitivity = p->sensitivity;
+      found = true;
+      break;
+    }
+  }
+
+  if(!found) {
+    accel = server.config->pointer_acceleration;
+    sensitivity = server.config->pointer_sensitivity;
+  }
+
+  if(libinput_device_config_accel_is_available(device)) {
+    if(libinput_device_config_accel_set_speed(device, sensitivity)
+       != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+      wlr_log(WLR_ERROR, "applying sensitivity to device '%s' failed", name);
+    }
+
+    if(accel) {
+      struct libinput_config_accel *accel_config = libinput_config_accel_create(accel);
+      if(libinput_device_config_accel_apply(device, accel_config)
+         != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        wlr_log(WLR_ERROR, "applying acceleration profile to device '%s' failed", name);
+      }
+      libinput_config_accel_destroy(accel_config);
+    }
+  }
+
+  /* check if trackpad */
+  if(libinput_device_config_tap_get_finger_count(device) > 0) {
+    /* then apply trackpad specific settings */
+    if(libinput_device_config_tap_set_enabled(device, server.config->trackpad_tap_to_click)
+       != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+      wlr_log(WLR_ERROR, "applying tap to click to device '%s' failed", name);
+    }
+
+    if(libinput_device_config_scroll_set_natural_scroll_enabled(device,
+       server.config->trackpad_natural_scroll) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+      wlr_log(WLR_ERROR, "applying natural scroll to device '%s' failed", name);
+    }
+
+    if(libinput_device_config_scroll_set_method(device, server.config->trackpad_scroll_method)
+       != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+      wlr_log(WLR_ERROR, "applying scroll method to device '%s' failed", name);
+    }
+
+    if(libinput_device_config_dwt_set_enabled(device,
+       server.config->trackpad_disable_while_typing) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+      wlr_log(WLR_ERROR, "applying disable while typing to device '%s' failed", name);
+    }
+  }
 }
 
 void
@@ -119,15 +178,16 @@ server_handle_cursor_motion_absolute(
   cursor_handle_motion(event->time_msec);
 }
 
-/* TODO: add mouse button shortcuts */
 void
 server_handle_cursor_button(struct wl_listener *listener, void *data) {
   struct wlr_pointer_button_event *event = data;
 
-  uint32_t modifiers = wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard);
+  uint32_t modifiers = server.last_used_keyboard
+    ? wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard)
+    : 0;
 
   struct keybind *k;
-  wl_list_for_each(k, &server.config->mouse_keybinds, link) {
+  wl_list_for_each(k, &server.config->pointer_keybinds, link) {
     if(!k->initialized) continue;
 
     if(k->active && k->stop && event->button == k->key
@@ -144,7 +204,6 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
       return;
     }
   }
-
   /* notify the client with pointer focus that a button press has occurred */
   wlr_seat_pointer_notify_button(server.seat, event->time_msec,
                                  event->button, event->state);

@@ -2,7 +2,9 @@
 
 #include "helpers.h"
 
+#include <libinput.h>
 #include <regex.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
@@ -54,23 +56,57 @@ struct workspace_config {
   struct wl_list link;
 };
 
+struct pointer_config {
+  char *name;
+  double sensitivity;
+  enum libinput_config_accel_profile acceleration;
+  struct wl_list link;
+};
+
+/* we usually can tell if an option is specified or not by comparing them to 0 (or NULL),
+ * but sometimes 0 can also mean something else. for such options we add another bool value
+ * to tell if they are specified or not. */
+#define WITH_SPECIFIED(type) struct { \
+  type value;                         \
+  bool specified;                     \
+}                                     \
+/* not used currently but may be needed in the future */
+
 struct owl_config {
   struct wl_list outputs;
   struct wl_list keybinds;
-  struct wl_list mouse_keybinds;
+  struct wl_list pointer_keybinds;
   struct wl_list workspaces;
   struct {
     struct wl_list floating;
     struct wl_list size;
     struct wl_list opacity;
   } window_rules;
+
+  /* keyboard stuff */
   char *keymap_layouts;
   char *keymap_variants;
   char *keymap_options;
   uint32_t keyboard_rate;
   uint32_t keyboard_delay;
+
+  /* pointer stuff */
+  double pointer_sensitivity;
+  bool pointer_acceleration;
+  struct wl_list pointers;
+  bool pointer_left_handed;
+
+  /* trackpad stuff */
+  bool trackpad_disable_while_typing;
+  bool trackpad_natural_scroll;
+  bool trackpad_tap_to_click;
+  enum libinput_config_scroll_method trackpad_scroll_method;
+
+  /* cursor theme and size */
   char *cursor_theme;
   uint32_t cursor_size;
+
+  /* general toplevel and layout stuff */
   uint32_t min_toplevel_size;
   float inactive_border_color[4];
   float active_border_color[4];
@@ -81,14 +117,16 @@ struct owl_config {
   uint32_t inner_gaps;
   uint32_t master_count;
   double master_ratio;
-  bool natural_scroll;
-  bool tap_to_click;
+  bool client_side_decorations;
+
+  /* animations stuff */
   bool animations;
   uint32_t animation_duration;
   double animation_curve[4];
   struct vec2 *baked_points;
   float placeholder_color[4];
-  bool client_side_decorations;
+
+  /* run on startup */
   char *run[64];
   size_t run_count;
 };

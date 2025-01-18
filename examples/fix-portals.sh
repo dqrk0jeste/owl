@@ -9,6 +9,7 @@ killall xdg-desktop-portal
 
 sleep 1
 /usr/lib/xdg-desktop-portal-wlr &
+/usr/lib/xdg-desktop-portal-gtk &
 
 sleep 1
 /usr/lib/xdg-desktop-portal &

@@ -2,6 +2,7 @@
 #include "keybinds.h"
 #include "owl.h"
 
+#include <libinput.h>
 #include <stddef.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -188,10 +189,22 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
   }
 
   uint32_t key_sym = 0;
-  bool mouse = false;
-  if(strstr(key, "mouse_") == key) {
-    mouse = true;
-    key = key + strlen("mouse_");
+  bool pointer = false;
+  if(strncmp(key, "mouse_", 6) == 0) {
+    pointer = true;
+    key = key + 6;
+    if(strcmp(key, "left_click") == 0) {
+      key_sym = 272;
+    } else if(strcmp(key, "right_click") == 0) {
+      key_sym = 273;
+    } else if(strcmp(key, "middle_click") == 0) {
+      key_sym = 274;
+    } else {
+      key_sym = atoi(key);
+    }
+  } else if(strncmp(key, "pointer_", 8) == 0) {
+    pointer = true;
+    key = key + 8;
     if(strcmp(key, "left_click") == 0) {
       key_sym = 272;
     } else if(strcmp(key, "right_click") == 0) {
@@ -338,8 +351,8 @@ config_add_keybind(struct owl_config *c, char *modifiers, char *key,
     return false;
   }
 
-  if(mouse) {
-    wl_list_insert(&c->mouse_keybinds, &k->link);
+  if(pointer) {
+    wl_list_insert(&c->pointer_keybinds, &k->link);
   } else {
     wl_list_insert(&c->keybinds, &k->link);
   }
@@ -376,20 +389,88 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       return false;
     }
     c->keyboard_delay = clamp(atoi(args[0]), 0, INT_MAX);
-  } else if(strcmp(keyword, "natural_scroll") == 0) {
+  } else if(strcmp(keyword, "pointer_sensitivity") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->natural_scroll = atoi(args[0]);
-  } else if(strcmp(keyword, "tap_to_click") == 0) {
+    c->pointer_sensitivity = clamp(atof(args[0]), -1.0, 1.0);
+  } else if(strcmp(keyword, "pointer_acceleration") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
       config_free_args(args, arg_count);
       return false;
     }
-    c->tap_to_click = atoi(args[0]);
+    c->pointer_acceleration = atoi(args[0])
+      ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
+      : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
+  } else if(strcmp(keyword, "pointer") == 0) {
+    if(arg_count < 3) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    enum libinput_config_accel_profile accel = atoi(args[1])
+      ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
+      : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
+
+    struct pointer_config *p = calloc(1, sizeof(*p));
+    *p = (struct pointer_config){
+      .name = strdup(args[0]),
+      .acceleration = accel,
+      .sensitivity = clamp(atof(args[2]), -1.0, 1.0),
+    };
+
+    wl_list_insert(&c->pointers, &p->link);
+  } else if(strcmp(keyword, "pointer_left_handed") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->pointer_left_handed = atoi(args[0]);
+  } else if(strcmp(keyword, "trackpad_disable_while_typing") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->trackpad_disable_while_typing = atoi(args[0]);
+  } else if(strcmp(keyword, "natural_scroll") == 0 // for backwards compatibility
+            || strcmp(keyword, "trackpad_natural_scroll") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->trackpad_natural_scroll = atoi(args[0]);
+  } else if(strcmp(keyword, "tap_to_click") == 0 // for backwards compatibility
+            || strcmp(keyword, "trackpad_tap_to_click") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    c->trackpad_tap_to_click = atoi(args[0]);
+  } else if(strcmp(keyword, "trackpad_scroll_method") == 0) {
+    if(arg_count < 1) {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      config_free_args(args, arg_count);
+      return false;
+    }
+    if(strcmp(args[0], "no_scroll") == 0) {
+      c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_NO_SCROLL;
+    } else if(strcmp(args[0], "two_fingers") == 0) {
+      c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_2FG;
+    } else if(strcmp(args[0], "edge") == 0) {
+      c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_EDGE;
+    } else if(strcmp(args[0], "on_button_down") == 0) {
+      c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN;
+    } else {
+      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+      return false;
+    }
   } else if(strcmp(keyword, "border_width") == 0) {
     if(arg_count < 1) {
       wlr_log(WLR_ERROR, "invalid args to %s", keyword);
@@ -757,7 +838,8 @@ config_set_default_needed_params(struct owl_config *c) {
   if(c->animations && c->animation_curve[0] == 0 && c->animation_curve[1] == 0
      && c->animation_curve[2] == 0 && c->animation_curve[3] == 0) {
     bake_bezier_curve_points(c);
-    wlr_log(WLR_INFO, "animation_curve not specified. baking default linear");
+    wlr_log(WLR_INFO,
+            "animation_curve not specified. baking default linear");
   }
   if(c->inactive_opacity == 0) {
     /* here we evenly space toplevels if there is no master_ratio specified */
@@ -801,9 +883,10 @@ server_load_config() {
   }
 
   wl_list_init(&c->keybinds);
-  wl_list_init(&c->mouse_keybinds);
+  wl_list_init(&c->pointer_keybinds);
   wl_list_init(&c->outputs);
   wl_list_init(&c->workspaces);
+  wl_list_init(&c->pointers);
   wl_list_init(&c->window_rules.floating);
   wl_list_init(&c->window_rules.size);
   wl_list_init(&c->window_rules.opacity);

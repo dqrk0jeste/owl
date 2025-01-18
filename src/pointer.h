@@ -1,6 +1,7 @@
 #pragma once
 
 #include <wlr/types/wlr_input_device.h>
+#include <libinput.h>
 
 enum owl_cursor_mode {
 	OWL_CURSOR_PASSTHROUGH,
@@ -10,6 +11,9 @@ enum owl_cursor_mode {
 
 void
 server_handle_new_pointer(struct wlr_input_device *device);
+
+void
+pointer_device_configure(struct libinput_device *device);
 
 void
 server_reset_cursor_mode(void);
