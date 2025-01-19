@@ -72,9 +72,10 @@ server_handle_new_input(struct wl_listener *listener, void *data) {
    * communiciated to the client. we always have a cursor, even if
    * there are no pointer devices, so we always include that capability. */
   uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
-  if (!wl_list_empty(&server.keyboards)) {
+  if(!wl_list_empty(&server.keyboards)) {
     caps |= WL_SEAT_CAPABILITY_KEYBOARD;
   }
+
   wlr_seat_set_capabilities(server.seat, caps);
 }
 
@@ -371,7 +372,6 @@ main(int argc, char *argv[]) {
   /* run the wayland event loop. */
   wlr_log(WLR_INFO, "running owl on WAYLAND_DISPLAY=%s", socket);
   wl_display_run(server.wl_display);
-
 
   /* Once wl_display_run returns, we destroy all clients then shut down the
    * server. */

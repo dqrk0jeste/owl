@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/util/log.h>
 #include <libinput.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -65,6 +66,8 @@ keyboard_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&keyboard->key.link);
   wl_list_remove(&keyboard->destroy.link);
   wl_list_remove(&keyboard->link);
+
+  xkb_state_unref(keyboard->empty);
   free(keyboard);
 }
 
@@ -76,6 +79,11 @@ server_handle_new_keyboard(struct wlr_input_device *device) {
   keyboard->wlr_keyboard = wlr_keyboard;
 
   struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+  if(context == NULL) {
+    wlr_log(WLR_ERROR, "keyboard initialization failed");
+    return;
+  }
+
   struct xkb_rule_names rule_names = {
     .layout = server.config->keymap_layouts,
     .variant = server.config->keymap_variants,
@@ -84,6 +92,10 @@ server_handle_new_keyboard(struct wlr_input_device *device) {
 
   struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &rule_names,
                                                         XKB_KEYMAP_COMPILE_NO_FLAGS);
+  if(keymap == NULL) {
+    wlr_log(WLR_ERROR, "keyboard initialization failed");
+    return;
+  }
 
   wlr_keyboard_set_keymap(wlr_keyboard, keymap);
   xkb_keymap_unref(keymap);

@@ -369,32 +369,20 @@ config_free_args(char **args, size_t arg_count) {
 bool
 config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg_count) {
   if(strcmp(keyword, "min_toplevel_size") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->min_toplevel_size = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "keyboard_rate") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->keyboard_rate = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "keyboard_delay") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->keyboard_delay = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "pointer_sensitivity") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->pointer_sensitivity = clamp(atof(args[0]), -1.0, 1.0);
   } else if(strcmp(keyword, "pointer_acceleration") == 0) {
     if(arg_count < 1) {
@@ -406,11 +394,8 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
       ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
       : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
   } else if(strcmp(keyword, "pointer") == 0) {
-    if(arg_count < 3) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 3) goto invalid;
+
     enum libinput_config_accel_profile accel = atoi(args[1])
       ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
       : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
@@ -424,41 +409,26 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
 
     wl_list_insert(&c->pointers, &p->link);
   } else if(strcmp(keyword, "pointer_left_handed") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->pointer_left_handed = atoi(args[0]);
   } else if(strcmp(keyword, "trackpad_disable_while_typing") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->trackpad_disable_while_typing = atoi(args[0]);
   } else if(strcmp(keyword, "natural_scroll") == 0 // for backwards compatibility
             || strcmp(keyword, "trackpad_natural_scroll") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->trackpad_natural_scroll = atoi(args[0]);
   } else if(strcmp(keyword, "tap_to_click") == 0 // for backwards compatibility
             || strcmp(keyword, "trackpad_tap_to_click") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->trackpad_tap_to_click = atoi(args[0]);
   } else if(strcmp(keyword, "trackpad_scroll_method") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     if(strcmp(args[0], "no_scroll") == 0) {
       c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_NO_SCROLL;
     } else if(strcmp(args[0], "two_fingers") == 0) {
@@ -468,84 +438,53 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(args[0], "on_button_down") == 0) {
       c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN;
     } else {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      return false;
+      goto invalid;
     }
   } else if(strcmp(keyword, "border_width") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->border_width = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "outer_gaps") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->outer_gaps = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "inner_gaps") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->inner_gaps = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "master_ratio") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->master_ratio = clamp(atof(args[0]), 0, 1);
   } else if(strcmp(keyword, "master_count") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->master_count = clamp(atoi(args[0]), 1, INT_MAX);
   } else if(strcmp(keyword, "cursor_theme") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->cursor_theme = strdup(args[0]);
   } else if(strcmp(keyword, "cursor_size") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->cursor_size = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "inactive_border_color") == 0) {
-    if(arg_count < 4) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 4) goto invalid;
+
     c->inactive_border_color[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
     c->inactive_border_color[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
     c->inactive_border_color[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
     c->inactive_border_color[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
   } else if(strcmp(keyword, "active_border_color") == 0) {
-    if(arg_count < 4) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 4) goto invalid;
+
     c->active_border_color[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
     c->active_border_color[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
     c->active_border_color[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
     c->active_border_color[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
   } else if(strcmp(keyword, "output") == 0) {
-    if(arg_count < 6) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 6) goto invalid;
+
     struct output_config *m = calloc(1, sizeof(*m));
     *m = (struct output_config){
       .name = strdup(args[0]),
@@ -560,129 +499,95 @@ config_handle_value(struct owl_config *c, char *keyword, char **args, size_t arg
 
     wl_list_insert(&c->outputs, &m->link);
   } else if(strcmp(keyword, "workspace") == 0) {
-    if(arg_count < 2) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 2) goto invalid;
+
     struct workspace_config *w = calloc(1, sizeof(*w));
     *w = (struct workspace_config){
       .index = atoi(args[0]),
       .output = strdup(args[1]),
     };
+
     wl_list_insert(&c->workspaces, &w->link);
   } else if(strcmp(keyword, "run") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
-    if(c->run_count >= 64) {
-      wlr_log(WLR_ERROR, "do you really need 64 runs?");
+    if(arg_count < 1) goto invalid;
+      
+    if(c->run_count > 64) {
+      wlr_log(WLR_ERROR, "do you really need 65 runs?");
       return false;
     }
     c->run[c->run_count] = strdup(args[0]);
     c->run_count++;
   } else if(strcmp(keyword, "keybind") == 0) {
-    if(arg_count < 3) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 3) goto invalid;
+
     config_add_keybind(c, args[0], args[1], args[2], &args[3], arg_count - 3);
   } else if(strcmp(keyword, "env") == 0) {
-    if(arg_count < 2) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 2) goto invalid;
+
     setenv(args[0], args[1], true);
   } else if(strcmp(keyword, "window_rule") == 0) {
-    if(arg_count < 3) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 3) goto invalid;
+
     config_add_window_rule(c, args[0], args[1], args[2], &args[3], arg_count - 3);
   } else if(strcmp(keyword, "animations") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->animations = atoi(args[0]);
   } else if(strcmp(keyword, "animation_duration") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->animation_duration = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "animation_curve") == 0) {
-    if(arg_count < 4) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 4) goto invalid;
+
     c->animation_curve[0] = atof(args[0]);
     c->animation_curve[1] = atof(args[1]);
     c->animation_curve[2] = atof(args[2]);
     c->animation_curve[3] = atof(args[3]);
     bake_bezier_curve_points(c);
   } else if(strcmp(keyword, "placeholder_color") == 0) {
-    if(arg_count < 4) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 4) goto invalid;
+
     c->placeholder_color[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
     c->placeholder_color[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
     c->placeholder_color[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
     c->placeholder_color[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
   } else if(strcmp(keyword, "client_side_decorations") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->client_side_decorations = atoi(args[0]);
   } else if(strcmp(keyword, "inactive_opacity") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->inactive_opacity = clamp(atof(args[0]), 0.0, 1.0);
   } else if(strcmp(keyword, "active_opacity") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->active_opacity = clamp(atof(args[0]), 0.0, 1.0);
   } else if(strcmp(keyword, "keymap") == 0) {
-    if(arg_count < 2) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 2) goto invalid;
     /* handle appending to this string */
     config_add_keymap(c, args[0], args[1]);
   } else if(strcmp(keyword, "keymap_options") == 0) {
-    if(arg_count < 1) {
-      wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-      config_free_args(args, arg_count);
-      return false;
-    }
+    if(arg_count < 1) goto invalid;
+
     c->keymap_options = strdup(args[0]);
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
+    free(keyword);
     config_free_args(args, arg_count);
     return false;
   }
 
+  free(keyword);
   config_free_args(args, arg_count);
   return true;
+
+invalid: 
+  wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+  free(keyword);
+  config_free_args(args, arg_count);
+  return false;
 }
 
 FILE *
@@ -710,7 +615,7 @@ config_handle_line(char *line, size_t line_number, char **keyword,
   char *p = line;
 
   /* skip whitespace */
-  while(*p == ' ') p++;
+  while(*p == ' ' || *p == '\t') p++;
 
   /* if its an empty line or it starts with '#' (comment) skip */
   if(*p == '\n' || *p == '#') {
@@ -723,7 +628,7 @@ config_handle_line(char *line, size_t line_number, char **keyword,
   char **ars = calloc(ars_cap, sizeof(*args));
 
   char *q = kw;
-  while(*p != ' ') {
+  while(*p != ' ' && *p != '\t' && *p != '\n') {
     if(len >= cap) {
       cap *= 2;
       keyword = realloc(keyword, cap);
@@ -734,10 +639,16 @@ config_handle_line(char *line, size_t line_number, char **keyword,
     q++;
     len++;
   }
+
+  if(len >= cap) {
+    cap += 1;
+    keyword = realloc(keyword, cap);
+    q = &kw[len];
+  }
   *q = 0;
 
   /* skip whitespace */
-  while(*p == ' ') p++;
+  while(*p == ' ' || *p == '\t') p++;
 
   if(*p == '\n') {
     wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, kw);
@@ -761,7 +672,8 @@ config_handle_line(char *line, size_t line_number, char **keyword,
       p++;
     };
 
-    while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\n')) {
+    while((word && *p != '\"' && *p != '\n')
+          || (!word && *p != ' ' && *p != '\t' && *p != '\n')) {
       if(len >= cap) {
         cap *= 2;
         ars[ars_len] = realloc(ars[ars_len], cap);
@@ -780,12 +692,17 @@ config_handle_line(char *line, size_t line_number, char **keyword,
       q++;
       len++;
     }
+    if(len >= cap) {
+      cap += 1;
+      ars[ars_len] = realloc(ars[ars_len], cap);
+      q = &ars[ars_len][len];
+    }
     *q = 0;
     ars_len++;
 
     if(word) p++;
     /* skip whitespace */
-    while(*p == ' ') p++;
+    while(*p == ' ' || *p == '\t') p++;
   }
 
   *args_count = ars_len;
