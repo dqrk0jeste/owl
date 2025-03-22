@@ -14,6 +14,7 @@
 #include "helpers.h"
 #include "layer_surface.h"
 #include "pointer.h"
+#include "text_buffer.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -374,6 +375,10 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
   wl_list_remove(&toplevel->request_maximize.link);
   wl_list_remove(&toplevel->request_fullscreen.link);
 
+  if(toplevel->titlebar.title != NULL) {
+    text_node_destroy(toplevel->titlebar.title);
+  }
+
   free(toplevel);
 }
 
@@ -529,6 +534,10 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
 
   wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle,
                                            toplevel->xdg_toplevel->title);
+
+  if(toplevel->titlebar.title != NULL) {
+    text_node_set_text(toplevel->titlebar.title, toplevel->xdg_toplevel->title);
+  }
 
   if(toplevel == server.focused_toplevel) {
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);

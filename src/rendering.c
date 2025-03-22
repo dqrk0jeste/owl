@@ -59,7 +59,7 @@ toplevel_create_titlebar(struct mwc_toplevel *toplevel, uint32_t width, uint32_t
   }
 
   if(server.config->titlebar_include_title && server.config->font != NULL) {
-    toplevel->titlebar.title = wlr_scene_buffer_create(toplevel->titlebar.tree, NULL);
+    toplevel->titlebar.title = text_node_create(toplevel->titlebar.tree, toplevel->xdg_toplevel->title);
   }
 
   wlr_scene_node_lower_to_bottom(&toplevel->titlebar.tree->node);
@@ -88,7 +88,7 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     : server.config->titlebar_color_inactive;
   wlr_scene_rect_set_color(toplevel->titlebar.base, color);
 
-  if(server.config->titlebar_include_close_button) {
+  if(toplevel->titlebar.close_button != NULL) {
     float *color = toplevel == server.focused_toplevel
       ? server.config->titlebar_close_button_color_active
       : server.config->titlebar_close_button_color_inactive;
@@ -102,11 +102,44 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     wlr_scene_node_set_position(&toplevel->titlebar.close_button->node, x, y);
   }
 
-  if(server.config->titlebar_include_title && server.config->font != NULL) {
-    if(toplevel->titlebar.title->buffer == NULL) {
-      struct pixman_buffer *buffer = text_buffer_create(toplevel->xdg_toplevel->title,
-                                                        1000, server.config->titlebar_height);
-      wlr_scene_buffer_set_buffer_with_damage(toplevel->titlebar.title, &buffer->base, NULL);
+  if(toplevel->titlebar.title != NULL) {
+    uint32_t x, y;
+    if(server.config->titlebar_center_title) {
+      x = (width - toplevel->titlebar.title->width) / 2;
+    } else {
+      x = server.config->titlebar_title_padding;
+      if(server.config->titlebar_close_button_left) {
+        x += server.config->titlebar_close_button_padding + server.config->titlebar_close_button_size;
+      }
+    }
+
+    y = (server.config->titlebar_height - toplevel->titlebar.title->height ) / 2;
+
+    wlr_scene_node_set_position(&toplevel->titlebar.title->scene_buffer->node, x, y);
+
+    int32_t free_width = width;
+    if(server.config->titlebar_center_title) {
+      free_width -= x;
+    } else {
+      free_width -= server.config->titlebar_title_padding;
+    }
+    if(server.config->titlebar_include_close_button) {
+      free_width -= server.config->titlebar_close_button_size + 2 * server.config->titlebar_close_button_padding;
+    }
+
+    if(free_width <= 0) {
+      wlr_scene_node_set_enabled(&toplevel->titlebar.title->scene_buffer->node, false);
+    } else {
+      wlr_scene_node_set_enabled(&toplevel->titlebar.title->scene_buffer->node, true);
+      const struct wlr_fbox box = {
+        .x = 0.0,
+        .y = 0.0,
+        .width = free_width,
+        .height = toplevel->titlebar.title->height,
+      };
+      wlr_scene_buffer_set_source_box(toplevel->titlebar.title->scene_buffer, &box);
+      wlr_scene_buffer_set_dest_size(toplevel->titlebar.title->scene_buffer,
+                                     free_width, toplevel->titlebar.title->height);
     }
   }
 }
@@ -154,7 +187,7 @@ toplevel_draw_borders(struct mwc_toplevel *toplevel) {
   wlr_scene_rect_set_color(toplevel->border, border_color);
 }
 
-struct iter_scene_buffer_apply_blur_args {
+struct iter_scene_buffer_apply_effects_args {
   int32_t root_x;
   int32_t root_y;
   struct wlr_box geometry;
@@ -170,7 +203,7 @@ struct iter_scene_buffer_apply_blur_args {
 void
 iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer,
                                 int lx, int ly, void *data) {
-  struct iter_scene_buffer_apply_blur_args *args = data;
+  struct iter_scene_buffer_apply_effects_args *args = data;
 
   wlr_scene_buffer_set_opacity(buffer, args->opacity);
 
@@ -255,10 +288,10 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
   uint32_t width, height;
   toplevel_get_current_buffer_size(toplevel, &width, &height);
 
-  struct iter_scene_buffer_apply_blur_args args = {
+  struct iter_scene_buffer_apply_effects_args args = {
     .root_x = toplevel->scene_tree->node.x,
     .root_y = toplevel->scene_tree->node.y,
-    .geometry = toplevel_get_geometry(toplevel),
+    .geometry = geometry,
     .width = width,
     .height = height,
     .width_scale = (double)width / geometry.width,
@@ -423,11 +456,11 @@ toplevel_draw_frame(struct mwc_toplevel *toplevel) {
   if(server.config->shadows) {
     toplevel_draw_shadow(toplevel);
   }
+  toplevel_apply_clip(toplevel);
+  toplevel_apply_effects(toplevel);
   if(toplevel->titlebar.has) {
     toplevel_draw_titlebar(toplevel);
   }
-  toplevel_apply_clip(toplevel);
-  toplevel_apply_effects(toplevel);
 
   return need_more_frames;
 }

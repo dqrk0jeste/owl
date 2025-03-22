@@ -182,6 +182,8 @@ struct mwc_config {
   float titlebar_close_button_color_inactive[4];
   bool titlebar_include_title;
   bool titlebar_center_title;
+  /* only has effect if not centered */
+  uint32_t titlebar_title_padding;
   pixman_color_t titlebar_title_color;
   /* will be generated from the name specified by `titlebar_title_font`, may be NULL */
   struct fcft_font *font;

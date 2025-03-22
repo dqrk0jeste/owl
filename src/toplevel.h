@@ -47,10 +47,9 @@ struct mwc_toplevel {
     struct wlr_scene_tree *tree;
     struct wlr_scene_rect *base;
     struct wlr_scene_rect *close_button;
-    struct wlr_scene_buffer *title;
+    struct text_node *title;
     struct mwc_something base_something;
     struct mwc_something close_button_something;
-    struct mwc_something title_something;
   } titlebar;
 
   struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;

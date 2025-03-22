@@ -862,18 +862,23 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     if(arg_count < 1) goto invalid;
 
     c->titlebar_center_title = atoi(args[0]);
+  } else if(strcmp(keyword, "titlebar_title_padding") == 0) {
+    if(arg_count < 1) goto invalid;
+
+    c->titlebar_title_padding = atoi(args[0]);
   } else if(strcmp(keyword, "titlebar_title_color") == 0) {
     if(arg_count < 1) goto invalid;
 
     if(strlen(args[0]) == 6) {
-      c->titlebar_title_color.red = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255);
-      c->titlebar_title_color.green = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255);
-      c->titlebar_title_color.blue = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255);
+      c->titlebar_title_color.red = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255) * 257;
+      c->titlebar_title_color.green = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255) * 257;
+      c->titlebar_title_color.blue = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255) * 257;
+      c->titlebar_title_color.alpha = UINT16_MAX;
     } else if(strlen(args[0]) == 8) {
-      c->titlebar_title_color.red = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255);
-      c->titlebar_title_color.green = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255);
-      c->titlebar_title_color.blue = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255);
-      c->titlebar_title_color.alpha = clamp(hex_to_unsigned_decimal(args[0] + 6, 2), 0, 255);
+      c->titlebar_title_color.red = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255) * 257;
+      c->titlebar_title_color.green = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255) * 257;
+      c->titlebar_title_color.blue = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255) * 257;
+      c->titlebar_title_color.alpha = clamp(hex_to_unsigned_decimal(args[0] + 6, 2), 0, 255) * 257;
     } else {
       goto invalid;
     }
@@ -882,7 +887,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
     c->font = fcft_from_name(1, (const char **)&args[0], NULL);
     if(c->font == NULL) {
-      wlr_log(WLR_ERROR, "error while loading a font %s, title wont be drawn", args[0]);
+      wlr_log(WLR_ERROR, "error while loading a font '%s', title wont be drawn", args[0]);
     }
   } else {
     wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
@@ -1100,7 +1105,12 @@ config_set_default_needed_params(struct mwc_config *c) {
     wlr_log(WLR_INFO, "border_radius_location not specified. using all");
   }
 
-  c->toplevel_minimum_needed_width = c->titlebar_close_button_size + 2 * c->titlebar_close_button_padding;
+  c->toplevel_minimum_needed_width =
+    c->decorations == MWC_DECORATIONS_SERVER_SIDE && c->titlebar_include_close_button
+      ? c->titlebar_close_button_size + 2 * c->titlebar_close_button_padding
+      : 0;
+
+  c->toplevel_minimum_needed_width = max(c->toplevel_minimum_needed_width, 10);
 }
 
 extern struct mwc_server server;
@@ -1288,6 +1298,9 @@ toplevel_reapply_effects_etc(struct mwc_toplevel *toplevel) {
   if(toplevel->titlebar.tree != NULL) {
     wlr_scene_node_destroy(&toplevel->titlebar.tree->node);
     toplevel->titlebar.tree = NULL;
+    toplevel->titlebar.base = NULL;
+    toplevel->titlebar.close_button = NULL;
+    toplevel->titlebar.title = NULL;
   }
 }
 
