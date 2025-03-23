@@ -84,6 +84,9 @@ toplevel_get_current_container_size(struct mwc_toplevel *toplevel, uint32_t *wid
 void
 toplevel_get_current_buffer_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 
+void
+toplevel_floating_center_pending(struct mwc_toplevel *toplevel);
+
 struct wlr_box
 toplevel_get_geometry(struct mwc_toplevel *toplevel);
 

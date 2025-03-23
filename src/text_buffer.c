@@ -109,7 +109,7 @@ render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_bu
   long kern[len];
 
   for(size_t i = 0; i < len; i++) {
-    glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_DEFAULT);
+    glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
     if(glyphs[i] == NULL) continue;
 
     kern[i] = 0;
@@ -167,7 +167,6 @@ text_node_set_text(struct text_node *node, char *text) {
     pixman_buffer_destroy(node->buffer);
   }
   node->buffer = pixman_buffer_create(width, height);
-  /*pixman_buffer_fill_solid(node->buffer, &(pixman_color_t){ UINT16_MAX, 0, 0, 3244 });*/
 
   wlr_scene_buffer_set_buffer_with_damage(node->scene_buffer, &node->buffer->base, NULL);
 

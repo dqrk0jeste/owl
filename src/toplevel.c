@@ -107,7 +107,7 @@ toplevel_handle_initial_commit(struct mwc_toplevel *toplevel) {
     uint32_t slave_count = wl_list_length(&toplevel->workspace->slaves);
     if(master_count < server.config->master_count) {
       calculate_masters_container_size(output, master_count + 1, slave_count, &width, &height);
-    toplevel_strip_decorations_of_size(toplevel, &width, &height);
+      toplevel_strip_decorations_of_size(toplevel, &width, &height);
     } else {
       calculate_slaves_container_size(output, slave_count + 1, &width, &height);
       toplevel_strip_decorations_of_size(toplevel, &width, &height);
@@ -149,9 +149,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
     }
 
     if(toplevel->pending.x == UINT32_MAX) {
-      struct wlr_box output_box = toplevel->workspace->output->usable_area;
-      toplevel->pending.x = output_box.x + (output_box.width - toplevel->pending.width) / 2;
-      toplevel->pending.y = output_box.y + (output_box.height - toplevel->pending.height) / 2;
+      toplevel_floating_center_pending(toplevel);
     }
   }
 
@@ -209,9 +207,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
       toplevel->pending.height = geometry.height;
     }
 
-    struct wlr_box output_box = toplevel->workspace->output->usable_area;
-    toplevel->pending.x = output_box.x + (output_box.width - toplevel->pending.width) / 2;
-    toplevel->pending.y = output_box.y + (output_box.height - toplevel->pending.height) / 2;
+    toplevel_floating_center_pending(toplevel);
   } 
 
   /* we patch its startup animation */
@@ -624,6 +620,28 @@ toplevel_adjust_buffer_start_position(struct mwc_toplevel *toplevel, uint32_t *x
   *y += server.config->titlebar_height;
 }
 
+void
+toplevel_floating_center_pending(struct mwc_toplevel *toplevel) {
+  uint32_t width = toplevel->pending.width;
+  uint32_t height = toplevel->pending.height;
+
+  width += 2 * server.config->border_width;
+  height += 2 * server.config->border_width;
+
+  if(toplevel->titlebar.has) {
+    height += server.config->titlebar_height;
+  }
+
+  struct wlr_box output_box = toplevel->workspace->output->usable_area;
+
+  uint32_t x = output_box.x + (output_box.width - width) / 2;
+  uint32_t y = toplevel->pending.y = output_box.y + (output_box.height - height) / 2;
+
+  toplevel_adjust_buffer_start_position(toplevel, &x, &y);
+  toplevel->pending.x = x;
+  toplevel->pending.y = y;
+}
+
 bool
 toplevel_should_float(struct mwc_toplevel *toplevel) {
   /* we make toplevels float if they have fixed size
@@ -860,7 +878,7 @@ toplevel_resize(void) {
 
   int min_width = max(toplevel->xdg_toplevel->current.min_width,
                       server.config->toplevel_minimum_needed_width);
-  int min_height = max(toplevel->xdg_toplevel->current.min_height, 1);
+  int min_height = max(toplevel->xdg_toplevel->current.min_height, 10);
 
   if(server.resize_edges & WLR_EDGE_TOP) {
     new_y = start_y + (server.cursor->y - server.grab_y);
