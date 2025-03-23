@@ -50,42 +50,42 @@ hex_to_unsigned_decimal(char *hex, size_t len) {
 }
 
 bool
-try_parse_color_hex(char *s, float *dest) {
+try_parse_color_hex(char *s, struct mwc_color *dest) {
   size_t len = strlen(s);
   if(len != 6 && len != 8) return false;
 
   if(len == 6) {
-    dest[0] = clamp(hex_to_unsigned_decimal(s + 0, 2), 0, 255) / 255.0;
-    dest[1] = clamp(hex_to_unsigned_decimal(s + 2, 2), 0, 255) / 255.0;
-    dest[2] = clamp(hex_to_unsigned_decimal(s + 4, 2), 0, 255) / 255.0;
-    dest[3] = 1.0;
+    dest->r = clamp(hex_to_unsigned_decimal(s + 0, 2), 0, 255);
+    dest->g = clamp(hex_to_unsigned_decimal(s + 2, 2), 0, 255);
+    dest->b = clamp(hex_to_unsigned_decimal(s + 4, 2), 0, 255);
+    dest->a = 255;
   } else if(len == 8) {
-    dest[0] = clamp(hex_to_unsigned_decimal(s + 0, 2), 0, 255) / 255.0;
-    dest[1] = clamp(hex_to_unsigned_decimal(s + 2, 2), 0, 255) / 255.0;
-    dest[2] = clamp(hex_to_unsigned_decimal(s + 4, 2), 0, 255) / 255.0;
-    dest[3] = clamp(hex_to_unsigned_decimal(s + 6, 2), 0, 255) / 255.0;
+    dest->r = clamp(hex_to_unsigned_decimal(s + 0, 2), 0, 255);
+    dest->g = clamp(hex_to_unsigned_decimal(s + 2, 2), 0, 255);
+    dest->b = clamp(hex_to_unsigned_decimal(s + 4, 2), 0, 255);
+    dest->a = clamp(hex_to_unsigned_decimal(s + 6, 2), 0, 255);
   }
 
   return true;
 }
 
 bool
-try_parse_color_rgba_or_hex(char **args, size_t arg_count, float *dest) {
+try_parse_color_rgba_or_hex(char **args, size_t arg_count, struct mwc_color *dest) {
   if(arg_count == 4) {
-    dest[0] = clamp(atoi(args[0]), 0, 255) / 255.0;
-    dest[1] = clamp(atoi(args[1]), 0, 255) / 255.0;
-    dest[2] = clamp(atoi(args[2]), 0, 255) / 255.0;
-    dest[3] = clamp(atoi(args[3]), 0, 255) / 255.0;
+    dest->r = clamp(atoi(args[0]), 0, 255);
+    dest->g = clamp(atoi(args[1]), 0, 255);
+    dest->b = clamp(atoi(args[2]), 0, 255);
+    dest->a = clamp(atoi(args[3]), 0, 255);
   } else if(strlen(args[0]) == 6) {
-    dest[0] = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255) / 255.0;
-    dest[1] = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255) / 255.0;
-    dest[2] = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255) / 255.0;
-    dest[3] = 1.0;
+    dest->r = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255);
+    dest->g = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255);
+    dest->b = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255);
+    dest->a = 255;
   } else if(strlen(args[0]) == 8) {
-    dest[0] = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255) / 255.0;
-    dest[1] = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255) / 255.0;
-    dest[2] = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255) / 255.0;
-    dest[3] = clamp(hex_to_unsigned_decimal(args[0] + 6, 2), 0, 255) / 255.0;
+    dest->r = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255);
+    dest->g = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255);
+    dest->b = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255);
+    dest->a = clamp(hex_to_unsigned_decimal(args[0] + 6, 2), 0, 255);
   } else {
     return false;
   }
@@ -603,11 +603,11 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
     c->cursor_size = clamp(atoi(args[0]), 0, INT_MAX);
   } else if(strcmp(keyword, "inactive_border_color") == 0) {
-    if(!try_parse_color_rgba_or_hex(args, arg_count, c->inactive_border_color)) {
+    if(!try_parse_color_rgba_or_hex(args, arg_count, &c->inactive_border_color)) {
       goto invalid;
     }
   } else if(strcmp(keyword, "active_border_color") == 0) {
-    if(!try_parse_color_rgba_or_hex(args, arg_count, c->active_border_color)) {
+    if(!try_parse_color_rgba_or_hex(args, arg_count, &c->active_border_color)) {
       goto invalid;
     }
   } else if(strcmp(keyword, "output") == 0) {
@@ -779,7 +779,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     c->shadows_position.x = atoi(args[0]);
     c->shadows_position.y = atoi(args[1]);
   } else if(strcmp(keyword, "shadows_color") == 0) {
-    if(!try_parse_color_rgba_or_hex(args, arg_count, c->shadows_color)) {
+    if(!try_parse_color_rgba_or_hex(args, arg_count, &c->shadows_color)) {
       goto invalid;
     }
   } else if(strcmp(keyword, "layer_rule") == 0) {
@@ -803,16 +803,12 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
   } else if(strcmp(keyword, "titlebar_color") == 0) {
     if(arg_count < 1) goto invalid;
 
-    if(!try_parse_color_hex(args[0], c->titlebar_color_active)) {
+    if(!try_parse_color_hex(args[0], &c->titlebar_color_active)) {
       goto invalid;
     }
 
-    if(arg_count > 1) {
-      if(!try_parse_color_hex(args[1], c->titlebar_color_inactive)) {
-        goto invalid;
-      }
-    } else {
-      memcpy(c->titlebar_color_inactive, c->titlebar_color_active, 4 * sizeof(float));
+    if(arg_count == 1 || !try_parse_color_hex(args[1], &c->titlebar_color_inactive)) {
+      c->titlebar_color_inactive = c->titlebar_color_active;
     }
   } else if(strcmp(keyword, "titlebar_include_close_button") == 0) {
     if(arg_count < 1) goto invalid;
@@ -841,18 +837,12 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
   } else if(strcmp(keyword, "titlebar_close_button_color") == 0) {
     if(arg_count < 1) goto invalid;
 
-    if(!try_parse_color_hex(args[0], c->titlebar_close_button_color_active)) {
+    if(!try_parse_color_hex(args[0], &c->titlebar_close_button_color_active)) {
       goto invalid;
     }
 
-    if(arg_count > 1) {
-      if(!try_parse_color_hex(args[1], c->titlebar_close_button_color_inactive)) {
-        goto invalid;
-      }
-    } else {
-      memcpy(c->titlebar_close_button_color_inactive,
-             c->titlebar_close_button_color_active,
-             4 * sizeof(float));
+    if(arg_count == 1 || !try_parse_color_hex(args[1], &c->titlebar_close_button_color_inactive)) {
+      c->titlebar_close_button_color_inactive = c->titlebar_close_button_color_active;
     }
   } else if(strcmp(keyword, "titlebar_include_title") == 0) {
     if(arg_count < 1) goto invalid;
@@ -869,17 +859,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
   } else if(strcmp(keyword, "titlebar_title_color") == 0) {
     if(arg_count < 1) goto invalid;
 
-    if(strlen(args[0]) == 6) {
-      c->titlebar_title_color.red = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255) * 257;
-      c->titlebar_title_color.green = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255) * 257;
-      c->titlebar_title_color.blue = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255) * 257;
-      c->titlebar_title_color.alpha = UINT16_MAX;
-    } else if(strlen(args[0]) == 8) {
-      c->titlebar_title_color.red = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255) * 257;
-      c->titlebar_title_color.green = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255) * 257;
-      c->titlebar_title_color.blue = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255) * 257;
-      c->titlebar_title_color.alpha = clamp(hex_to_unsigned_decimal(args[0] + 6, 2), 0, 255) * 257;
-    } else {
+    if(!try_parse_color_rgba_or_hex(args, arg_count, &c->titlebar_title_color)) {
       goto invalid;
     }
   } else if(strcmp(keyword, "titlebar_title_font") == 0) {

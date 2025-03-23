@@ -1,8 +1,8 @@
 #include "text_buffer.h"
 
+#include "helpers.h"
 #include "mwc.h"
 #include "config.h"
-#include "wlr/util/log.h"
 
 #include <assert.h>
 #include <drm_fourcc.h>
@@ -77,17 +77,9 @@ pixman_buffer_destroy(struct pixman_buffer *buffer) {
 }
 
 void
-pixman_buffer_fill_solid(struct pixman_buffer *buffer, float color[static 4]) {
-  uint32_t stride = pixman_image_get_stride(buffer->image) / sizeof(uint32_t);
-  uint32_t *data = pixman_image_get_data(buffer->image);
-
-  uint32_t c = (uint32_t)(color[0] * 255) <<  0 |
-               (uint32_t)(color[1] * 255) <<  8 |
-               (uint32_t)(color[2] * 255) << 16 |
-               (uint32_t)(color[3] * 255) << 24;
-
-  pixman_fill(data, stride, sizeof(uint32_t), 0, 0, buffer->width, buffer->height, c);
-
+pixman_buffer_fill_solid(struct pixman_buffer *buffer, pixman_color_t *color) {
+  pixman_image_fill_rectangles(PIXMAN_OP_OVER, buffer->image, color,
+                               1, &(pixman_rectangle16_t){ 0, 0, buffer->width, buffer->height });
 }
 
 static uint32_t
@@ -175,13 +167,16 @@ text_node_set_text(struct text_node *node, char *text) {
     pixman_buffer_destroy(node->buffer);
   }
   node->buffer = pixman_buffer_create(width, height);
-  pixman_buffer_fill_solid(node->buffer, (float[4]){ 1, 0, 0, 1 });
+  /*pixman_buffer_fill_solid(node->buffer, &(pixman_color_t){ UINT16_MAX, 0, 0, 3244 });*/
+
   wlr_scene_buffer_set_buffer_with_damage(node->scene_buffer, &node->buffer->base, NULL);
 
   char32_t unicode[len + 1];
   convert_cstring_to_unicode(text, unicode);
 
-  pixman_image_t *foreground_color = pixman_image_create_solid_fill(&server.config->titlebar_title_color);
+  pixman_color_t color;
+  mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
+  pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
   node->width = render_chars_to_pixman_buffer(unicode, len, node->buffer, foreground_color);
   node->height = height;

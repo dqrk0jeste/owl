@@ -83,16 +83,21 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
   wlr_scene_node_set_enabled(&toplevel->titlebar.tree->node, true);
   wlr_scene_rect_set_size(toplevel->titlebar.base, width, server.config->titlebar_height);
 
-  float *color = toplevel == server.focused_toplevel
+  struct mwc_color color = toplevel == server.focused_toplevel
     ? server.config->titlebar_color_active
     : server.config->titlebar_color_inactive;
-  wlr_scene_rect_set_color(toplevel->titlebar.base, color);
+
+  float wlr_color[4];
+  mwc_color_to_wlr_color(color, wlr_color);
+  wlr_scene_rect_set_color(toplevel->titlebar.base, wlr_color);
 
   if(toplevel->titlebar.close_button != NULL) {
-    float *color = toplevel == server.focused_toplevel
+    color = toplevel == server.focused_toplevel
       ? server.config->titlebar_close_button_color_active
       : server.config->titlebar_close_button_color_inactive;
-    wlr_scene_rect_set_color(toplevel->titlebar.close_button, color);
+
+    mwc_color_to_wlr_color(color, wlr_color);
+    wlr_scene_rect_set_color(toplevel->titlebar.close_button, wlr_color);
 
     uint32_t x = server.config->titlebar_close_button_left
       ? server.config->titlebar_close_button_padding
@@ -117,12 +122,7 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
 
     wlr_scene_node_set_position(&toplevel->titlebar.title->scene_buffer->node, x, y);
 
-    int32_t free_width = width;
-    if(server.config->titlebar_center_title) {
-      free_width -= x;
-    } else {
-      free_width -= server.config->titlebar_title_padding;
-    }
+    int32_t free_width = width - x;
     if(server.config->titlebar_include_close_button) {
       free_width -= server.config->titlebar_close_button_size + 2 * server.config->titlebar_close_button_padding;
     }
@@ -155,12 +155,15 @@ toplevel_draw_borders(struct mwc_toplevel *toplevel) {
   uint32_t border_radius = server.config->border_radius;
   enum corner_location border_radius_location = server.config->border_radius_location;
 
-  float *border_color = toplevel == server.focused_toplevel
+  struct mwc_color color = toplevel == server.focused_toplevel
     ? server.config->active_border_color
     : server.config->inactive_border_color;
 
+  float wlr_color[4];
+  mwc_color_to_wlr_color(color, wlr_color);
+
   if(toplevel->border == NULL) {
-    toplevel->border = wlr_scene_rect_create(toplevel->scene_tree, 0, 0, border_color);
+    toplevel->border = wlr_scene_rect_create(toplevel->scene_tree, 0, 0, wlr_color);
     wlr_scene_node_lower_to_bottom(&toplevel->border->node);
 
     int32_t x, y;
@@ -184,7 +187,7 @@ toplevel_draw_borders(struct mwc_toplevel *toplevel) {
   };
   wlr_scene_rect_set_clipped_region(toplevel->border, clipped_region);
 
-  wlr_scene_rect_set_color(toplevel->border, border_color);
+  wlr_scene_rect_set_color(toplevel->border, wlr_color);
 }
 
 struct iter_scene_buffer_apply_effects_args {
@@ -421,11 +424,13 @@ toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
   };
 
   if(toplevel->shadow == NULL) {
+    float wlr_color[4];
+    mwc_color_to_wlr_color(server.config->shadows_color, wlr_color);
     toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
                                                shadow_box.width, shadow_box.height,
                                                server.config->border_radius,
                                                server.config->shadows_blur,
-                                               server.config->shadows_color);
+                                               wlr_color);
     wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
     wlr_scene_node_set_position(&toplevel->shadow->node,
                                 x + server.config->shadows_position.x,

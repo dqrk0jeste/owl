@@ -2,7 +2,6 @@
 
 #include "helpers.h"
 #include "mwc.h"
-#include "pixman.h"
 
 #include <scenefx/types/fx/blur_data.h>
 #include <scenefx/types/fx/corner_location.h>
@@ -141,8 +140,8 @@ struct mwc_config {
 
   /* general toplevel and layout stuff */
   uint32_t toplevel_minimum_needed_width;
-  float inactive_border_color[4];
-  float active_border_color[4];
+  struct mwc_color inactive_border_color;
+  struct mwc_color active_border_color;
   double inactive_opacity;
   double active_opacity;
   bool apply_opacity_when_fullscreen;
@@ -161,7 +160,7 @@ struct mwc_config {
     int32_t x;
     int32_t y;
   } shadows_position;
-  float shadows_color[4];
+  struct mwc_color shadows_color;
   double shadows_blur;
 
   uint32_t master_count;
@@ -171,20 +170,20 @@ struct mwc_config {
 
   /* titlebar */
   uint32_t titlebar_height;
-  float titlebar_color_active[4];
-  float titlebar_color_inactive[4];
+  struct mwc_color titlebar_color_active;
+  struct mwc_color titlebar_color_inactive;
   bool titlebar_include_close_button;
   uint32_t titlebar_close_button_size;
   uint32_t titlebar_close_button_padding;
   bool titlebar_close_button_square;
   bool titlebar_close_button_left;
-  float titlebar_close_button_color_active[4];
-  float titlebar_close_button_color_inactive[4];
+  struct mwc_color titlebar_close_button_color_active;
+  struct mwc_color titlebar_close_button_color_inactive;
   bool titlebar_include_title;
   bool titlebar_center_title;
   /* only has effect if not centered */
   uint32_t titlebar_title_padding;
-  pixman_color_t titlebar_title_color;
+  struct mwc_color titlebar_title_color;
   /* will be generated from the name specified by `titlebar_title_font`, may be NULL */
   struct fcft_font *font;
 
