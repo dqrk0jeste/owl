@@ -827,7 +827,10 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
   } else if(strcmp(keyword, "titlebar_close_button_padding") == 0) {
     if(arg_count < 1) goto invalid;
 
-    c->titlebar_close_button_padding = atoi(args[0]);
+    c->titlebar_close_button_padding_left = atoi(args[0]);
+    c->titlebar_close_button_padding_right = arg_count > 1
+      ? atoi(args[1])
+      : c->titlebar_close_button_padding_left;
   } else if(strcmp(keyword, "titlebar_close_button_shape") == 0) {
     if(arg_count < 1) goto invalid;
 
@@ -855,7 +858,10 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
   } else if(strcmp(keyword, "titlebar_title_padding") == 0) {
     if(arg_count < 1) goto invalid;
 
-    c->titlebar_title_padding = atoi(args[0]);
+    c->titlebar_title_padding_left = atoi(args[0]);
+    c->titlebar_title_padding_right = arg_count > 1
+      ? atoi(args[1])
+      : c->titlebar_title_padding_left;
   } else if(strcmp(keyword, "titlebar_title_color") == 0) {
     if(arg_count < 1) goto invalid;
 
@@ -1087,10 +1093,9 @@ config_set_default_needed_params(struct mwc_config *c) {
 
   c->toplevel_minimum_needed_width =
     c->decorations == MWC_DECORATIONS_SERVER_SIDE && c->titlebar_include_close_button
-      ? c->titlebar_close_button_size + 2 * c->titlebar_close_button_padding
-      : 0;
-
-  c->toplevel_minimum_needed_width = max(c->toplevel_minimum_needed_width, 10);
+      ? c->titlebar_close_button_size
+        + c->titlebar_close_button_padding_left + c->titlebar_close_button_padding_right
+      : 10;
 }
 
 extern struct mwc_server server;

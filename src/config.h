@@ -174,15 +174,16 @@ struct mwc_config {
   struct mwc_color titlebar_color_inactive;
   bool titlebar_include_close_button;
   uint32_t titlebar_close_button_size;
-  uint32_t titlebar_close_button_padding;
+  uint32_t titlebar_close_button_padding_left;
+  uint32_t titlebar_close_button_padding_right;
   bool titlebar_close_button_square;
   bool titlebar_close_button_left;
   struct mwc_color titlebar_close_button_color_active;
   struct mwc_color titlebar_close_button_color_inactive;
   bool titlebar_include_title;
   bool titlebar_center_title;
-  /* only has effect if not centered */
-  uint32_t titlebar_title_padding;
+  uint32_t titlebar_title_padding_left;
+  uint32_t titlebar_title_padding_right;
   struct mwc_color titlebar_title_color;
   /* will be generated from the name specified by `titlebar_title_font`, may be NULL */
   struct fcft_font *font;

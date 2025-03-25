@@ -1,1 +1,3 @@
 - fix activation protocol activating a thing on another workspace
+- why does wlr_buffer_unlock sometimes segfault
+- add some contrains to titlebar params

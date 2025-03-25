@@ -75,7 +75,6 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
   uint32_t width, height;
   toplevel_get_current_buffer_size(toplevel, &width, &height);
 
-
   if(toplevel->titlebar.tree == NULL) {
     toplevel_create_titlebar(toplevel, width, height);
   }
@@ -100,31 +99,37 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     wlr_scene_rect_set_color(toplevel->titlebar.close_button, wlr_color);
 
     uint32_t x = server.config->titlebar_close_button_left
-      ? server.config->titlebar_close_button_padding
-      : width - server.config->titlebar_close_button_padding - server.config->titlebar_close_button_size;
+      ? server.config->titlebar_close_button_padding_left
+      : width - server.config->titlebar_close_button_padding_right - server.config->titlebar_close_button_size;
     uint32_t y = (server.config->titlebar_height - server.config->titlebar_close_button_size) / 2;
 
     wlr_scene_node_set_position(&toplevel->titlebar.close_button->node, x, y);
   }
 
   if(toplevel->titlebar.title != NULL) {
-    uint32_t x, y;
-    if(server.config->titlebar_center_title) {
-      x = (width - toplevel->titlebar.title->width) / 2;
-    } else {
-      x = server.config->titlebar_title_padding;
-      if(server.config->titlebar_close_button_left) {
-        x += server.config->titlebar_close_button_padding + server.config->titlebar_close_button_size;
-      }
+    uint32_t left_pad = server.config->titlebar_title_padding_left;
+    if(server.config->titlebar_include_close_button && server.config->titlebar_close_button_left) {
+      left_pad += server.config->titlebar_close_button_padding_left
+        + server.config->titlebar_close_button_size
+        + server.config->titlebar_close_button_padding_right;
     }
 
-    y = (server.config->titlebar_height - toplevel->titlebar.title->height ) / 2;
+    int32_t x, y;
+    if(server.config->titlebar_center_title) {
+      x = max(((int32_t)width - (int32_t)toplevel->titlebar.title->width) / 2, (int32_t)left_pad);
+    } else {
+      x = left_pad;
+    }
+
+    y = ((int32_t)server.config->titlebar_height - (int32_t)toplevel->titlebar.title->height) / 2;
 
     wlr_scene_node_set_position(&toplevel->titlebar.title->scene_buffer->node, x, y);
 
-    int32_t free_width = width - x;
-    if(server.config->titlebar_include_close_button) {
-      free_width -= server.config->titlebar_close_button_size + 2 * server.config->titlebar_close_button_padding;
+    int32_t free_width = (int32_t)width - x - (int32_t)server.config->titlebar_title_padding_right;
+    if(server.config->titlebar_include_close_button && !server.config->titlebar_close_button_left) {
+      free_width -= (int32_t)server.config->titlebar_close_button_size
+        + (int32_t)server.config->titlebar_close_button_padding_left
+        + (int32_t)server.config->titlebar_close_button_padding_right;
     }
 
     if(free_width <= 0) {
@@ -134,12 +139,13 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
       const struct wlr_fbox box = {
         .x = 0.0,
         .y = 0.0,
-        .width = free_width,
+        .width = min(free_width, toplevel->titlebar.title->width),
         .height = toplevel->titlebar.title->height,
       };
       wlr_scene_buffer_set_source_box(toplevel->titlebar.title->scene_buffer, &box);
       wlr_scene_buffer_set_dest_size(toplevel->titlebar.title->scene_buffer,
-                                     free_width, toplevel->titlebar.title->height);
+                                     min(free_width, toplevel->titlebar.title->width),
+                                     toplevel->titlebar.title->height);
     }
   }
 }
