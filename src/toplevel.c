@@ -944,6 +944,9 @@ focus_toplevel(struct mwc_toplevel *toplevel) {
   struct mwc_toplevel *prev_toplevel = server.focused_toplevel;
   if(prev_toplevel == toplevel) return;
 
+  /* we change the workspace if needed, this is primarly because of the activation protocol */
+  change_workspace(toplevel->workspace, true);
+
   if(prev_toplevel != NULL) {
     wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
     wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);

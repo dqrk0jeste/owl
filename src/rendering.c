@@ -98,10 +98,11 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     mwc_color_to_wlr_color(color, wlr_color);
     wlr_scene_rect_set_color(toplevel->titlebar.close_button, wlr_color);
 
-    uint32_t x = server.config->titlebar_close_button_left
+    int32_t x = server.config->titlebar_close_button_left
       ? server.config->titlebar_close_button_padding_left
-      : width - server.config->titlebar_close_button_padding_right - server.config->titlebar_close_button_size;
-    uint32_t y = (server.config->titlebar_height - server.config->titlebar_close_button_size) / 2;
+      : (int32_t)width - (int32_t)server.config->titlebar_close_button_padding_right
+        - (int32_t)server.config->titlebar_close_button_size;
+    int32_t y = ((int32_t)server.config->titlebar_height - (int32_t)server.config->titlebar_close_button_size) / 2;
 
     wlr_scene_node_set_position(&toplevel->titlebar.close_button->node, x, y);
   }

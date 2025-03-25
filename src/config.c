@@ -1042,34 +1042,28 @@ config_set_default_needed_params(struct mwc_config *c) {
    * we set their values to some default value.*/
   if(c->keyboard_rate == 0) {
     c->keyboard_rate = 150;
-    wlr_log(WLR_INFO,
-            "keyboard_rate not specified. using default %ud", c->keyboard_rate);
+    wlr_log(WLR_INFO, "keyboard_rate not specified. using default %ud", c->keyboard_rate);
   } 
   if(c->keyboard_delay == 0) {
     c->keyboard_delay = 50;
-    wlr_log(WLR_INFO,
-            "keyboard_delay not specified. using default %ud", c->keyboard_delay);
+    wlr_log(WLR_INFO, "keyboard_delay not specified. using default %ud", c->keyboard_delay);
   }
   if(c->cursor_size == 0) {
     c->cursor_size = 24;
-    wlr_log(WLR_INFO,
-            "cursor_size not specified. using default %ud", c->cursor_size);
+    wlr_log(WLR_INFO, "cursor_size not specified. using default %ud", c->cursor_size);
   }
   if(c->master_count == 0) {
     c->master_count = 1;
-    wlr_log(WLR_INFO,
-            "master_count not specified. using default %lf", c->master_ratio);
+    wlr_log(WLR_INFO, "master_count not specified. using default %lf", c->master_ratio);
   }
   if(c->master_ratio == 0) {
     /* here we evenly space toplevels if there is no master_ratio specified */
     c->master_ratio = c->master_count / (double)(c->master_count + 1);
-    wlr_log(WLR_INFO,
-            "master_ratio not specified. using default %lf", c->master_ratio);
+    wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
   }
   if(c->animations && c->animation_duration == 0) {
     c->animation_duration = 500;
-    wlr_log(WLR_INFO,
-            "animation_duration not specified. using default %ud", c->animation_duration);
+    wlr_log(WLR_INFO, "animation_duration not specified. using default %ud", c->animation_duration);
   }
   if(c->animations && c->animation_curve[0] == 0 && c->animation_curve[1] == 0
      && c->animation_curve[2] == 0 && c->animation_curve[3] == 0) {
@@ -1078,17 +1072,20 @@ config_set_default_needed_params(struct mwc_config *c) {
   }
   if(c->inactive_opacity == 0) {
     c->inactive_opacity = 1.0;
-    wlr_log(WLR_INFO,
-            "inactive_opacity not specified. using default %lf", c->inactive_opacity);
+    wlr_log(WLR_INFO, "inactive_opacity not specified. using default %lf", c->inactive_opacity);
   }
   if(c->active_opacity == 0) {
     c->active_opacity = 1.0;
-    wlr_log(WLR_INFO,
-            "active_opacity not specified. using default %lf", c->active_opacity);
+    wlr_log(WLR_INFO, "active_opacity not specified. using default %lf", c->active_opacity);
   }
   if(c->border_radius_location == 0) {
     c->border_radius_location = CORNER_LOCATION_ALL;
     wlr_log(WLR_INFO, "border_radius_location not specified. using all");
+  }
+  if(c->titlebar_close_button_size > c->titlebar_height) {
+    c->titlebar_close_button_size = c->titlebar_height;
+    wlr_log(WLR_INFO, "titlebar_close_button_size (%u) larger than titlebar_height (%u). setting it to %u",
+            c->titlebar_close_button_size, c->titlebar_height, c->titlebar_close_button_size);
   }
 
   c->toplevel_minimum_needed_width =

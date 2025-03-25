@@ -1,6 +1,7 @@
 build/*
 build
 logs
+todo.txt
 
 install.sh
 .cache
