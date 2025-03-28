@@ -4,6 +4,7 @@
 #include "config.h"
 #include "toplevel.h"
 #include "wlr/util/box.h"
+#include "wlr/util/log.h"
 
 #include <stdint.h>
 #include <wayland-util.h>
@@ -181,26 +182,41 @@ layout_find_closest_tiled_toplevel(struct mwc_workspace *workspace, bool master,
 }
 
 struct mwc_toplevel *
-layout_toplevel_at(struct mwc_workspace *workspace, uint32_t x, uint32_t y) {
+layout_toplevel_at(struct mwc_workspace *workspace, int32_t x, int32_t y) {
   struct mwc_toplevel *t;
   wl_list_for_each(t, &workspace->masters, link) {
-    uint32_t decorations_left = t->link.prev == &workspace->masters
-      ? server.config->outer_gaps + server.config->border_width
-      : server.config->inner_gaps + server.config->border_width;
+    uint32_t width, height;
+    toplevel_get_current_container_size(t, &width, &height);
 
-    uint32_t decorations_right = wl_list_empty(&workspace->slaves) 
-      ? server.config->outer_gaps + server.config->border_width
-      : server.config->inner_gaps + server.config->border_width;
+    int32_t rx, ry;
+    toplevel_get_container_start_position(t, &rx, &ry);
 
-    uint32_t decorations_top = server.config->outer_gaps + server.config->border_width;
-
-    uint32_t decorations_bottom = server.config->outer_gaps + server.config->border_width;
+    if(&t->link == workspace->masters.next) {
+      rx -= server.config->outer_gaps;
+      ry -= server.config->outer_gaps;
+      if(&t->link == workspace->masters.prev) {
+        width += 2 * server.config->outer_gaps;
+      } else {
+        width += server.config->outer_gaps + server.config->inner_gaps;
+      }
+      height += 2 * server.config->outer_gaps;
+    } else if(&t->link == workspace->masters.prev && wl_list_empty(&workspace->slaves)) {
+      rx -= server.config->inner_gaps;
+      ry -= server.config->outer_gaps;
+      width += server.config->inner_gaps + server.config->outer_gaps;
+      height += 2 * server.config->outer_gaps;
+    } else {
+      rx -= server.config->inner_gaps;
+      ry -= server.config->outer_gaps;
+      width += 2 * server.config->inner_gaps;
+      height += 2 * server.config->outer_gaps;
+    }
 
     struct wlr_box box = {
-      .x = t->current.x - decorations_left,
-      .y = t->current.y - decorations_top,
-      .width = t->current.width + decorations_left + decorations_right + 1,
-      .height = t->current.height + decorations_top + decorations_bottom + 1,
+      .x = t->current.x + rx,
+      .y = t->current.y + ry,
+      .width = width,
+      .height = height,
     };
 
     if(wlr_box_contains_point(&box, x, y)) {
@@ -209,22 +225,38 @@ layout_toplevel_at(struct mwc_workspace *workspace, uint32_t x, uint32_t y) {
   }
 
   wl_list_for_each(t, &workspace->slaves, link) {
-    uint32_t decorations_left = server.config->inner_gaps + server.config->border_width;
-    uint32_t decorations_right = server.config->outer_gaps + server.config->border_width;
+    uint32_t width, height;
+    toplevel_get_current_container_size(t, &width, &height);
 
-    uint32_t decorations_top = t->link.prev == &workspace->slaves
-      ? server.config->outer_gaps + server.config->border_width
-      : server.config->inner_gaps + server.config->border_width;
+    int32_t rx, ry;
+    toplevel_get_container_start_position(t, &rx, &ry);
 
-    uint32_t decorations_bottom = t->link.next == &workspace->slaves
-      ? server.config->outer_gaps + server.config->border_width
-      : server.config->inner_gaps + server.config->border_width;
+    if(&t->link == workspace->slaves.next) {
+      rx -= server.config->inner_gaps;
+      ry -= server.config->outer_gaps;
+      width += server.config->inner_gaps + server.config->outer_gaps;
+      if(&t->link == workspace->slaves.prev) {
+        height += 2 * server.config->outer_gaps;
+      } else {
+        height += server.config->inner_gaps + server.config->outer_gaps;
+      }
+    } else if(&t->link == workspace->slaves.prev) {
+      rx -= server.config->inner_gaps;
+      ry -= server.config->inner_gaps;
+      width += server.config->inner_gaps + server.config->outer_gaps;
+      height += server.config->inner_gaps + server.config->outer_gaps;
+    } else {
+      rx -= server.config->inner_gaps;
+      ry -= server.config->inner_gaps;
+      width += server.config->inner_gaps + server.config->outer_gaps;
+      height += 2 * server.config->inner_gaps;
+    }
 
     struct wlr_box box = {
-      .x = t->current.x - decorations_left,
-      .y = t->current.y - decorations_top,
-      .width = t->current.width + decorations_left + decorations_right + 1,
-      .height = t->current.height + decorations_top + decorations_bottom + 1,
+      .x = t->current.x + rx,
+      .y = t->current.y + ry,
+      .width = width,
+      .height = height,
     };
 
     if(wlr_box_contains_point(&box, x, y)) {

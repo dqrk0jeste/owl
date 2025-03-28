@@ -1095,8 +1095,7 @@ toplevel_get_current_container_size(struct mwc_toplevel *toplevel, uint32_t *wid
 }
 
 uint32_t
-toplevel_get_closest_corner(struct wlr_cursor *cursor,
-                            struct mwc_toplevel *toplevel) {
+toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *toplevel) {
   uint32_t toplevel_x = X(toplevel);
   uint32_t toplevel_y = Y(toplevel);
 
@@ -1206,3 +1205,4 @@ xdg_activation_handle_request(struct wl_listener *listener, void *data) {
 
   focus_toplevel(toplevel);
 }
+

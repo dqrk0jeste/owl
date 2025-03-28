@@ -81,6 +81,9 @@ toplevel_get_container_start_position(struct mwc_toplevel *toplevel, int32_t *x,
 void
 toplevel_get_current_container_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 
+struct wlr_box
+toplevel_get_current_container_box(struct mwc_toplevel *toplevel);
+
 void
 toplevel_get_current_buffer_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 

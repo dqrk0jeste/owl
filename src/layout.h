@@ -33,5 +33,5 @@ layout_find_closest_tiled_toplevel(struct mwc_workspace *workspace, bool master,
                                    enum mwc_direction side);
 
 struct mwc_toplevel *
-layout_toplevel_at(struct mwc_workspace *workspace, uint32_t x, uint32_t y);
+layout_toplevel_at(struct mwc_workspace *workspace, int32_t x, int32_t y);
 
