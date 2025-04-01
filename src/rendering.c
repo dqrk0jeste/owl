@@ -394,8 +394,6 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
 }
 
 void toplevel_draw(struct mwc_toplevel *toplevel) {
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-
     if(server.config->border_width > 0) {
         toplevel_draw_border(toplevel);
     }

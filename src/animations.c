@@ -162,6 +162,10 @@ fx_translate_animation_create(struct wlr_box start, struct wlr_box end, uint32_t
 
     animation->frame_duration = get_fastest_output_refresh_ms();
 
+	animation->current = start;
+
+    // callback(animation->current, animation->done, user_data);
+
     animation->timer = wl_event_loop_add_timer(wl_display_get_event_loop(manager.display),
                                                timer_animation_update, animation);
     wl_event_source_timer_update(animation->timer, animation->frame_duration);

@@ -178,8 +178,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         layout_set_pending_state(toplevel->workspace);
     }
 
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
-
     // we are keeping toplevels scene_tree in this free user data field, it is used in
     // assigning parents to popups, FIXME: this can be done more cleverly, for
     // sure
