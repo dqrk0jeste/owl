@@ -178,17 +178,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         layout_set_pending_state(toplevel->workspace);
     }
 
-    // output at 0, 0 would get this toplevel flashed if its on some other output,
-    // so we move it to its own, which will cause it to send frame event which
-    // will place it where it belongs */
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->workspace->output->usable_area.x,
-                                toplevel->workspace->output->usable_area.y);
-
-    // this often breaks the toplevel, but what can i do about it?
-    if(toplevel->workspace->fullscreen_toplevel != NULL) {
-        wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
-    }
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
 
     // we are keeping toplevels scene_tree in this free user data field, it is used in
     // assigning parents to popups, FIXME: this can be done more cleverly, for
@@ -482,8 +472,7 @@ toplevel_set_pending_state(struct mwc_toplevel *toplevel,
 
     toplevel->should_animate_next =
         server.config->animations
-        && toplevel != server.grabbed_toplevel
-        && !wlr_box_equal(&toplevel->container_current, &toplevel->container_pending);
+        && toplevel != server.grabbed_toplevel;
 
     if(toplevel->toplevel_current.width == toplevel->toplevel_pending.width
             && toplevel->toplevel_current.height == toplevel->toplevel_pending.height) {
@@ -503,7 +492,6 @@ toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) 
 
     wlr_scene_node_set_position(&toplevel->scene_tree->node, current.x, current.y);
 
-    toplevel_draw_decorations(toplevel);
     if(done) {
         toplevel->animation = NULL;
     }
@@ -544,8 +532,7 @@ toplevel_floating_set_own_size(struct mwc_toplevel *toplevel) {
 
     toplevel->should_animate_next =
         server.config->animations
-        && toplevel != server.grabbed_toplevel
-        && !wlr_box_equal(&toplevel->container_current, &toplevel->container_pending);
+        && toplevel != server.grabbed_toplevel;
 
     toplevel->configure_serial = wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     toplevel->dirty = true;

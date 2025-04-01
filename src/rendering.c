@@ -24,7 +24,7 @@
 
 extern struct mwc_server server;
 
-void
+static void
 toplevel_create_titlebar(struct mwc_toplevel *toplevel, uint32_t width, uint32_t height) {
     assert(toplevel->titlebar.tree == NULL);
 
@@ -64,7 +64,7 @@ toplevel_create_titlebar(struct mwc_toplevel *toplevel, uint32_t width, uint32_t
     wlr_scene_node_lower_to_bottom(&toplevel->titlebar.tree->node);
 }
 
-void
+static void
 toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     if(toplevel->titlebar.tree != NULL && toplevel->fullscreen) {
         wlr_scene_node_set_enabled(&toplevel->titlebar.tree->node, false);
@@ -150,8 +150,8 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     }
 }
 
-void
-toplevel_draw_borders(struct mwc_toplevel *toplevel) {
+static void
+toplevel_draw_border(struct mwc_toplevel *toplevel) {
     if(toplevel->border != NULL && toplevel->fullscreen) {
         wlr_scene_node_set_enabled(&toplevel->border->node, false);
         return;
@@ -199,6 +199,81 @@ toplevel_draw_borders(struct mwc_toplevel *toplevel) {
     wlr_scene_rect_set_color(toplevel->border, wlr_color);
 }
 
+static void
+toplevel_apply_clip(struct mwc_toplevel *toplevel) {
+    uint32_t width, height;
+    toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
+
+    struct wlr_box geometry = toplevel_get_geometry(toplevel);
+    struct wlr_box clip_box = (struct wlr_box){
+        .x = geometry.x,
+        .y = geometry.y,
+        .width = width,
+        .height = height,
+    };
+
+    wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+
+    struct wlr_scene_node *n;
+    wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+        struct mwc_something *view = n->data;
+        if(view != NULL && view->type == MWC_POPUP) {
+            wlr_scene_subsurface_tree_set_clip(n, NULL);
+        }
+    }
+}
+
+static void
+toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
+    if(toplevel->shadow != NULL && toplevel->fullscreen) {
+        wlr_scene_node_set_enabled(&toplevel->shadow->node, false);
+        return;
+    }
+
+    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
+    struct wlr_box container_box = toplevel_toplevel_box_to_container_box(toplevel_box,
+                                                                          true, toplevel->titlebar.has);
+
+    // clipped region takes shadow relative coords, so we translate everything by its position
+    container_box.x -= toplevel_box.x + server.config->shadows_position.x;
+    container_box.y -= toplevel_box.y + server.config->shadows_position.y;
+
+    struct wlr_box shadow_box = {
+        .x = 0,
+        .y = 0,
+        .width = container_box.width + server.config->shadows_size,
+        .height = container_box.height + server.config->shadows_size,
+    };
+
+    struct wlr_box intersection_box;
+    wlr_box_intersection(&intersection_box, &container_box, &shadow_box);
+
+    struct clipped_region clipped_region = {
+        .area = intersection_box,
+        .corner_radius = max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0),
+        .corners = server.config->border_radius_location,
+    };
+
+    if(toplevel->shadow == NULL) {
+        float wlr_color[4];
+        mwc_color_to_wlr_color(server.config->shadows_color, wlr_color);
+        toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
+                                                   shadow_box.width, shadow_box.height,
+                                                   server.config->border_radius,
+                                                   server.config->shadows_blur,
+                                                   wlr_color);
+        wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
+        wlr_scene_node_set_position(&toplevel->shadow->node,
+                                    container_box.x + server.config->shadows_position.x,
+                                    container_box.y + server.config->shadows_position.y);
+    }
+
+    wlr_scene_node_set_enabled(&toplevel->shadow->node, true);
+
+    wlr_scene_shadow_set_size(toplevel->shadow, shadow_box.width, shadow_box.height);
+    wlr_scene_shadow_set_clipped_region(toplevel->shadow, clipped_region);
+}
+
 struct iter_scene_buffer_apply_effects_args {
     int32_t root_x;
     int32_t root_y;
@@ -212,7 +287,7 @@ struct iter_scene_buffer_apply_effects_args {
     bool has_titlebar;
 };
 
-void
+static void
 iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, void *data) {
     struct iter_scene_buffer_apply_effects_args *args = data;
 
@@ -279,8 +354,10 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
     }
 }
 
-void
+static void
 toplevel_apply_effects(struct mwc_toplevel *toplevel) {
+    toplevel_apply_clip(toplevel);
+
     double opacity;
     if(!toplevel->fullscreen || server.config->apply_opacity_when_fullscreen) {
         opacity = toplevel == server.focused_toplevel
@@ -316,113 +393,53 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
                                    iter_scene_buffer_apply_effects, &args);
 }
 
-void
-toplevel_apply_clip(struct mwc_toplevel *toplevel) {
-    uint32_t width, height;
-    toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
+void toplevel_draw(struct mwc_toplevel *toplevel) {
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
 
-    struct wlr_box geometry = toplevel_get_geometry(toplevel);
-    struct wlr_box clip_box = (struct wlr_box){
-        .x = geometry.x,
-        .y = geometry.y,
-        .width = width,
-        .height = height,
-    };
-
-    wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
-
-    struct wlr_scene_node *n;
-    wl_list_for_each(n, &toplevel->scene_tree->children, link) {
-        struct mwc_something *view = n->data;
-        if(view != NULL && view->type == MWC_POPUP) {
-            wlr_scene_subsurface_tree_set_clip(n, NULL);
-        }
-    }
-}
-
-void
-toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
-    if(toplevel->shadow != NULL && toplevel->fullscreen) {
-        wlr_scene_node_set_enabled(&toplevel->shadow->node, false);
-        return;
-    }
-
-    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
-    struct wlr_box container_box = toplevel_toplevel_box_to_container_box(toplevel_box,
-                                                                          true, toplevel->titlebar.has);
-
-    // clipped region takes shadow relative coords, so we translate everything by its position
-    container_box.x -= toplevel_box.x + server.config->shadows_position.x;
-    container_box.y -= toplevel_box.y + server.config->shadows_position.y;
-
-    struct wlr_box shadow_box = {
-        .x = 0,
-        .y = 0,
-        .width = container_box.width + server.config->shadows_size,
-        .height = container_box.height + server.config->shadows_size,
-    };
-
-    struct wlr_box intersection_box;
-    wlr_box_intersection(&intersection_box, &container_box, &shadow_box);
-
-    struct clipped_region clipped_region = {
-        .area = intersection_box,
-        .corner_radius = max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0),
-        .corners = server.config->border_radius_location,
-    };
-
-    if(toplevel->shadow == NULL) {
-        float wlr_color[4];
-        mwc_color_to_wlr_color(server.config->shadows_color, wlr_color);
-        toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
-                                                   shadow_box.width, shadow_box.height,
-                                                   server.config->border_radius,
-                                                   server.config->shadows_blur,
-                                                   wlr_color);
-        wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
-        wlr_scene_node_set_position(&toplevel->shadow->node,
-                                    container_box.x + server.config->shadows_position.x,
-                                    container_box.y + server.config->shadows_position.y);
-    }
-
-    wlr_scene_node_set_enabled(&toplevel->shadow->node, true);
-
-    wlr_scene_shadow_set_size(toplevel->shadow, shadow_box.width, shadow_box.height);
-    wlr_scene_shadow_set_clipped_region(toplevel->shadow, clipped_region);
-}
-
-// void
-// workspace_draw_frame(struct mwc_workspace *workspace) {
-//     if(server.grabbed_toplevel != NULL) {
-//         toplevel_draw_frame(server.grabbed_toplevel);
-//     }
-//
-//     struct mwc_toplevel *t;
-//     if(workspace->fullscreen_toplevel != NULL) {
-//         toplevel_draw_frame(workspace->fullscreen_toplevel);
-//     } else {
-//         wl_list_for_each(t, &workspace->floating_toplevels, link) {
-//             toplevel_draw_frame(t);
-//         }
-//         wl_list_for_each(t, &workspace->masters, link) {
-//             toplevel_draw_frame(t);
-//         }
-//         wl_list_for_each(t, &workspace->slaves, link) {
-//             toplevel_draw_frame(t);
-//         }
-//     }
-// }
-
-void
-toplevel_draw_decorations(struct mwc_toplevel *toplevel) {
     if(server.config->border_width > 0) {
-        toplevel_draw_borders(toplevel);
+        toplevel_draw_border(toplevel);
     }
-    // if(server.config->shadows) {
-    //     toplevel_draw_shadow(toplevel);
-    // }
     if(toplevel->titlebar.has) {
         toplevel_draw_titlebar(toplevel);
+    }
+    if(server.config->shadows) {
+        toplevel_draw_shadow(toplevel);
+    }
+    toplevel_apply_clip(toplevel);
+    toplevel_apply_effects(toplevel);
+}
+
+static bool
+toplevel_is_in_box(struct mwc_toplevel *toplevel, struct wlr_box *box) {
+    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
+
+    struct wlr_box dest;
+    return wlr_box_intersection(&dest, &toplevel_box, box);
+}
+
+void
+output_draw(struct mwc_output *output) {
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+
+    struct mwc_output *iter_output;
+    wl_list_for_each(iter_output, &server.outputs, link) {
+        struct mwc_toplevel *iter_toplevel;
+        wl_list_for_each(iter_toplevel, &iter_output->active_workspace->masters, link) {
+            if(toplevel_is_in_box(iter_toplevel, &output_box)) {
+                toplevel_draw(iter_toplevel);
+            }
+        }
+        wl_list_for_each(iter_toplevel, &iter_output->active_workspace->slaves, link) {
+            if(toplevel_is_in_box(iter_toplevel, &output_box)) {
+                toplevel_draw(iter_toplevel);
+            }
+        }
+        wl_list_for_each(iter_toplevel, &iter_output->active_workspace->floating_toplevels, link) {
+            if(toplevel_is_in_box(iter_toplevel, &output_box)) {
+                toplevel_draw(iter_toplevel);
+            }
+        }
     }
 }
 

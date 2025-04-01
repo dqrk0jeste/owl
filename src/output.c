@@ -399,7 +399,7 @@ output_handle_frame(struct wl_listener *listener, void *data) {
     // generally at the output's refresh rate
     struct mwc_output *output = wl_container_of(listener, output, frame);
 
-    // wlr_scene_output_for_each_buffer(output->scene_output, NULL, NULL);
+    output_draw(output);
 
     wlr_scene_output_commit(output->scene_output, NULL);
 
