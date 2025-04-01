@@ -203,12 +203,13 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         .height = 1,
     };
 
+    // FIXME
     toplevel_commit(toplevel);
 }
 
 void
 toplevel_handle_unmap(struct wl_listener *listener, void *data) {
-    /* called when the surface is unmapped, and should no longer be shown. */
+    // called when the surface is unmapped, and should no longer be shown
     struct mwc_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
 
     struct mwc_workspace *workspace = toplevel->workspace;

@@ -166,8 +166,8 @@ toplevel_draw_border(struct mwc_toplevel *toplevel) {
         wlr_scene_node_lower_to_bottom(&toplevel->border->node);
 
         // scene node relative coords of the container start
-        int32_t x = - server.config->border_width;
-        int32_t y = - server.config->border_width;
+        int32_t x = -server.config->border_width;
+        int32_t y = -server.config->border_width;
         if(toplevel->titlebar.has) {
             y -= server.config->titlebar_height;
         }
@@ -178,13 +178,19 @@ toplevel_draw_border(struct mwc_toplevel *toplevel) {
 
     wlr_scene_node_set_enabled(&toplevel->border->node, true);
 
-    uint32_t width, height;
-    toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
+    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
+    struct wlr_box container_box = toplevel_toplevel_box_to_container_box(toplevel_box, true, toplevel->titlebar.has);
 
-    wlr_scene_rect_set_size(toplevel->border, width + 2 * border_width, height + 2 * border_width);
+    wlr_scene_rect_set_size(toplevel->border, container_box.width, container_box.height);
+
+    uint32_t clipped_width = toplevel_box.width;
+    uint32_t clipped_height = toplevel_box.height;
+    if(toplevel->titlebar.has) {
+        clipped_height += server.config->titlebar_height;
+    }
 
     struct clipped_region clipped_region = {
-        .area = { border_width, border_width, width, height },
+        .area = { border_width, border_width, clipped_width, clipped_height },
         .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
         .corners = border_radius_location,
     };
@@ -230,13 +236,37 @@ toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
         return;
     }
 
+    if(toplevel->shadow == NULL) {
+        float wlr_color[4];
+        mwc_color_to_wlr_color(server.config->shadows_color, wlr_color);
+        toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
+                                                   0, 0,
+                                                   server.config->border_radius,
+                                                   server.config->shadows_blur,
+                                                   wlr_color);
+        wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
+
+        // get the container start position
+        int32_t x = -server.config->border_width;
+        int32_t y = -server.config->border_width;
+        if(toplevel->titlebar.has) {
+            y -= server.config->titlebar_height;
+        }
+        // add the user specified position
+        x += server.config->shadows_position.x;
+        y += server.config->shadows_position.y;
+
+        wlr_scene_node_set_position(&toplevel->shadow->node, x, y);
+    }
+
+    wlr_scene_node_set_enabled(&toplevel->shadow->node, true);
+
     struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
     struct wlr_box container_box = toplevel_toplevel_box_to_container_box(toplevel_box,
                                                                           true, toplevel->titlebar.has);
 
-    // clipped region takes shadow relative coords, so we translate everything by its position
-    container_box.x -= toplevel_box.x + server.config->shadows_position.x;
-    container_box.y -= toplevel_box.y + server.config->shadows_position.y;
+    container_box.x = -server.config->shadows_position.x;
+    container_box.y = -server.config->shadows_position.y;
 
     struct wlr_box shadow_box = {
         .x = 0,
@@ -248,30 +278,12 @@ toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
     struct wlr_box intersection_box;
     wlr_box_intersection(&intersection_box, &container_box, &shadow_box);
 
-    struct clipped_region clipped_region = {
+    wlr_scene_shadow_set_size(toplevel->shadow, shadow_box.width, shadow_box.height);
+    wlr_scene_shadow_set_clipped_region(toplevel->shadow, (struct clipped_region){
         .area = intersection_box,
         .corner_radius = max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0),
         .corners = server.config->border_radius_location,
-    };
-
-    if(toplevel->shadow == NULL) {
-        float wlr_color[4];
-        mwc_color_to_wlr_color(server.config->shadows_color, wlr_color);
-        toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
-                                                   shadow_box.width, shadow_box.height,
-                                                   server.config->border_radius,
-                                                   server.config->shadows_blur,
-                                                   wlr_color);
-        wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
-        wlr_scene_node_set_position(&toplevel->shadow->node,
-                                    container_box.x + server.config->shadows_position.x,
-                                    container_box.y + server.config->shadows_position.y);
-    }
-
-    wlr_scene_node_set_enabled(&toplevel->shadow->node, true);
-
-    wlr_scene_shadow_set_size(toplevel->shadow, shadow_box.width, shadow_box.height);
-    wlr_scene_shadow_set_clipped_region(toplevel->shadow, clipped_region);
+    });
 }
 
 struct iter_scene_buffer_apply_effects_args {
