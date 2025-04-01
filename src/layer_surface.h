@@ -7,17 +7,17 @@
 #include <wlr/types/wlr_layer_shell_v1.h>
 
 struct mwc_layer_surface {
-  struct wl_list link;
-  struct wlr_layer_surface_v1 *wlr_layer_surface;
-  struct wlr_scene_layer_surface_v1 *scene;
+    struct wl_list link;
+    struct wlr_layer_surface_v1 *wlr_layer_surface;
+    struct wlr_scene_layer_surface_v1 *scene;
 
-  struct mwc_something something;
+    struct mwc_something something;
 
-  struct wl_listener map;
-  struct wl_listener unmap;
-  struct wl_listener commit;
-  struct wl_listener new_popup;
-  struct wl_listener destroy;
+    struct wl_listener map;
+    struct wl_listener unmap;
+    struct wl_listener commit;
+    struct wl_listener new_popup;
+    struct wl_listener destroy;
 };
 
 void
@@ -55,4 +55,4 @@ layers_under_fullscreen_set_enabled(struct mwc_output *output, bool enable);
 
 void
 iter_scene_buffer_apply_blur(struct wlr_scene_buffer *buffer,
-                             int sx, int sy, void *data);
+        int sx, int sy, void *data);

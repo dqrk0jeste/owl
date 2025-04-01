@@ -1,9 +1,9 @@
 #include "ipc_shared.h"
 
 enum ipc_event {
-  IPC_ACTIVE_WORKSPACE,
-  IPC_ACTIVE_TOPLEVEL,
-  IPC_EVENT_COUNT,
+    IPC_ACTIVE_WORKSPACE,
+    IPC_ACTIVE_TOPLEVEL,
+    IPC_EVENT_COUNT,
 };
 
 void

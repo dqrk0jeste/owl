@@ -7,23 +7,23 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 
 struct mwc_pointer {
-  struct wlr_pointer *wlr_pointer;
-  const char *name;
-  struct wl_list link;
+    struct wlr_pointer *wlr_pointer;
+    const char *name;
+    struct wl_list link;
 
-  struct wl_listener destroy;
+    struct wl_listener destroy;
 };
 
 struct mwc_pointer_constraint {
-  struct wlr_pointer_constraint_v1 *wlr_pointer_constraint;
+    struct wlr_pointer_constraint_v1 *wlr_pointer_constraint;
 
-  struct wl_listener destroy;
+    struct wl_listener destroy;
 };
 
 enum mwc_cursor_mode {
-	MWC_CURSOR_PASSTHROUGH,
-	MWC_CURSOR_MOVE,
-	MWC_CURSOR_RESIZE,
+    MWC_CURSOR_PASSTHROUGH,
+    MWC_CURSOR_MOVE,
+    MWC_CURSOR_RESIZE,
 };
 
 void
@@ -40,6 +40,9 @@ server_reset_cursor_mode(void);
 
 void
 cursor_handle_motion(uint32_t time);
+
+struct mwc_something *
+pointer_get_something_under_cursor(void);
 
 void
 pointer_handle_focus(uint32_t time, bool handle_keyboard_focus);

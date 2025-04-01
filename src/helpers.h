@@ -6,11 +6,11 @@
 #include <wlr/util/box.h>
 
 struct vec2 {
-  double x, y;
+    double x, y;
 };
 
 struct mwc_color {
-  uint8_t r, g, b, a;
+    uint8_t r, g, b, a;
 };
 
 void
@@ -24,3 +24,7 @@ mwc_color_to_wlr_color(struct mwc_color color, float dest[static 4]);
 
 void
 mwc_color_to_pixman_color(struct mwc_color color, pixman_color_t *dest);
+
+uint32_t
+timespec_to_ms(struct timespec *ts);
+

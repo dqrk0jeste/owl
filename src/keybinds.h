@@ -7,20 +7,20 @@
 typedef void (*keybind_action_func_t)(void *);
 
 struct keybind {
-  bool initialized;
-  uint32_t modifiers;
-  uint32_t key;
-  keybind_action_func_t action;
-  bool active;
-  keybind_action_func_t stop;
-  void *args;
-  struct wl_list link;
+    bool initialized;
+    uint32_t modifiers;
+    uint32_t key;
+    keybind_action_func_t action;
+    bool active;
+    keybind_action_func_t stop;
+    void *args;
+    struct wl_list link;
 };
 
 bool
 server_handle_keybinds(struct mwc_keyboard *keyboard,
-                       uint32_t keycode,
-                       enum wl_keyboard_key_state state);
+        uint32_t keycode,
+        enum wl_keyboard_key_state state);
 
 bool
 server_handle_mouse_keybinds(uint32_t button, enum wl_pointer_button_state state);
@@ -73,5 +73,3 @@ keybind_focused_toplevel_toggle_floating(void *data);
 void
 keybind_focused_toplevel_toggle_fullscreen(void *data);
 
-void
-keybind_reload_config(void *data);

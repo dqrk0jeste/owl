@@ -7,12 +7,12 @@
 #include <wlr/types/wlr_xdg_shell.h>
 
 struct mwc_popup {
-	struct wlr_xdg_popup *xdg_popup;
-  struct mwc_something something;
+    struct wlr_xdg_popup *xdg_popup;
+    struct mwc_something something;
 
-	struct wlr_scene_tree *scene_tree;
-	struct wl_listener commit;
-	struct wl_listener destroy;
+    struct wlr_scene_tree *scene_tree;
+    struct wl_listener commit;
+    struct wl_listener destroy;
 };
 
 void

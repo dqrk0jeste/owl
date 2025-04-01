@@ -5,10 +5,10 @@
 #include <wlr/types/wlr_scene.h>
 
 struct pixman_buffer {
-	struct wlr_buffer base;
-  pixman_image_t *image;
+    struct wlr_buffer base;
+    pixman_image_t *image;
 
-  uint32_t width, height;
+    uint32_t width, height;
 };
 
 struct pixman_buffer *
@@ -24,12 +24,12 @@ void
 pixman_buffer_fill_solid(struct pixman_buffer *buffer, pixman_color_t *color);
 
 struct text_node {
-  struct pixman_buffer *buffer;
-  struct wlr_scene_buffer *scene_buffer;
+    struct pixman_buffer *buffer;
+    struct wlr_scene_buffer *scene_buffer;
 
-  uint32_t width, height;
+    uint32_t width, height;
 
-  char *text;
+    char *text;
 };
 
 struct text_node *

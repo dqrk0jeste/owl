@@ -23,163 +23,169 @@ extern struct mwc_server server;
 
 static void
 pixman_buffer_handle_destroy(struct wlr_buffer *wlr_buffer) {
-  /* i could not understand when this gets called, so i just clean it up myself */
+    /* i could not understand when this gets called, so i just clean it up myself */
 }
 
 static bool
 pixman_buffer_handle_begin_data_ptr_access(struct wlr_buffer *wlr_buffer,
                                            uint32_t flags, void **data,
                                            uint32_t *format, size_t *stride) {
-  struct pixman_buffer *buffer = wl_container_of(wlr_buffer, buffer, base);
+    struct pixman_buffer *buffer = wl_container_of(wlr_buffer, buffer, base);
 
-  *data = pixman_image_get_data(buffer->image);
-  *stride = pixman_image_get_stride(buffer->image);
-  *format = DRM_FORMAT_ARGB8888;
+    *data = pixman_image_get_data(buffer->image);
+    *stride = pixman_image_get_stride(buffer->image);
+    *format = DRM_FORMAT_ARGB8888;
 
-  return true;
+    return true;
 }
 
 static void
 pixman_buffer_handle_end_data_ptr_access(struct wlr_buffer *wlr_buffer) {
-  /* this space is intentionally left blank */
+    /* this space is intentionally left blank */
 }
 
 static const struct wlr_buffer_impl pixman_buffer_impl = {
-	.destroy = pixman_buffer_handle_destroy,
-	.begin_data_ptr_access = pixman_buffer_handle_begin_data_ptr_access,
-	.end_data_ptr_access = pixman_buffer_handle_end_data_ptr_access,
+    .destroy = pixman_buffer_handle_destroy,
+    .begin_data_ptr_access = pixman_buffer_handle_begin_data_ptr_access,
+    .end_data_ptr_access = pixman_buffer_handle_end_data_ptr_access,
 };
 
 struct pixman_buffer *
 pixman_buffer_create(uint32_t width, uint32_t height) {
-  struct pixman_buffer *buffer = calloc(1, sizeof(*buffer));
+    struct pixman_buffer *buffer = calloc(1, sizeof(*buffer));
 
-  wlr_buffer_init(&buffer->base, &pixman_buffer_impl, width, height);
+    wlr_buffer_init(&buffer->base, &pixman_buffer_impl, width, height);
 
-  buffer->width = width;
-  buffer->height = height;
-  buffer->image = pixman_image_create_bits(PIXMAN_a8r8g8b8, width, height, NULL, 0);
+    buffer->width = width;
+    buffer->height = height;
+    buffer->image = pixman_image_create_bits(PIXMAN_a8r8g8b8, width, height, NULL, 0);
 
-  pixman_region32_t clip;
-  pixman_region32_init_rect(&clip, 0, 0, width, height);
-  pixman_image_set_clip_region32(buffer->image, &clip);
-  pixman_region32_fini(&clip);
+    pixman_region32_t clip;
+    pixman_region32_init_rect(&clip, 0, 0, width, height);
+    pixman_image_set_clip_region32(buffer->image, &clip);
+    pixman_region32_fini(&clip);
 
-  return buffer;
+    return buffer;
 }
 
 void
 pixman_buffer_destroy(struct pixman_buffer *buffer) {
-  wlr_buffer_drop(&buffer->base);
-  pixman_image_unref(buffer->image);
+    wlr_buffer_drop(&buffer->base);
+    pixman_image_unref(buffer->image);
 
-	free(buffer);
+    free(buffer);
 }
 
 void
 pixman_buffer_fill_solid(struct pixman_buffer *buffer, pixman_color_t *color) {
-  pixman_image_fill_rectangles(PIXMAN_OP_OVER, buffer->image, color,
-                               1, &(pixman_rectangle16_t){ 0, 0, buffer->width, buffer->height });
+    pixman_image_fill_rectangles(PIXMAN_OP_OVER, buffer->image, color,
+                                 1, &(pixman_rectangle16_t){ 0, 0, buffer->width, buffer->height });
 }
 
 static uint32_t
 render_glyphs_to_pixman_buffer(struct pixman_buffer *buffer, pixman_image_t *color,
                                size_t count, const struct fcft_glyph *glyphs[static count],
                                long kern[static count]) {
-  long x = 0;
+    long x = 0;
 
-  for(size_t i = 0; i < count; i++) {
-    const struct fcft_glyph *g = glyphs[i];
-    if(g == NULL) continue;
+    for(size_t i = 0; i < count; i++) {
+        const struct fcft_glyph *g = glyphs[i];
+        if(g == NULL) continue;
 
-    x += kern[i];
+        x += kern[i];
 
-    pixman_image_composite32(PIXMAN_OP_OVER, color, g->pix, buffer->image, 0, 0, 0, 0,
-                             x + g->x, server.config->font->ascent - g->y, g->width, g->height);
+        pixman_image_composite32(PIXMAN_OP_OVER, color, g->pix, buffer->image, 0, 0, 0, 0,
+                                 x + g->x, server.config->font->ascent - g->y, g->width, g->height);
 
-    x += g->advance.x;
-  }
+        x += g->advance.x;
+    }
 
-  return x;
+    return x;
 }
 
 static uint32_t
 render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_buffer *buffer, pixman_image_t *color) {
-  const struct fcft_glyph *glyphs[len];
-  long kern[len];
+    if(len == 0) return 0;
 
-  for(size_t i = 0; i < len; i++) {
-    glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
-    if(glyphs[i] == NULL) continue;
+    const struct fcft_glyph *glyphs[len];
+    long kern[len];
 
-    kern[i] = 0;
-    if(i > 0) {
-      fcft_kerning(server.config->font, text[i - 1], text[i], &kern[i], NULL);
+    for(size_t i = 0; i < len; i++) {
+        glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
+        if(glyphs[i] == NULL) continue;
+
+        kern[i] = 0;
+        if(i > 0) {
+            fcft_kerning(server.config->font, text[i - 1], text[i], &kern[i], NULL);
+        }
     }
-  }
 
-  return render_glyphs_to_pixman_buffer(buffer, color, len, glyphs, kern);
+    return render_glyphs_to_pixman_buffer(buffer, color, len, glyphs, kern);
 }
 
 static void
 convert_cstring_to_unicode(char *src, char32_t *dest) {
-  while(*src != 0) {
-    *dest++ = (char32_t)(unsigned char)*src++;
-  }
+    while(*src != 0) {
+        *dest++ = (char32_t)(unsigned char)*src++;
+    }
 
-  *dest = U'\0';
+    *dest = U'\0';
 }
 
 struct text_node *
 text_node_create(struct wlr_scene_tree *parent, char *text) {
-  assert(server.config->font);
+    assert(server.config->font);
 
-  struct text_node *node = calloc(1, sizeof(*node));
-  node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
+    struct text_node *node = calloc(1, sizeof(*node));
+    node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
 
-  text_node_set_text(node, text);
+    text_node_set_text(node, text);
 
-  return node;
+    return node;
 }
 
 void
 text_node_destroy(struct text_node *node) {
-  if(node->buffer != NULL) {
-    pixman_buffer_destroy(node->buffer); 
-  }
+    if(node->buffer != NULL) {
+        pixman_buffer_destroy(node->buffer);
+    }
 
-  free(node);
+    wlr_scene_buffer_set_buffer(node->scene_buffer, NULL);
+
+    free(node);
 }
 
 void
 text_node_set_text(struct text_node *node, char *text) {
-  if(text == NULL) return;
+    if(text == NULL) return;
 
-  node->text = text;
+    size_t len = strlen(text);
+    if(len == 0) return;
 
-  /* we approximate the width of the text */
-  size_t len = strlen(text);
-  uint32_t width = len * (server.config->font->max_advance.x);
-  uint32_t height = server.config->font->max_advance.y;
+    node->text = text;
 
-  /* TODO: save an allocation if the current is bigger than this one */
-  if(node->buffer != NULL) {
-    pixman_buffer_destroy(node->buffer);
-  }
-  node->buffer = pixman_buffer_create(width, height);
+    /* we approximate the width of the text */
+    uint32_t width = len * (server.config->font->max_advance.x);
+    uint32_t height = server.config->font->max_advance.y;
 
-  wlr_scene_buffer_set_buffer_with_damage(node->scene_buffer, &node->buffer->base, NULL);
+    /* TODO: save an allocation if the current is bigger than this one */
+    if(node->buffer != NULL) {
+        pixman_buffer_destroy(node->buffer);
+    }
+    node->buffer = pixman_buffer_create(width, height);
 
-  char32_t unicode[len + 1];
-  convert_cstring_to_unicode(text, unicode);
+    wlr_scene_buffer_set_buffer_with_damage(node->scene_buffer, &node->buffer->base, NULL);
 
-  pixman_color_t color;
-  mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
-  pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
+    char32_t unicode[len + 1];
+    convert_cstring_to_unicode(text, unicode);
 
-  node->width = render_chars_to_pixman_buffer(unicode, len, node->buffer, foreground_color);
-  node->height = height;
+    pixman_color_t color;
+    mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
+    pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
-  pixman_image_unref(foreground_color);
+    node->width = render_chars_to_pixman_buffer(unicode, len, node->buffer, foreground_color);
+    node->height = height;
+
+    pixman_image_unref(foreground_color);
 }
 

@@ -37,6 +37,7 @@ foreach f : protocol_files
 endforeach
 
 src = [
+  'src/animations.c',
   'src/config.c',
   'src/decoration.c',
   'src/dnd.c',

@@ -11,16 +11,16 @@
 struct mwc_animation;
 
 struct mwc_workspace {
-  struct wl_list link;
+    struct wl_list link;
 
-  struct mwc_output *output;
-  uint32_t index;
-  struct workspace_config *config;
+    struct mwc_output *output;
+    uint32_t index;
+    struct workspace_config *config;
 
-  struct wl_list masters;
-  struct wl_list slaves;
-  struct wl_list floating_toplevels;
-  struct mwc_toplevel *fullscreen_toplevel;
+    struct wl_list masters;
+    struct wl_list slaves;
+    struct wl_list floating_toplevels;
+    struct mwc_toplevel *fullscreen_toplevel;
 };
 
 void
@@ -34,4 +34,4 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *
 
 struct mwc_toplevel *
 workspace_find_closest_floating_toplevel(struct mwc_workspace *workspace,
-                                      enum mwc_direction side);
+        enum mwc_direction side);

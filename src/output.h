@@ -8,28 +8,28 @@
 #include "mwc.h"
 
 struct mwc_output {
-	struct wl_list link;
-	struct wlr_output *wlr_output;
-  struct wlr_scene_output *scene_output;
-  struct wl_list workspaces;
-  struct wlr_box usable_area;
+    struct wl_list link;
+    struct wlr_output *wlr_output;
+    struct wlr_scene_output *scene_output;
+    struct wl_list workspaces;
+    struct wlr_box usable_area;
 
-  struct {
-    struct wl_list background;
-    struct wl_list bottom;
-    struct wl_list top;
-    struct wl_list overlay;
-  } layers;
+    struct {
+        struct wl_list background;
+        struct wl_list bottom;
+        struct wl_list top;
+        struct wl_list overlay;
+    } layers;
 
-  struct wlr_scene_optimized_blur *blur;
+    struct wlr_scene_optimized_blur *blur;
 
-  struct mwc_workspace *active_workspace;
+    struct mwc_workspace *active_workspace;
 
-  struct wlr_scene_rect *session_lock_rect;
+    struct wlr_scene_rect *session_lock_rect;
 
-	struct wl_listener frame;
-	struct wl_listener request_state;
-	struct wl_listener destroy;
+    struct wl_listener frame;
+    struct wl_listener request_state;
+    struct wl_listener destroy;
 };
 
 void
@@ -61,7 +61,7 @@ cursor_jump_output(struct mwc_output *output);
 
 void
 focus_output(struct mwc_output *output,
-             enum mwc_direction side);
+        enum mwc_direction side);
 
 void
 output_handle_frame(struct wl_listener *listener, void *data);
@@ -74,3 +74,7 @@ output_handle_destroy(struct wl_listener *listener, void *data);
 
 void
 output_move_workspaces(struct mwc_output *dest, struct mwc_output *src);
+
+struct wlr_box
+output_create_centered_box(struct mwc_output *output, uint32_t width, uint32_t height);
+
