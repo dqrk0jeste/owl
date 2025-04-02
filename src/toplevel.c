@@ -142,7 +142,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
         return;
     }
 
-    if(toplevel->resizing) {
+    if(toplevel == server.grabbed_toplevel && server.cursor_mode == MWC_CURSOR_RESIZE) {
         toplevel_commit(toplevel);
         return;
     }
@@ -178,6 +178,10 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         layout_set_pending_state(toplevel->workspace);
     }
 
+    // output at 0, 0 would get this toplevel flashed because its still not positioned
+    // and sized properly, so we disable it until it is
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+
     // we are keeping toplevels scene_tree in this free user data field, it is used in
     // assigning parents to popups, FIXME: this can be done more cleverly, for
     // sure
@@ -194,7 +198,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         toplevel_floating_patch_for_own_size(toplevel);
     }
 
-    // we patch the animation for the zoom in animation
+    // we patch the animation for the popin
     toplevel->should_animate_next = server.config->animations;
     toplevel->toplevel_current = (struct wlr_box){
         .x = toplevel->toplevel_pending.x + toplevel->toplevel_pending.width / 2,
@@ -203,7 +207,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         .height = 1,
     };
 
-    // FIXME
     toplevel_commit(toplevel);
 }
 
@@ -469,9 +472,7 @@ toplevel_set_pending_state(struct mwc_toplevel *toplevel,
                                                                         !toplevel->fullscreen,
                                                                         toplevel->titlebar.has);
 
-    toplevel->should_animate_next =
-        server.config->animations
-        && toplevel != server.grabbed_toplevel;
+    toplevel->should_animate_next = server.config->animations && toplevel != server.grabbed_toplevel;
 
     if(toplevel->toplevel_current.width == toplevel->toplevel_pending.width
             && toplevel->toplevel_current.height == toplevel->toplevel_pending.height) {
@@ -486,14 +487,38 @@ toplevel_set_pending_state(struct mwc_toplevel *toplevel,
 }
 
 static void
+toplevel_clip_tree(struct mwc_toplevel *toplevel, uint32_t width, uint32_t height) {
+    struct wlr_box geometry = toplevel_get_geometry(toplevel);
+    struct wlr_box clip_box = (struct wlr_box){
+        .x = geometry.x,
+        .y = geometry.y,
+        .width = width,
+        .height = height,
+    };
+
+    wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+
+    struct wlr_scene_node *n;
+    wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+        struct mwc_something *view = n->data;
+        if(view != NULL && view->type == MWC_POPUP) {
+            wlr_scene_subsurface_tree_set_clip(n, NULL);
+        }
+    }
+}
+
+static void
 toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) {
     struct mwc_toplevel *toplevel = user_data;
 
+    toplevel_clip_tree(toplevel, current.width, current.height);
     wlr_scene_node_set_position(&toplevel->scene_tree->node, current.x, current.y);
 
     if(done) {
+        fx_translate_animation_destroy(toplevel->animation);
         toplevel->animation = NULL;
     }
+
 }
 
 void
@@ -513,8 +538,9 @@ toplevel_commit(struct mwc_toplevel *toplevel) {
                                                             toplevel_animation_callback, toplevel);
 
     } else {
+        toplevel_clip_tree(toplevel, toplevel->toplevel_pending.width, toplevel->toplevel_pending.height);
         wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                    toplevel->toplevel_current.x, toplevel->toplevel_current.y);
+                                    toplevel->toplevel_pending.x, toplevel->toplevel_pending.y);
     }
 
     toplevel->toplevel_current = toplevel->toplevel_pending;
@@ -888,8 +914,6 @@ toplevel_move(void) {
 void
 toplevel_resize(void) {
     struct mwc_toplevel *toplevel = server.grabbed_toplevel;
-
-    toplevel->resizing = true;
 
     int start_x = server.grabbed_toplevel_initial_box.x;
     int start_y = server.grabbed_toplevel_initial_box.y;

@@ -23,7 +23,7 @@ extern struct mwc_server server;
 
 static void
 pixman_buffer_handle_destroy(struct wlr_buffer *wlr_buffer) {
-    /* i could not understand when this gets called, so i just clean it up myself */
+    // i could not understand when this gets called, so i just clean it up myself
 }
 
 static bool
@@ -146,11 +146,14 @@ text_node_create(struct wlr_scene_tree *parent, char *text) {
 
 void
 text_node_destroy(struct text_node *node) {
+    wlr_scene_buffer_set_buffer(node->scene_buffer, NULL);
+
+    // we manually destroy the buffer since i didnt understand the mechanism in wlroots
     if(node->buffer != NULL) {
         pixman_buffer_destroy(node->buffer);
     }
 
-    wlr_scene_buffer_set_buffer(node->scene_buffer, NULL);
+    wlr_scene_node_destroy(&node->scene_buffer->node);
 
     free(node);
 }

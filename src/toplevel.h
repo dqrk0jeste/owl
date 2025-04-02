@@ -28,8 +28,6 @@ struct mwc_toplevel {
     // if a floating toplevel becomes fullscreen, we keep its previous state here
     struct wlr_box prev_geometry;
 
-    bool resizing;
-
     uint32_t configure_serial;
     bool dirty;
 

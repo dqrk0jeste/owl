@@ -129,7 +129,6 @@ void
 server_reset_cursor_mode() {
     /* reset the cursor mode to passthrough. */
     server.cursor_mode = MWC_CURSOR_PASSTHROUGH;
-    server.grabbed_toplevel->resizing = false;
     server.grabbed_toplevel = NULL;
     server.client_driven_move_resize = false;
 

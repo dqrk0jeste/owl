@@ -90,7 +90,9 @@ timer_animation_update(void *data) {
     uint64_t passed_time = timespec_to_ms(&now) - animation->time_started;
     double progress = (double)passed_time / animation->duration;
 
-	if(progress >= 1.0) {
+    bool done = progress >= 1.0;
+
+	if(done) {
 		animation->done = true;
 		animation->current = animation->end;
 	} else {
@@ -111,9 +113,7 @@ timer_animation_update(void *data) {
 
     animation->callback(animation->current, animation->done, animation->user_data);
 
-    if(animation->done) {
-        fx_translate_animation_destroy(animation);
-    } else {
+    if(!done) {
         wl_event_source_timer_update(animation->timer, animation->frame_duration);
     }
 
@@ -164,7 +164,7 @@ fx_translate_animation_create(struct wlr_box start, struct wlr_box end, uint32_t
 
 	animation->current = start;
 
-    // callback(animation->current, animation->done, user_data);
+    callback(animation->current, animation->done, user_data);
 
     animation->timer = wl_event_loop_add_timer(wl_display_get_event_loop(manager.display),
                                                timer_animation_update, animation);

@@ -204,30 +204,32 @@ toplevel_draw_border(struct mwc_toplevel *toplevel) {
     mwc_color_to_wlr_color(color, wlr_color);
     wlr_scene_rect_set_color(toplevel->border, wlr_color);
 }
-
-static void
-toplevel_apply_clip(struct mwc_toplevel *toplevel) {
-    uint32_t width, height;
-    toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
-
-    struct wlr_box geometry = toplevel_get_geometry(toplevel);
-    struct wlr_box clip_box = (struct wlr_box){
-        .x = geometry.x,
-        .y = geometry.y,
-        .width = width,
-        .height = height,
-    };
-
-    wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
-
-    struct wlr_scene_node *n;
-    wl_list_for_each(n, &toplevel->scene_tree->children, link) {
-        struct mwc_something *view = n->data;
-        if(view != NULL && view->type == MWC_POPUP) {
-            wlr_scene_subsurface_tree_set_clip(n, NULL);
-        }
-    }
-}
+//
+// void
+// toplevel_apply_clip(struct mwc_toplevel *toplevel) {
+//     uint32_t width, height;
+//     toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
+//
+//     wlr_log(WLR_ERROR, "clip: %d, %d", width, height);
+//
+//     struct wlr_box geometry = toplevel_get_geometry(toplevel);
+//     struct wlr_box clip_box = (struct wlr_box){
+//         .x = geometry.x,
+//         .y = geometry.y,
+//         .width = width,
+//         .height = height,
+//     };
+//
+//     wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
+//
+//     struct wlr_scene_node *n;
+//     wl_list_for_each(n, &toplevel->scene_tree->children, link) {
+//         struct mwc_something *view = n->data;
+//         if(view != NULL && view->type == MWC_POPUP) {
+//             wlr_scene_subsurface_tree_set_clip(n, NULL);
+//         }
+//     }
+// }
 
 static void
 toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
@@ -310,15 +312,18 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
 
     struct wlr_surface *surface = scene_surface->surface;
 
-    uint32_t surface_width = surface->current.width;
-    uint32_t surface_height = surface->current.height;
+    // stretch the buffer if needed
+    if(args->width_scale > 1 || args->height_scale > 1) {
+        uint32_t surface_width = surface->current.width;
+        uint32_t surface_height = surface->current.height;
 
-    surface_width *= args->width_scale;
-    surface_height *= args->height_scale;
+        surface_width *= args->width_scale;
+        surface_height *= args->height_scale;
 
-    wlr_scene_buffer_set_dest_size(buffer, surface_width, surface_height);
+        wlr_scene_buffer_set_dest_size(buffer, surface_width, surface_height);
+    }
 
-    /* we dont round or blur popups */
+    // we dont round or blur popups
     if(wlr_xdg_popup_try_from_wlr_surface(surface) != NULL) return;
 
     int32_t x = lx - args->root_x;
@@ -354,7 +359,7 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
 
     wlr_scene_buffer_set_corner_radius(buffer, args->border_radius, corners);
 
-    /* we dont blur subsurfaces */
+    // we dont blur subsurfaces
     if(wlr_subsurface_try_from_wlr_surface(surface) != NULL) return;
 
     if(server.config->blur) {
@@ -368,8 +373,6 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
 
 static void
 toplevel_apply_effects(struct mwc_toplevel *toplevel) {
-    toplevel_apply_clip(toplevel);
-
     double opacity;
     if(!toplevel->fullscreen || server.config->apply_opacity_when_fullscreen) {
         opacity = toplevel == server.focused_toplevel
@@ -405,7 +408,10 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
                                    iter_scene_buffer_apply_effects, &args);
 }
 
-void toplevel_draw(struct mwc_toplevel *toplevel) {
+static void
+toplevel_draw(struct mwc_toplevel *toplevel) {
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+
     if(server.config->border_width > 0) {
         toplevel_draw_border(toplevel);
     }
@@ -415,7 +421,6 @@ void toplevel_draw(struct mwc_toplevel *toplevel) {
     if(server.config->shadows) {
         toplevel_draw_shadow(toplevel);
     }
-    toplevel_apply_clip(toplevel);
     toplevel_apply_effects(toplevel);
 }
 
