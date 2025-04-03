@@ -20,7 +20,7 @@ bool
 toplevel_is_slave(struct mwc_toplevel *toplevel);
 
 void
-layout_set_pending_state(struct mwc_workspace *workspace);
+layout_configure(struct mwc_workspace *workspace);
 
 // this function assumes they are in the same workspace and that t2 comes after t1 if in the same list
 void

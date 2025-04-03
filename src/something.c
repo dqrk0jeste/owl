@@ -52,7 +52,7 @@ root_parent_of_surface(struct wlr_surface *wlr_surface) {
 
 struct mwc_something *
 something_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *sy) {
-    /* this returns the topmost node in the scene at the given layout coords */
+    // this returns the topmost node in the scene at the given layout coords
     struct wlr_scene_node *node = wlr_scene_node_at(&server.scene->tree.node, lx, ly, sx, sy);
     if(node == NULL) return NULL;
 

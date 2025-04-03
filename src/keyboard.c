@@ -15,19 +15,16 @@ extern struct mwc_server server;
 
 void
 keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
-    /* This event is raised when a modifier key, such as shift or alt, is
-   * pressed. We simply communicate this to the client. */
+    // this event is raised when a modifier key, such as shift or alt, is pressed
     struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
 
     server.last_used_keyboard = keyboard;
-    /*
-   * A seat can only have one keyboard, but this is a limitation of the
-   * Wayland protocol - not wlroots. We assign all connected keyboards to the
-   * same seat. You can swap out the underlying wlr_keyboard like this and
-   * wlr_seat handles this transparently.
-   */
+    // A seat can only have one keyboard, but this is a limitation of the
+    // Wayland protocol - not wlroots. We assign all connected keyboards to the
+    // same seat. You can swap out the underlying wlr_keyboard like this and
+    // wlr_seat handles this transparently.
     wlr_seat_set_keyboard(server.seat, keyboard->wlr_keyboard);
-    /* Send modifiers to the client. */
+    // send modifiers to the client
     wlr_seat_keyboard_notify_modifiers(server.seat, &keyboard->wlr_keyboard->modifiers);
 }
 
@@ -38,18 +35,20 @@ keyboard_handle_key(struct wl_listener *listener, void *data) {
 
     server.last_used_keyboard = keyboard;
 
-    /* translate libinput keycode -> xkbcommon */
+    // translate libinput keycode -> xkbcommon
     uint32_t keycode = event->keycode + 8;
 
     const xkb_keysym_t *syms;
     int count = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
 
     bool handled = handle_change_vt_key(syms, count);
+
     if(!handled) {
         handled = server_handle_keybinds(keyboard, keycode, event->state);
     }
+
     if(!handled) {
-        /* otherwise, we pass it along to the client */
+        // otherwise, we pass it along to the client
         wlr_seat_set_keyboard(server.seat, keyboard->wlr_keyboard);
         wlr_seat_keyboard_notify_key(server.seat, event->time_msec, event->keycode, event->state);
     }
@@ -112,8 +111,7 @@ keyboard_configure(struct mwc_keyboard *keyboard) {
                                                           XKB_KEYMAP_COMPILE_NO_FLAGS);
     if(keymap == NULL) {
         wlr_log(WLR_ERROR, "could not apply the desired configuration to the keyboard");
-        keymap = xkb_keymap_new_from_names(context, NULL,
-                                           XKB_KEYMAP_COMPILE_NO_FLAGS);
+        keymap = xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
         if(keymap == NULL) {
             wlr_log(WLR_ERROR, "could not apply the default configuration to the keyboard");
             return false;
@@ -137,3 +135,4 @@ keyboard_configure(struct mwc_keyboard *keyboard) {
 
     return true;
 }
+

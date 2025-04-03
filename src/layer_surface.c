@@ -21,71 +21,46 @@
 
 extern struct mwc_server server;
 
-void
-server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
-    struct wlr_layer_surface_v1 *wlr_layer_surface = data;
-
-    struct mwc_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
-    layer_surface->wlr_layer_surface = wlr_layer_surface;
-    wlr_layer_surface->data = layer_surface;
-
-    layer_surface->something.type = MWC_LAYER_SURFACE;
-    layer_surface->something.layer_surface = layer_surface;
-
-    if(layer_surface->wlr_layer_surface->output == NULL) {
-        /* we give it currently active output */
-        layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;
+static struct wlr_scene_tree *
+layer_get_scene(enum zwlr_layer_shell_v1_layer layer) {
+    switch(layer) {
+        case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+            return server.background_tree;
+        case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+            return server.bottom_tree;
+        case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+            return server.top_tree;
+        case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+            return server.overlay_tree;
     }
-
-    struct mwc_output *output = layer_surface->wlr_layer_surface->output->data;
-    wlr_fractional_scale_v1_notify_scale(layer_surface->wlr_layer_surface->surface,
-                                         output->wlr_output->scale);
-    wlr_surface_set_preferred_buffer_scale(layer_surface->wlr_layer_surface->surface,
-                                           ceil(output->wlr_output->scale));
-
-    enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
-
-    struct wlr_scene_tree *scene = layer_get_scene(layer);
-    layer_surface->scene = wlr_scene_layer_surface_v1_create(scene, wlr_layer_surface);
-
-    if(output->active_workspace->fullscreen_toplevel != NULL &&
-        (layer == ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM || layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP)) {
-        wlr_scene_node_set_enabled(&layer_surface->scene->tree->node, false);
-    }
-
-    struct wl_list *list = layer_get_list(output, layer);
-    wl_list_insert(list, &layer_surface->link);
-
-    layer_surface->scene->tree->node.data = &layer_surface->something;
-
-    layer_surface->commit.notify = layer_surface_handle_commit;
-    wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
-
-    layer_surface->map.notify = layer_surface_handle_map;
-    wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
-
-    layer_surface->unmap.notify = layer_surface_handle_unmap;
-    wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
-
-    layer_surface->new_popup.notify = layer_surface_handle_new_popup;
-    wl_signal_add(&wlr_layer_surface->events.new_popup, &layer_surface->new_popup);
-
-    layer_surface->destroy.notify = layer_surface_handle_destroy;
-    wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
 }
 
-void
+static struct wl_list *
+layer_get_list(struct mwc_output *output, enum zwlr_layer_shell_v1_layer layer) {
+    switch(layer) {
+        case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+            return &output->layers.background;
+        case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+            return &output->layers.bottom;
+        case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+            return &output->layers.top;
+        case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+            return &output->layers.overlay;
+    }
+}
+
+static void
 layer_surface_handle_commit(struct wl_listener *listener, void *data) {
     struct mwc_layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
 
     if(!layer_surface->wlr_layer_surface->initialized) return;
 
     struct mwc_output *output = layer_surface->wlr_layer_surface->output->data;
+    enum zwlr_layer_shell_v1_layer layer = layer_surface->wlr_layer_surface->current.layer;
 
     uint32_t committed = layer_surface->wlr_layer_surface->current.committed;
-    enum zwlr_layer_shell_v1_layer layer = layer_surface->wlr_layer_surface->current.layer;
     if(committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) {
-        /* if the layer has been changed we respect it */
+        // if the layer has been changed we respect it
         struct wl_list *list = layer_get_list(output, layer);
         wl_list_remove(&layer_surface->link);
         wl_list_insert(list, &layer_surface->link);
@@ -94,7 +69,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
         wlr_scene_node_reparent(&layer_surface->scene->tree->node, scene);
     }
 
-    /* if its the first commit or something has changed we rearange the surfaces */
+    // if its the first commit or something has changed we rearange the surfaces
     if(layer_surface->wlr_layer_surface->initial_commit || committed) {
         layer_surfaces_commit(output);
     }
@@ -104,6 +79,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
     }
 }
 
+// todo: extract this logic
 void
 iter_scene_buffer_apply_blur(struct wlr_scene_buffer *buffer,
                              int sx, int sy, void *data) {
@@ -112,7 +88,7 @@ iter_scene_buffer_apply_blur(struct wlr_scene_buffer *buffer,
     wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, data);
 }
 
-void
+static void
 layer_surface_handle_map(struct wl_listener *listener, void *data) {
     struct mwc_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
     struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
@@ -134,12 +110,12 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
 
     wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
 
-    layout_set_pending_state(output->active_workspace);
+    layout_configure(output->active_workspace);
 
     focus_layer_surface(layer_surface);
 }
 
-void
+static void
 layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     struct mwc_layer_surface *layer_surface = wl_container_of(listener, layer_surface, unmap);
 
@@ -157,7 +133,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     }
 
     if(layer_surface == server.focused_layer_surface) {
-        /* focusing next will set it */
+        // focusing next will set it
         server.exclusive = false;
 
         bool focused = false;
@@ -176,9 +152,8 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
         }
 
         if(!focused) {
-            /* dont focus things that are not on the screen */
-            if(server.prev_focused != NULL
-                && server.prev_focused->workspace == server.active_workspace) {
+            // dont focus things that are not on the screen
+            if(server.prev_focused != NULL && server.prev_focused->workspace == server.active_workspace) {
                 focus_toplevel(server.prev_focused);
             } else if(!wl_list_empty(&server.active_workspace->masters)) {
                 struct mwc_toplevel *first = wl_container_of(server.active_workspace->masters.next,
@@ -212,7 +187,7 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
                                                               layer_surface, new_popup);
     struct wlr_xdg_popup *xdg_popup = data;
 
-    /* see server_handle_new_xdg_popup() */
+    // see server_handle_new_xdg_popup()
     struct mwc_popup *popup = xdg_popup->base->data;
 
     struct wlr_scene_tree *parent_tree = layer_surface->scene->tree;
@@ -235,7 +210,7 @@ focus_layer_surface(struct mwc_layer_surface *layer_surface) {
     if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) return;
 
     if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
-        && server.exclusive) return;
+            && server.exclusive) return;
 
     /* unfocus the focused toplevel */
     if(server.focused_toplevel != NULL) {
@@ -275,48 +250,20 @@ layer_surfaces_commit(struct mwc_output *output) {
 
     output->usable_area = full_area;
 
-    /* first commit all the exclusive ones */
+    // first commit all the exclusive ones
     for(size_t i = 0; i < 4; i++) {
         layer_surfaces_commit_layer(output, i, true);
     }
 
-    /* then all the others */
+    // then all the others
     for(size_t i = 0; i < 4; i++) {
         layer_surfaces_commit_layer(output, i, false);
     }
 
-    layout_set_pending_state(output->active_workspace);
+    layout_configure(output->active_workspace);
 }
 
-struct wlr_scene_tree *
-layer_get_scene(enum zwlr_layer_shell_v1_layer layer) {
-    switch(layer) {
-        case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-            return server.background_tree;
-        case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-            return server.bottom_tree;
-        case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-            return server.top_tree;
-        case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-            return server.overlay_tree;
-    }
-}
-
-struct wl_list *
-layer_get_list(struct mwc_output *output, enum zwlr_layer_shell_v1_layer layer) {
-    switch(layer) {
-        case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-            return &output->layers.background;
-        case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-            return &output->layers.bottom;
-        case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-            return &output->layers.top;
-        case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-            return &output->layers.overlay;
-    }
-}
-
-/* we dont touch background as we want it seen behind the fullscreened toplevel */
+// we dont touch background as we want it seen behind the fullscreened toplevel
 void
 layers_under_fullscreen_set_enabled(struct mwc_output *output, bool enable) {
     struct mwc_layer_surface *l;
@@ -327,3 +274,57 @@ layers_under_fullscreen_set_enabled(struct mwc_output *output, bool enable) {
         wlr_scene_node_set_enabled(&l->scene->tree->node, enable);
     }
 }
+
+void
+server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
+    struct wlr_layer_surface_v1 *wlr_layer_surface = data;
+
+    struct mwc_layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
+    layer_surface->wlr_layer_surface = wlr_layer_surface;
+    wlr_layer_surface->data = layer_surface;
+
+    layer_surface->something.type = MWC_LAYER_SURFACE;
+    layer_surface->something.layer_surface = layer_surface;
+
+    if(layer_surface->wlr_layer_surface->output == NULL) {
+        // we give it currently active output
+        layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;
+    }
+
+    struct mwc_output *output = layer_surface->wlr_layer_surface->output->data;
+    wlr_fractional_scale_v1_notify_scale(layer_surface->wlr_layer_surface->surface,
+                                         output->wlr_output->scale);
+    wlr_surface_set_preferred_buffer_scale(layer_surface->wlr_layer_surface->surface,
+                                           ceil(output->wlr_output->scale));
+
+    enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
+
+    struct wlr_scene_tree *scene = layer_get_scene(layer);
+    layer_surface->scene = wlr_scene_layer_surface_v1_create(scene, wlr_layer_surface);
+
+    if(output->active_workspace->fullscreen_toplevel != NULL &&
+            (layer == ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM || layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP)) {
+        wlr_scene_node_set_enabled(&layer_surface->scene->tree->node, false);
+    }
+
+    struct wl_list *list = layer_get_list(output, layer);
+    wl_list_insert(list, &layer_surface->link);
+
+    layer_surface->scene->tree->node.data = &layer_surface->something;
+
+    layer_surface->commit.notify = layer_surface_handle_commit;
+    wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
+
+    layer_surface->map.notify = layer_surface_handle_map;
+    wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
+
+    layer_surface->unmap.notify = layer_surface_handle_unmap;
+    wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
+
+    layer_surface->new_popup.notify = layer_surface_handle_new_popup;
+    wl_signal_add(&wlr_layer_surface->events.new_popup, &layer_surface->new_popup);
+
+    layer_surface->destroy.notify = layer_surface_handle_destroy;
+    wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
+}
+

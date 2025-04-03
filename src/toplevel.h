@@ -28,23 +28,18 @@ struct mwc_toplevel {
     // if a floating toplevel becomes fullscreen, we keep its previous state here
     struct wlr_box prev_geometry;
 
-    uint32_t configure_serial;
-    bool dirty;
-
+    bool should_choose_size;
+    // this is set on map so the toplevel is setup for the popin effect animation
+    bool needs_popin_adjustment;
     // toplevel size and position of the toplevel in the layout
-    struct wlr_box toplevel_current, toplevel_pending;
-    // container size and position of the toplevel in the layout
-    struct wlr_box container_current, container_pending;
+    struct wlr_box box;
 
     // cached values for toplevels opacity
     double inactive_opacity, active_opacity;
 
-    struct fx_translate_animation *animation;
-    struct wl_event_source *animation_timer;
-    // start time in miliseconds
-    uint64_t animation_start;
-    // this flag should be set when applying new state we want animated to
+    // this flag should be set when applying new state we want to animate to
     bool should_animate_next;
+    struct fx_translate_animation *animation;
 
     struct {
         bool has;
@@ -79,10 +74,6 @@ struct mwc_token {
     struct wl_listener destroy;
 };
 
-// looks up window rules and returns true if found, with the size in `*width` and `*height`, else return false
-bool
-toplevel_get_floating_container_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
-
 // strips the decoration from the sizes contained in `*width` and `*height`
 void
 toplevel_strip_decorations_of_size(uint32_t *width, uint32_t *height, bool has_border, bool has_titlebar);
@@ -99,22 +90,18 @@ toplevel_container_box_to_toplevel_box(struct wlr_box box, bool has_border, bool
 struct wlr_box
 toplevel_toplevel_box_to_container_box(struct wlr_box box, bool has_border, bool has_titlebar);
 
+// look up window rules to find the size of this toplevel
+bool
+toplevel_get_floating_container_size(struct mwc_toplevel *toplevel,
+                                     uint32_t *width, uint32_t *height);
+
 // send the configure of 0, 0 and set things up for patching later using `toplevel_floating_patch_for_own_size()`
 void
 toplevel_floating_set_own_size(struct mwc_toplevel *toplevel);
 
 // sets the new state for this toplevels container and sends the right configure event
 void
-toplevel_set_pending_state(struct mwc_toplevel *toplevel,
-        int32_t x, int32_t y, uint32_t width, uint32_t height);
-
-// commit to the pending state for this toplevel
-void
-toplevel_commit(struct mwc_toplevel *toplevel);
-
-// patches the floating toplevel when it was send 0, 0 for its size, so we respect its chosen size and center it
-void
-toplevel_floating_patch_for_own_size(struct mwc_toplevel *toplevel);
+toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box container);
 
 // get the reported geometry; more ergonomic wrapper around the wlroots version of the function
 struct wlr_box
@@ -132,56 +119,18 @@ toplevel_get_current_display_toplevel_box(struct mwc_toplevel *toplevel);
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
 
-void
-toplevel_handle_commit(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_initial_commit(struct mwc_toplevel *toplevel);
-
-void
-toplevel_handle_map(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_unmap(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_destroy(struct wl_listener *listener, void *data);
+// todo: figure this out
+// void
+// focused_toplevel_init_move(void);
+//
+// void
+// focused_toplevel_init_resize(void);
 
 void
 toplevel_start_move(struct mwc_toplevel *toplevel);
 
 void
 toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges);
-
-void
-toplevel_handle_request_move(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_request_resize(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_request_maximize(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_set_app_id(struct wl_listener *listener, void *data);
-
-void
-toplevel_handle_set_title(struct wl_listener *listener, void *data);
-
-bool
-toplevel_matches_window_rule(struct mwc_toplevel *toplevel,
-        struct window_rule_regex *condition);
-
-// looks up window rules
-bool
-toplevel_should_float(struct mwc_toplevel *toplevel);
-
-// looks up config and window rules
-bool
-toplevel_should_draw_titlebar(struct mwc_toplevel *toplevel);
 
 void
 cursor_jump_focused_toplevel(void);
@@ -198,14 +147,14 @@ toplevel_move(void);
 void
 toplevel_resize(void);
 
-// inserts the toplevel into layout at these coords
+// inserts the toplevel into layout at coords of `x`, `y`
 void
 toplevel_tiled_insert_into_layout(struct mwc_toplevel *toplevel, uint32_t x, uint32_t y);
 
 void
 unfocus_focused_toplevel(void);
 
-// tries to give the focus to this toplevel; handles only keyboard focus
+// tries to give the keyboard focus to this toplevel
 void
 focus_toplevel(struct mwc_toplevel *toplevel);
 

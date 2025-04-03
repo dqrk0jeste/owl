@@ -72,11 +72,11 @@ toplevel_is_slave(struct mwc_toplevel *toplevel) {
 }
 
 void
-layout_set_pending_state(struct mwc_workspace *workspace) {
-    /* if there is a fullscreened toplevel we just skip */
+layout_configure(struct mwc_workspace *workspace) {
+    // if there is a fullscreened toplevel we just skip
     if(workspace->fullscreen_toplevel != NULL) return;
 
-    /* if there are no masters we are done */
+    // if there are no masters we are done
     if(wl_list_empty(&workspace->masters)) return;
 
     struct mwc_output *output = workspace->output;
@@ -88,18 +88,19 @@ layout_set_pending_state(struct mwc_workspace *workspace) {
     uint32_t master_count = wl_list_length(&workspace->masters);
 
     uint32_t width, height;
-    int32_t x, y;
     layout_get_masters_container_size(output, master_count, slave_count, &width, &height);
+
+    struct wlr_box box = { .width = width, .height = height };
 
     struct mwc_toplevel *toplevel;
     size_t i = 0;
     wl_list_for_each(toplevel, &workspace->masters, link) {
-        x = output->usable_area.x + outer_gaps
-            + width * i
+        box.x = output->usable_area.x + outer_gaps
+            + box.width * i
             + inner_gaps * 2 * i;
-        y = output->usable_area.y + outer_gaps;
+        box.y = output->usable_area.y + outer_gaps;
 
-        toplevel_set_pending_state(toplevel, x, y, width, height);
+        toplevel_set_state(toplevel, box);
         i++;
     }
 
@@ -108,20 +109,23 @@ layout_set_pending_state(struct mwc_workspace *workspace) {
     layout_get_slaves_container_size(workspace->output, slave_count,
                                      &width, &height);
 
+    box.width = width;
+    box.height = height;
+
     i = 0;
     wl_list_for_each(toplevel, &workspace->slaves, link) {
-        x = output->usable_area.x + output->usable_area.width * server.config->master_ratio + inner_gaps;
-        y = output->usable_area.y + outer_gaps
+        box.x = output->usable_area.x + output->usable_area.width * server.config->master_ratio + inner_gaps;
+        box.y = output->usable_area.y + outer_gaps
             + height * i
             + inner_gaps * 2 * i;
 
-        toplevel_set_pending_state(toplevel, x, y, width, height);
+        toplevel_set_state(toplevel, box);
         i++;
     }
 }
 
-/* this function assumes they are in the same workspace and
- * that t2 comes after t1 if in the same list */
+// this function assumes they are in the same workspace and
+// that t2 comes after t1 if in the same list
 void
 layout_swap_toplevels(struct mwc_toplevel *t1, struct mwc_toplevel *t2) {
     struct wl_list *before_t1 = t1->link.prev;
@@ -130,7 +134,7 @@ layout_swap_toplevels(struct mwc_toplevel *t1, struct mwc_toplevel *t2) {
     wl_list_remove(&t2->link);
     wl_list_insert(before_t1, &t2->link);
 
-    layout_set_pending_state(t1->workspace);
+    layout_configure(t1->workspace);
 }
 
 struct mwc_toplevel *
@@ -174,78 +178,65 @@ struct mwc_toplevel *
 layout_toplevel_at(struct mwc_workspace *workspace, int32_t x, int32_t y) {
     struct mwc_toplevel *t;
     wl_list_for_each(t, &workspace->masters, link) {
-        uint32_t width = t->container_current.width;
-        uint32_t height = t->container_current.height;
-
+        struct wlr_box box = toplevel_toplevel_box_to_container_box(t->box, true, t->titlebar.has);
         int32_t rx = 0, ry = 0;
 
         if(&t->link == workspace->masters.next) {
             rx -= server.config->outer_gaps;
             ry -= server.config->outer_gaps;
             if(&t->link == workspace->masters.prev) {
-                width += 2 * server.config->outer_gaps;
+                box.width += 2 * server.config->outer_gaps;
             } else {
-                width += server.config->outer_gaps + server.config->inner_gaps;
+                box.width += server.config->outer_gaps + server.config->inner_gaps;
             }
-            height += 2 * server.config->outer_gaps;
+            box.height += 2 * server.config->outer_gaps;
         } else if(&t->link == workspace->masters.prev && wl_list_empty(&workspace->slaves)) {
             rx -= server.config->inner_gaps;
             ry -= server.config->outer_gaps;
-            width += server.config->inner_gaps + server.config->outer_gaps;
-            height += 2 * server.config->outer_gaps;
+            box.width += server.config->inner_gaps + server.config->outer_gaps;
+            box.height += 2 * server.config->outer_gaps;
         } else {
             rx -= server.config->inner_gaps;
             ry -= server.config->outer_gaps;
-            width += 2 * server.config->inner_gaps;
-            height += 2 * server.config->outer_gaps;
+            box.width += 2 * server.config->inner_gaps;
+            box.height += 2 * server.config->outer_gaps;
         }
 
-        struct wlr_box box = {
-            .x = t->container_current.x + rx,
-            .y = t->container_current.y + ry,
-            .width = width,
-            .height = height,
-        };
+        box.x += rx;
+        box.y += ry;
 
         if(wlr_box_contains_point(&box, x, y)) {
             return t;
         }
-    }
+    };
 
     wl_list_for_each(t, &workspace->slaves, link) {
-        uint32_t width = t->container_current.width;
-        uint32_t height = t->container_current.height;
-
+        struct wlr_box box = toplevel_toplevel_box_to_container_box(t->box, true, t->titlebar.has);
         int32_t rx = 0, ry = 0;
-
 
         if(&t->link == workspace->slaves.next) {
             rx -= server.config->inner_gaps;
             ry -= server.config->outer_gaps;
-            width += server.config->inner_gaps + server.config->outer_gaps;
+            box.width += server.config->inner_gaps + server.config->outer_gaps;
             if(&t->link == workspace->slaves.prev) {
-                height += 2 * server.config->outer_gaps;
+                box.height += 2 * server.config->outer_gaps;
             } else {
-                height += server.config->inner_gaps + server.config->outer_gaps;
+                box.height += server.config->inner_gaps + server.config->outer_gaps;
             }
         } else if(&t->link == workspace->slaves.prev) {
             rx -= server.config->inner_gaps;
             ry -= server.config->inner_gaps;
-            width += server.config->inner_gaps + server.config->outer_gaps;
-            height += server.config->inner_gaps + server.config->outer_gaps;
+            box.width += server.config->inner_gaps + server.config->outer_gaps;
+            box.height += server.config->inner_gaps + server.config->outer_gaps;
         } else {
             rx -= server.config->inner_gaps;
             ry -= server.config->inner_gaps;
-            width += server.config->inner_gaps + server.config->outer_gaps;
-            height += 2 * server.config->inner_gaps;
+            box.width += server.config->inner_gaps + server.config->outer_gaps;
+            box.height += 2 * server.config->inner_gaps;
         }
 
-        struct wlr_box box = {
-            .x = t->container_current.x + rx,
-            .y = t->container_current.y + ry,
-            .width = width,
-            .height = height,
-        };
+        box.x += rx;
+        box.y += ry;
 
         if(wlr_box_contains_point(&box, x, y)) {
             return t;

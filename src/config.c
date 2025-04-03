@@ -1294,26 +1294,6 @@ config_reload() {
         return;
     }
 
-    /* we dont allow for hot reloading of workspaces, that would just be chaos */
-
-    /* TODO: maybe only support adding new workspaces */
-    /*struct workspace_config *wc;*/
-    /*wl_list_for_each(wc, &c->workspaces, link) {*/
-    /*  bool found = false;*/
-    /*  struct workspace_config *old_wc;*/
-    /*  wl_list_for_each(old_wc, &server.config->workspaces, link) {*/
-    /*    if(wc->index == old_wc->index) {*/
-    /*      found = true;*/
-    /*      break;*/
-    /*    }*/
-    /*  }*/
-    /**/
-    /*  if(!found) {*/
-    /*    wl_list_remove(&wc->link);*/
-    /*    wl_list_insert(&server.config->workspaces, &wc->link);*/
-    /*  }*/
-    /*}*/
-
     struct workspace_config *wc, *wc_temp;
     wl_list_for_each_safe(wc, wc_temp, &c->workspaces, link) {
         free(wc->output);
@@ -1334,9 +1314,9 @@ config_reload() {
                 wlr_output_layout_get_box(server.output_layout, out->wlr_output, &output_box);
 
                 if(o->width != output_box.width
-                    || o->height != output_box.height
-                    || abs((int32_t)o->refresh_rate - (int32_t)out->wlr_output->refresh) > 1000
-                    || o->scale != out->wlr_output->scale) {
+                        || o->height != output_box.height
+                        || abs((int32_t)o->refresh_rate - (int32_t)out->wlr_output->refresh) > 1000
+                        || o->scale != out->wlr_output->scale) {
                     output_initialize(out->wlr_output, o);
                 }
 
@@ -1415,7 +1395,7 @@ config_reload() {
                 toplevel_reapply_effects_etc(t);
             }
 
-            layout_set_pending_state(w);
+            layout_configure(w);
         }
 
         struct mwc_layer_surface *layer;

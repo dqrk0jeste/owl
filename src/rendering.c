@@ -204,32 +204,6 @@ toplevel_draw_border(struct mwc_toplevel *toplevel) {
     mwc_color_to_wlr_color(color, wlr_color);
     wlr_scene_rect_set_color(toplevel->border, wlr_color);
 }
-//
-// void
-// toplevel_apply_clip(struct mwc_toplevel *toplevel) {
-//     uint32_t width, height;
-//     toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
-//
-//     wlr_log(WLR_ERROR, "clip: %d, %d", width, height);
-//
-//     struct wlr_box geometry = toplevel_get_geometry(toplevel);
-//     struct wlr_box clip_box = (struct wlr_box){
-//         .x = geometry.x,
-//         .y = geometry.y,
-//         .width = width,
-//         .height = height,
-//     };
-//
-//     wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip_box);
-//
-//     struct wlr_scene_node *n;
-//     wl_list_for_each(n, &toplevel->scene_tree->children, link) {
-//         struct mwc_something *view = n->data;
-//         if(view != NULL && view->type == MWC_POPUP) {
-//             wlr_scene_subsurface_tree_set_clip(n, NULL);
-//         }
-//     }
-// }
 
 static void
 toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
@@ -313,7 +287,7 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
     struct wlr_surface *surface = scene_surface->surface;
 
     // stretch the buffer if needed
-    if(args->width_scale > 1 || args->height_scale > 1) {
+    if(args->width_scale >= 1 || args->height_scale >= 1) {
         uint32_t surface_width = surface->current.width;
         uint32_t surface_height = surface->current.height;
 

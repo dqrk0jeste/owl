@@ -46,3 +46,4 @@ void
 dnd_icons_move(uint32_t x, uint32_t y) {
     wlr_scene_node_set_position(&server.drag_icon_tree->node, x, y);
 }
+

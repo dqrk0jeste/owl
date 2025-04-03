@@ -20,62 +20,6 @@
 
 extern struct mwc_server server;
 
-bool
-server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode,
-                       enum wl_keyboard_key_state state) {
-    if(server.lock != NULL) return false;
-
-    uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-    /* we use empty state so we can get raw, unmodified key.
-   * this is used becuase we already handle modifiers explicitly,
-   * and dont want them to interfere. for example, shift would make it
-   * harder to specify the right key e.g. we would have to write
-   *   keybind alt+shift # <do_something>
-   * instead of
-   *   alt+shift 3 <do_something> */
-
-    const xkb_keysym_t *syms;
-    int count = xkb_state_key_get_syms(keyboard->empty, keycode, &syms);
-
-    bool handled = handle_change_vt_key(syms, count);
-    if(handled) return true;
-
-    struct keybind *k;
-    for(size_t i = 0; i < count; i++) {
-        wl_list_for_each(k, &server.config->keybinds, link) {
-            if(!k->initialized) continue;
-
-            if(k->active && k->stop && syms[i] == k->key
-                && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-                k->active = false;
-                k->stop(k->args);
-                return true;
-            }
-
-            if(modifiers == k->modifiers && syms[i] == k->key
-                && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-                k->active = true;
-                k->action(k->args);
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-bool
-handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
-    for(int i = 0; i < count; i++) {
-        uint32_t vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
-        if (vt >= 1 && vt <= 12) {
-            wlr_session_change_vt(server.session, vt);
-            return true;
-        }
-    }
-    return false;
-}
-
 void
 keybind_stop_server(void *data) {
     server.running = false;
@@ -198,7 +142,7 @@ keybind_stop_move_focused_toplevel(void *data) {
     }
 
     server_reset_cursor_mode();
-    layout_set_pending_state(server.active_workspace);
+    layout_configure(server.active_workspace);
 }
 
 void
@@ -214,7 +158,7 @@ keybind_move_focus(void *data) {
     uint64_t direction = (uint64_t)data;
 
     struct mwc_toplevel *toplevel = server.focused_toplevel;
-    /* we need grabbed toplevel toplevel to keep focus */
+    // we need grabbed toplevel to keep focus
     if(server.grabbed_toplevel != NULL && toplevel == server.grabbed_toplevel) return;
 
     enum mwc_direction opposite_side;
@@ -233,8 +177,8 @@ keybind_move_focus(void *data) {
             break;
     }
 
-    /* if no toplevel has keyboard focus then get the output
-   * the pointer is on and try from there */
+    // if no toplevel has keyboard focus then get the output
+    // the pointer is on and try from there
     if(toplevel == NULL) {
         struct wlr_output *wlr_output = wlr_output_layout_output_at(
             server.output_layout, server.cursor->x, server.cursor->y);
@@ -246,11 +190,10 @@ keybind_move_focus(void *data) {
         return;
     }
 
-    /* get the toplevels output */
+    // get the toplevels output
     struct mwc_workspace *workspace = toplevel->workspace;
     struct mwc_output *output = toplevel->workspace->output;
-    struct mwc_output *relative_output =
-        output_get_relative(toplevel->workspace->output, direction);
+    struct mwc_output *relative_output = output_get_relative(toplevel->workspace->output, direction);
 
     if(toplevel->fullscreen) {
         struct mwc_output *relative_output = output_get_relative(output, direction);
@@ -373,7 +316,7 @@ keybind_swap_focused_toplevel(void *data) {
 
     if(toplevel->floating || toplevel->fullscreen) {
         if(relative_output != NULL
-            && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+                && relative_output->active_workspace->fullscreen_toplevel == NULL) {
             toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         }
         return;
@@ -486,7 +429,7 @@ keybind_focused_toplevel_toggle_floating(void *data) {
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
         wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
-        layout_set_pending_state(toplevel->workspace);
+        layout_configure(toplevel->workspace);
         return;
     }
 
@@ -507,7 +450,7 @@ keybind_focused_toplevel_toggle_floating(void *data) {
     uint32_t width, height;
     if(toplevel_get_floating_container_size(toplevel, &width, &height)) {
         struct wlr_box centered = output_create_centered_box(toplevel->workspace->output, width, height);
-        toplevel_set_pending_state(toplevel, centered.x, centered.y, width, height);
+        toplevel_set_state(toplevel, centered);
     } else {
         toplevel_floating_set_own_size(toplevel);
     }
@@ -515,7 +458,7 @@ keybind_focused_toplevel_toggle_floating(void *data) {
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
-    layout_set_pending_state(toplevel->workspace);
+    layout_configure(toplevel->workspace);
 }
 
 void
@@ -528,5 +471,58 @@ keybind_focused_toplevel_toggle_fullscreen(void *data) {
     } else {
         toplevel_set_fullscreen(toplevel);
     }
+}
+
+bool
+server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode,
+                       enum wl_keyboard_key_state state) {
+    if(server.lock != NULL) return false;
+
+    uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
+    // we use empty state so we can get raw, unmodified key.
+    // this is used becuase we already handle modifiers explicitly,
+    // and dont want them to interfere. for example, shift would make it
+    // harder to specify the right key e.g. we would have to write
+    //     keybind alt+shift # <do_something>
+    // instead of
+    //     alt+shift 3 <do_something> */
+
+    const xkb_keysym_t *syms;
+    int count = xkb_state_key_get_syms(keyboard->empty, keycode, &syms);
+
+    struct keybind *k;
+    for(size_t i = 0; i < count; i++) {
+        wl_list_for_each(k, &server.config->keybinds, link) {
+            if(!k->initialized) continue;
+
+            if(k->active && k->stop && syms[i] == k->key
+                && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+                k->active = false;
+                k->stop(k->args);
+                return true;
+            }
+
+            if(modifiers == k->modifiers && syms[i] == k->key
+                && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+                k->active = true;
+                k->action(k->args);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool
+handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
+    for(int i = 0; i < count; i++) {
+        uint32_t vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
+        if (vt >= 1 && vt <= 12) {
+            wlr_session_change_vt(server.session, vt);
+            return true;
+        }
+    }
+    return false;
 }
 

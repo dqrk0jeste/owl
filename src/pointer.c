@@ -162,7 +162,7 @@ cursor_handle_motion(uint32_t time) {
                 }
 
                 server_reset_cursor_mode();
-                layout_set_pending_state(prev_workspace);
+                layout_configure(prev_workspace);
             } else if(server.cursor_mode == MWC_CURSOR_RESIZE) {
                 server_reset_cursor_mode();
             }
@@ -324,7 +324,7 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
         }
 
         server_reset_cursor_mode();
-        layout_set_pending_state(server.active_workspace);
+        layout_configure(server.active_workspace);
         return;
     }
 

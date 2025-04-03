@@ -10,6 +10,7 @@
 #include "something.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 extern struct mwc_server server;
@@ -28,17 +29,16 @@ workspace_create_for_output(struct mwc_output *output, struct workspace_config *
 
     wl_list_insert(&output->workspaces, &workspace->link);
 
-    /* if first then set it active */
+    // if first then set it active
     if(output->active_workspace == NULL) {
         output->active_workspace = workspace;
     }
 
     struct keybind *k;
     wl_list_for_each(k, &server.config->keybinds, link) {
-        /* we didnt have information about what workspace this is going to be,
-     * so we only kept an index. now we replace it with
-     * the actual workspace pointer */
-        if(k->action == keybind_change_workspace && (uint64_t)k->args == workspace->index) {
+        // we didnt have information about what workspace this is going to be,
+        // so we only kept an index. now we replace it with the actual workspace pointer
+        if(k->action == keybind_change_workspace && (uintptr_t)k->args == workspace->index) {
             k->args = workspace;
             k->initialized = true;
         } else if(k->action == keybind_move_focused_toplevel_to_workspace
@@ -51,10 +51,10 @@ workspace_create_for_output(struct mwc_output *output, struct workspace_config *
 
 void
 change_workspace(struct mwc_workspace *workspace, bool keep_focus) {
-    /* if it is the same as global active workspace, do nothing */
+    // if it is the same as global active workspace, do nothing
     if(server.active_workspace == workspace) return;
 
-    /* if it is an already active on its output, just switch to it */
+    // if it is an already active on its output, just switch to it
     if(workspace == workspace->output->active_workspace) {
         if(keep_focus) {
             /* do nothing */
@@ -181,8 +181,7 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
 
         struct wlr_box output_box;
         wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
-        toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
-                                   output_box.width, output_box.height);
+        toplevel_set_state(toplevel, output_box);
 
         layers_under_fullscreen_set_enabled(workspace->output, false);
         if(old_workspace->output != workspace->output) {
@@ -190,8 +189,8 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
         }
 
         if(toplevel->floating) {
-            /* calculate where the toplevel should be placed after exiting fullscreen,
-       * see note for floating bellow */
+            // calculate where the toplevel should be placed after exiting fullscreen,
+            // see note for floating bellow
             uint32_t old_output_relative_x =
                 toplevel->prev_geometry.x - old_workspace->output->usable_area.x;
             double relative_x =
@@ -210,18 +209,18 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
             toplevel->prev_geometry.x = new_output_x;
             toplevel->prev_geometry.y = new_output_y;
         } else {
-            layout_set_pending_state(old_workspace);
+            layout_configure(old_workspace);
         }
     } else if(toplevel->floating && old_workspace->output != workspace->output) {
-        /* we want to place the toplevel to the same relative coordinates,
-     * as the new output may have a different resolution */
+        // we want to place the toplevel to the same relative coordinates,
+        // as the new output may have a different resolution
         uint32_t old_output_relative_x =
-            toplevel->scene_tree->node.x - old_workspace->output->usable_area.x;
+            toplevel->box.x - old_workspace->output->usable_area.x;
         double relative_x =
             (double)old_output_relative_x / old_workspace->output->usable_area.width;
 
         uint32_t old_output_relative_y =
-            toplevel->scene_tree->node.y - old_workspace->output->usable_area.y;
+            toplevel->box.y - old_workspace->output->usable_area.y;
         double relative_y =
             (double)old_output_relative_y / old_workspace->output->usable_area.height;
 
@@ -230,12 +229,13 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
         uint32_t new_output_y = workspace->output->usable_area.y
             + relative_y * workspace->output->usable_area.height;
 
-        // FIXME: also use relative size
-        toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
-                                   toplevel->container_current.width, toplevel->container_current.height);
+        // struct wlr_box box = toplevel_container_box_to_toplevel_box(toplevel-);
+        //
+        // // FIXME: also use relative size
+        // toplevel_set_state(toplevel, (struct wlr_box){ new_output_x, new_output_y, toplevel->box.width, toplevel->box.height};
     } else {
-        layout_set_pending_state(old_workspace);
-        layout_set_pending_state(workspace);
+        layout_configure(old_workspace);
+        layout_configure(workspace);
     }
 
     /* change active workspace */
