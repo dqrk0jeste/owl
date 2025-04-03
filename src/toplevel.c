@@ -678,12 +678,9 @@ toplevel_move(void) {
     // move the grabbed toplevel to the new position
     struct mwc_toplevel *toplevel = server.grabbed_toplevel;
 
-    struct wlr_box box = {
-        server.grabbed_toplevel_initial_box.x + (server.cursor->x - server.grab_x),
-        server.grabbed_toplevel_initial_box.y + (server.cursor->y - server.grab_y),
-        toplevel->box.width,
-        toplevel->box.height,
-    };
+    struct wlr_box box = server.grabbed_toplevel_initial_box;
+    box.x += server.cursor->x - server.grab_x;
+    box.y += server.cursor->y - server.grab_y;
 
     toplevel_set_state(toplevel, box);
 }
