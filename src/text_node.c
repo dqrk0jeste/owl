@@ -117,15 +117,6 @@ render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_bu
     return render_glyphs_to_pixman_buffer(buffer, color, len, glyphs, kern);
 }
 
-static void
-convert_cstring_to_unicode(char *src, char32_t *dest) {
-    while(*src != 0) {
-        *dest++ = (char32_t)(unsigned char)*src++;
-    }
-
-    *dest = U'\0';
-}
-
 struct text_node *
 text_node_create(struct wlr_scene_tree *parent, char *text) {
     assert(server.config->font);
@@ -152,14 +143,38 @@ text_node_destroy(struct text_node *node) {
     free(node);
 }
 
+// function to decode a single utf8 character into a utf32 code point
+static ssize_t
+convert_utf8_to_utf32(char *utf8, char32_t *codepoint) {
+    if((utf8[0] & 0x80) == 0x00) {
+        *codepoint = utf8[0];
+        return 1;
+    } else if((utf8[0] & 0xE0) == 0xC0) {
+        *codepoint = ((utf8[0] & 0x1F) << 6) |
+                     (utf8[1] & 0x3F);
+        return 2;
+    } else if((utf8[0] & 0xF0) == 0xE0) {
+        *codepoint = ((utf8[0] & 0x0F) << 12) |
+                     ((utf8[1] & 0x3F) << 6) |
+                     (utf8[2] & 0x3F);
+        return 3;
+    } else if((utf8[0] & 0xF8) == 0xF0) {
+        *codepoint = ((utf8[0] & 0x07) << 18) |
+                     ((utf8[1] & 0x3F) << 12) |
+                     ((utf8[2] & 0x3F) << 6) |
+                     (utf8[3] & 0x3F);
+        return 4;
+    } else {
+        // invalid UTF-8
+        return -1;
+    }
+}
+
 void
 text_node_set_text(struct text_node *node, char *text) {
     if(text == NULL) return;
 
     size_t len = strlen(text);
-    if(len == 0) return;
-
-    node->text = text;
 
     // we approximate the width of the text
     uint32_t width = len * (server.config->font->max_advance.x);
@@ -173,14 +188,27 @@ text_node_set_text(struct text_node *node, char *text) {
 
     wlr_scene_buffer_set_buffer(node->scene_buffer, &node->buffer->base);
 
-    char32_t unicode[len + 1];
-    convert_cstring_to_unicode(text, unicode);
+    // if the len is 0 then we attach the empty buffer
+    if(len == 0) return;
+
+    // convert the string to utf32
+    // todo: optimize this so it just goes through the string once and just renders it char by char
+    char32_t unicode[len];
+    size_t i = 0, j = 0;
+    while(i < len) {
+        ssize_t move_forward = convert_utf8_to_utf32(&text[i], &unicode[j]);
+        // if its invalid utf8 then we quit
+        if(move_forward == -1) return;
+
+        i += move_forward;
+        j++;
+    }
 
     pixman_color_t color;
     mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
-    node->width = render_chars_to_pixman_buffer(unicode, len, node->buffer, foreground_color);
+    node->width = render_chars_to_pixman_buffer(unicode, j, node->buffer, foreground_color);
     node->height = height;
 
     pixman_image_unref(foreground_color);

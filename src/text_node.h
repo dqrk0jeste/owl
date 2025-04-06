@@ -22,8 +22,6 @@ struct text_node {
     struct wlr_scene_buffer *scene_buffer;
 
     uint32_t width, height;
-
-    char *text;
 };
 
 struct text_node *
