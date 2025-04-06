@@ -11,7 +11,7 @@
 #include "toplevel.h"
 #include "config.h"
 #include "workspace.h"
-#include "text_buffer.h"
+#include "text_node.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -173,8 +173,9 @@ toplevel_draw_border(struct mwc_toplevel *toplevel) {
             y -= server.config->titlebar_height;
         }
         wlr_scene_node_set_position(&toplevel->border->node, x, y);
-
         wlr_scene_rect_set_corner_radius(toplevel->border, border_radius, border_radius_location);
+
+        view_create_for_node(&toplevel->border->node, MWC_BORDER, toplevel->border);
     }
 
     wlr_scene_node_set_enabled(&toplevel->border->node, true);

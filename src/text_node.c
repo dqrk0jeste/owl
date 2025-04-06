@@ -1,4 +1,4 @@
-#include "text_buffer.h"
+#include "text_node.h"
 
 #include "helpers.h"
 #include "mwc.h"
@@ -41,7 +41,7 @@ pixman_buffer_handle_begin_data_ptr_access(struct wlr_buffer *wlr_buffer,
 
 static void
 pixman_buffer_handle_end_data_ptr_access(struct wlr_buffer *wlr_buffer) {
-    /* this space is intentionally left blank */
+    // this space is intentionally left blank
 }
 
 static const struct wlr_buffer_impl pixman_buffer_impl = {
@@ -74,12 +74,6 @@ pixman_buffer_destroy(struct pixman_buffer *buffer) {
     pixman_image_unref(buffer->image);
 
     free(buffer);
-}
-
-void
-pixman_buffer_fill_solid(struct pixman_buffer *buffer, pixman_color_t *color) {
-    pixman_image_fill_rectangles(PIXMAN_OP_OVER, buffer->image, color,
-                                 1, &(pixman_rectangle16_t){ 0, 0, buffer->width, buffer->height });
 }
 
 static uint32_t
@@ -167,17 +161,17 @@ text_node_set_text(struct text_node *node, char *text) {
 
     node->text = text;
 
-    /* we approximate the width of the text */
+    // we approximate the width of the text
     uint32_t width = len * (server.config->font->max_advance.x);
     uint32_t height = server.config->font->max_advance.y;
 
-    /* TODO: save an allocation if the current is bigger than this one */
+    // todo: save an allocation if the current is bigger than this one; i dont care rn
     if(node->buffer != NULL) {
         pixman_buffer_destroy(node->buffer);
     }
     node->buffer = pixman_buffer_create(width, height);
 
-    wlr_scene_buffer_set_buffer_with_damage(node->scene_buffer, &node->buffer->base, NULL);
+    wlr_scene_buffer_set_buffer(node->scene_buffer, &node->buffer->base);
 
     char32_t unicode[len + 1];
     convert_cstring_to_unicode(text, unicode);

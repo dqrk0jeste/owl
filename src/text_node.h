@@ -17,12 +17,6 @@ pixman_buffer_create(uint32_t width, uint32_t height);
 void
 pixman_buffer_destroy(struct pixman_buffer *buffer);
 
-void
-pixman_buffer_clip_to_size(struct pixman_buffer *buffer, uint32_t width, uint32_t height);
-
-void
-pixman_buffer_fill_solid(struct pixman_buffer *buffer, pixman_color_t *color);
-
 struct text_node {
     struct pixman_buffer *buffer;
     struct wlr_scene_buffer *scene_buffer;

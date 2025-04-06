@@ -36,9 +36,6 @@ void
 view_create_for_node(struct wlr_scene_node *node, enum mwc_view_type type, void *view);
 
 struct mwc_view *
-root_parent_of_surface(struct wlr_surface *wlr_surface);
-
-struct mwc_view *
 view_at(double lx, double ly,
         struct wlr_surface **surface,
         double *sx, double *sy);

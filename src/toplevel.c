@@ -16,7 +16,7 @@
 #include "helpers.h"
 #include "layer_surface.h"
 #include "pointer.h"
-#include "text_buffer.h"
+#include "text_node.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -241,6 +241,9 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     // called when the surface is mapped, or ready to display on the screen
     struct mwc_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
+    // we keep the toplevel in this free field so we can obtain it when needed
+    toplevel->xdg_toplevel->base->data = toplevel;
+
     // we insert it into a right list, and create a scene tree for the toplevel
     if(toplevel->floating) {
         wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
@@ -257,10 +260,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
                                                             toplevel->xdg_toplevel->base);
     }
 
-    // we are keeping toplevels scene_tree in this free user data field, it is used in
-    // assigning parents to popups, FIXME: this can be done more cleverly, for sure
-    toplevel->xdg_toplevel->base->data = toplevel->scene_tree;
-
     // in the node we want to keep information what that node represents. we do that
     // be keeping mwc_view in user data field, which is a union of all possible
     // 'things' we can have on the screen
@@ -272,7 +271,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     if(toplevel->floating) {
         // even if we have sent a concrete value here, we respect if the toplevel chose another size
         // it would be weird having a floating toplevel clipped (thats exactly what happens when a toplevel changes its
-        // size on its own)
+        // size on its own, left to fix)
         struct wlr_box box = toplevel_floating_deco_box_for_own_size(toplevel);
         toplevel_set_state(toplevel, box);
     } else {

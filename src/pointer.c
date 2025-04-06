@@ -10,7 +10,7 @@
 #include "view.h"
 #include "dnd.h"
 #include "workspace.h"
-#include "text_buffer.h"
+#include "text_node.h"
 
 #include <bits/time.h>
 #include <libinput.h>
@@ -202,8 +202,7 @@ pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
     double sx, sy;
     struct wlr_seat *seat = server.seat;
     struct wlr_surface *surface = NULL;
-    struct mwc_view *view = view_at(server.cursor->x, server.cursor->y,
-                                    &surface, &sx, &sy);
+    struct mwc_view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
     if(view == NULL) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
         // clear pointer focus so future button events and such are not sent to
@@ -307,8 +306,7 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
                                    event->button, event->state);
 
     if(event->state == WL_POINTER_BUTTON_STATE_RELEASED
-            && server.cursor_mode != MWC_CURSOR_PASSTHROUGH
-            && server.client_driven_move_resize) {
+            && server.cursor_mode != MWC_CURSOR_PASSTHROUGH && server.client_driven_move_resize) {
         struct mwc_output *primary_output = toplevel_get_primary_output(server.grabbed_toplevel);
 
         if(primary_output != server.grabbed_toplevel->workspace->output) {
@@ -366,12 +364,12 @@ server_handle_cursor_frame(struct wl_listener *listener, void *data) {
     wlr_seat_pointer_notify_frame(server.seat);
 }
 
-/* a lot of the code was stolen of labwc's implemenetation, big props to them */
+// a lot of the code was stolen of labwc's implemenetation, big props to them
 void
 server_handle_new_constraint(struct wl_listener *listener, void *data) {
     struct wlr_pointer_constraint_v1 *wlr_constraint = data;
 
-    /* if there is already a constraint on this surface we ignore it */
+    // if there is already a constraint on this surface we ignore it
     struct wlr_pointer_constraint_v1 *con;
     wl_list_for_each(con, &server.pointer_contrains_manager->constraints, link) {
         if(con != wlr_constraint && con->surface == wlr_constraint->surface) return;
@@ -419,7 +417,7 @@ constraint_move_to_hint(struct mwc_pointer_constraint *constraint) {
                         X(server.focused_toplevel) + sx,
                         Y(server.focused_toplevel) + sy);
 
-        /* make sure we are not sending unnecessary surface movements (took from labwc)*/
+        // make sure we are not sending unnecessary surface movements (took from labwc)
         wlr_seat_pointer_warp(server.seat, sx, sy);
     }
 }

@@ -57,7 +57,7 @@ src = [
   'src/view.c',
   'src/toplevel.c',
   'src/workspace.c',
-  'src/text_buffer.c',
+  'src/text_node.c',
 ]
 
 inc = [

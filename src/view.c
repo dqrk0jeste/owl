@@ -38,44 +38,6 @@ view_create_for_node(struct wlr_scene_node *node, enum mwc_view_type type, void 
     wl_signal_add(&node->events.destroy, &view->destroy);
 }
 
-// todo: optimize this, as a lot of logic makes sense only for popups
-struct mwc_view *
-root_parent_of_surface(struct wlr_surface *wlr_surface) {
-    struct wlr_surface *root_surface = wlr_surface_get_root_surface(wlr_surface);
-
-    struct wlr_scene_tree *tree;
-    struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(root_surface);
-
-    if(xdg_surface != NULL) {
-        tree = xdg_surface->data;
-    } else {
-        struct wlr_layer_surface_v1 *wlr_layer_surface =
-            wlr_layer_surface_v1_try_from_wlr_surface(root_surface);
-        if(wlr_layer_surface != NULL) {
-            struct mwc_layer_surface *layer_surface = wlr_layer_surface->data;
-            tree = layer_surface->scene->tree;
-        } else {
-            struct wlr_session_lock_surface_v1 *wlr_lock_surface =
-                wlr_session_lock_surface_v1_try_from_wlr_surface(root_surface);
-            if(wlr_lock_surface != NULL) {
-                struct mwc_lock_surface *lock_surface = wlr_lock_surface->data;
-                tree = lock_surface->scene_tree;
-            } else {
-                return NULL;
-            }
-        }
-    }
-
-    struct mwc_view *view = tree->node.data;
-    while(view == NULL || view->type == MWC_POPUP) {
-        tree = tree->node.parent;
-        view = tree->node.data;
-    }
-
-    return view;
-}
-
-// todo: then also optimize this and make it prettier
 struct mwc_view *
 view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *sy) {
     // this returns the topmost node in the scene at the given layout coords
@@ -83,15 +45,19 @@ view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *
     if(node == NULL) return NULL;
 
     if(node->type == WLR_SCENE_NODE_RECT) {
+        // if this is a rect then its either a border, a titlebar, a close button
+        // or a session lock rect (we dont care about those); anyhow we return the node descriptor
         struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
         return rect->node.data;
     } else if(node->type == WLR_SCENE_NODE_BUFFER) {
         struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
         struct mwc_view *view = scene_buffer->node.data;
         if(view != NULL) {
+            // if we desribed this node then it must be title
             assert(view->type == MWC_TITLEBAR_TITLE);
             return view;
         } else {
+            // then its just a regular surface
             struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
             if(scene_surface == NULL) {
                 return NULL;
@@ -99,6 +65,7 @@ view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *
 
             *surface = scene_surface->surface;
 
+            // we climb the tree and find a top most node
             struct wlr_scene_tree *tree = node->parent;
             struct mwc_view *view = tree->node.data;
             while(view == NULL || view->type == MWC_POPUP) {
@@ -150,20 +117,23 @@ focus_view(struct mwc_view *view) {
 struct mwc_toplevel *
 view_try_get_toplevel(struct mwc_view *view) {
     switch(view->type) {
-        case MWC_TOPLEVEL: {
+        case MWC_TOPLEVEL:
             return view->toplevel;
-        }
+        case MWC_POPUP:;
+            struct mwc_popup *popup = view->popup;
+            struct mwc_view *root = popup_get_root_parent(popup);
+            if(root->type == MWC_TOPLEVEL) {
+                return root->toplevel;
+            }
+            return NULL;
         case MWC_BORDER:
         case MWC_TITLEBAR_BASE:
         case MWC_TITLEBAR_CLOSE_BUTTON:
-        case MWC_TITLEBAR_TITLE: {
+        case MWC_TITLEBAR_TITLE:
             return view->rect->node.parent->node.data;
-        }
-        case MWC_POPUP:
         case MWC_LOCK_SURFACE:
-        case MWC_LAYER_SURFACE: {
+        case MWC_LAYER_SURFACE:
             return NULL;
-        }
     }
 }
 
