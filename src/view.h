@@ -28,6 +28,8 @@ struct mwc_view {
         struct wlr_scene_rect *rect;
         struct text_node *text_node;
     };
+    // we listen for the node destroy signal so we can free this struct
+    struct wl_listener destroy;
 };
 
 void

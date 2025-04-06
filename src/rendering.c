@@ -58,6 +58,8 @@ toplevel_create_titlebar(struct mwc_toplevel *toplevel, uint32_t width, uint32_t
 
     if(server.config->titlebar_include_title && server.config->font != NULL) {
         toplevel->titlebar.title = text_node_create(toplevel->titlebar.tree, toplevel->xdg_toplevel->title);
+        view_create_for_node(&toplevel->titlebar.title->scene_buffer->node, MWC_TITLEBAR_TITLE,
+                             toplevel->titlebar.title);
     }
 
     wlr_scene_node_lower_to_bottom(&toplevel->titlebar.tree->node);

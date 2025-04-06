@@ -10,6 +10,7 @@
 #include "view.h"
 #include "dnd.h"
 #include "workspace.h"
+#include "text_buffer.h"
 
 #include <bits/time.h>
 #include <libinput.h>
@@ -334,13 +335,16 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
 
     if(view == NULL) return;
 
-    if(view->type == MWC_TITLEBAR_CLOSE_BUTTON
-            && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+    if(view->type == MWC_TITLEBAR_CLOSE_BUTTON && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
         wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
-    } else if(view->type == MWC_TITLEBAR_BASE
-            && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    } else if(view->type == MWC_TITLEBAR_BASE && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
+        // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
+        server.client_driven_move_resize = true;
+        toplevel_start_move(toplevel);
+    } else if(view->type == MWC_TITLEBAR_TITLE && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        struct mwc_toplevel *toplevel = view->text_node->scene_buffer->node.parent->node.data;
         // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
         server.client_driven_move_resize = true;
         toplevel_start_move(toplevel);
