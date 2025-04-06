@@ -7,7 +7,7 @@
 #include "helpers.h"
 #include "mwc.h"
 #include "config.h"
-#include "something.h"
+#include "view.h"
 #include "toplevel.h"
 #include "config.h"
 #include "workspace.h"
@@ -37,8 +37,7 @@ toplevel_create_titlebar(struct mwc_toplevel *toplevel, uint32_t width, uint32_t
     wlr_scene_rect_set_corner_radius(toplevel->titlebar.base,
                                      max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0),
                                      CORNER_LOCATION_TOP & server.config->border_radius_location);
-    toplevel->titlebar.base_something.type = MWC_TITLEBAR_BASE;
-    toplevel->titlebar.base_something.rect = toplevel->titlebar.base;
+    view_create_for_node(&toplevel->titlebar.base->node, MWC_TITLEBAR_BASE, toplevel->titlebar.base);
 
     if(server.config->blur) {
         wlr_scene_rect_set_backdrop_blur(toplevel->titlebar.base, true);
@@ -53,8 +52,8 @@ toplevel_create_titlebar(struct mwc_toplevel *toplevel, uint32_t width, uint32_t
             wlr_scene_rect_set_corner_radius(toplevel->titlebar.close_button, size / 2 + 1, CORNER_LOCATION_ALL);
         }
 
-        toplevel->titlebar.close_button_something.type = MWC_TITLEBAR_CLOSE_BUTTON;
-        toplevel->titlebar.close_button_something.rect = toplevel->titlebar.close_button;
+        view_create_for_node(&toplevel->titlebar.close_button->node, MWC_TITLEBAR_CLOSE_BUTTON,
+                             toplevel->titlebar.close_button);
     }
 
     if(server.config->titlebar_include_title && server.config->font != NULL) {
@@ -72,7 +71,7 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
     }
 
     uint32_t width, height;
-    toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
+    toplevel_get_current_display_size(toplevel, &width, &height);
 
     if(toplevel->titlebar.tree == NULL) {
         toplevel_create_titlebar(toplevel, width, height);
@@ -100,7 +99,7 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
         int32_t x = server.config->titlebar_close_button_left
             ? server.config->titlebar_close_button_padding_left
             : (int32_t)width - (int32_t)server.config->titlebar_close_button_padding_right
-            - (int32_t)server.config->titlebar_close_button_size;
+                - (int32_t)server.config->titlebar_close_button_size;
         int32_t y = ((int32_t)server.config->titlebar_height - (int32_t)server.config->titlebar_close_button_size) / 2;
 
         wlr_scene_node_set_position(&toplevel->titlebar.close_button->node, x, y);
@@ -136,7 +135,7 @@ toplevel_draw_titlebar(struct mwc_toplevel *toplevel) {
             wlr_scene_node_set_enabled(&toplevel->titlebar.title->scene_buffer->node, false);
         } else {
             wlr_scene_node_set_enabled(&toplevel->titlebar.title->scene_buffer->node, true);
-            const struct wlr_fbox box = {
+            struct wlr_fbox box = {
                 .x = 0.0,
                 .y = 0.0,
                 .width = min(free_width, toplevel->titlebar.title->width),
@@ -178,19 +177,16 @@ toplevel_draw_border(struct mwc_toplevel *toplevel) {
 
     wlr_scene_node_set_enabled(&toplevel->border->node, true);
 
-    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
-    struct wlr_box container_box = toplevel_toplevel_box_to_container_box(toplevel_box, true, toplevel->titlebar.has);
+    uint32_t width, height;
+    toplevel_get_current_display_size(toplevel, &width, &height);
 
-    wlr_scene_rect_set_size(toplevel->border, container_box.width, container_box.height);
+    uint32_t deco_width, deco_height;
+    toplevel_get_current_display_deco_size(toplevel, &deco_width, &deco_height);
 
-    uint32_t clipped_width = toplevel_box.width;
-    uint32_t clipped_height = toplevel_box.height;
-    if(toplevel->titlebar.has) {
-        clipped_height += server.config->titlebar_height;
-    }
+    wlr_scene_rect_set_size(toplevel->border, deco_width, deco_height);
 
     struct clipped_region clipped_region = {
-        .area = { border_width, border_width, clipped_width, clipped_height },
+        .area = { border_width, border_width, width, height },
         .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
         .corners = border_radius_location,
     };
@@ -222,7 +218,7 @@ toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
                                                    wlr_color);
         wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
 
-        // get the container start position
+        // calculate the decorations start position
         int32_t x = -server.config->border_width;
         int32_t y = -server.config->border_width;
         if(toplevel->titlebar.has) {
@@ -237,22 +233,20 @@ toplevel_draw_shadow(struct mwc_toplevel *toplevel) {
 
     wlr_scene_node_set_enabled(&toplevel->shadow->node, true);
 
-    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
-    struct wlr_box container_box = toplevel_toplevel_box_to_container_box(toplevel_box,
-                                                                          true, toplevel->titlebar.has);
+    struct wlr_box deco_box = toplevel_get_current_display_deco_box(toplevel);
 
-    container_box.x = -server.config->shadows_position.x;
-    container_box.y = -server.config->shadows_position.y;
+    deco_box.x = -server.config->shadows_position.x;
+    deco_box.y = -server.config->shadows_position.y;
 
     struct wlr_box shadow_box = {
         .x = 0,
         .y = 0,
-        .width = container_box.width + server.config->shadows_size,
-        .height = container_box.height + server.config->shadows_size,
+        .width = deco_box.width + server.config->shadows_size,
+        .height = deco_box.height + server.config->shadows_size,
     };
 
     struct wlr_box intersection_box;
-    wlr_box_intersection(&intersection_box, &container_box, &shadow_box);
+    wlr_box_intersection(&intersection_box, &deco_box, &shadow_box);
 
     wlr_scene_shadow_set_size(toplevel->shadow, shadow_box.width, shadow_box.height);
     wlr_scene_shadow_set_clipped_region(toplevel->shadow, (struct clipped_region){
@@ -363,7 +357,7 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
 
     uint32_t width, height;
-    toplevel_get_current_display_toplevel_size(toplevel, &width, &height);
+    toplevel_get_current_display_size(toplevel, &width, &height);
 
     struct iter_scene_buffer_apply_effects_args args = {
         .root_x = toplevel->scene_tree->node.x,
@@ -384,8 +378,6 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
 
 static void
 toplevel_draw(struct mwc_toplevel *toplevel) {
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-
     if(server.config->border_width > 0) {
         toplevel_draw_border(toplevel);
     }
@@ -400,16 +392,27 @@ toplevel_draw(struct mwc_toplevel *toplevel) {
 
 static bool
 toplevel_is_in_box(struct mwc_toplevel *toplevel, struct wlr_box *box) {
-    struct wlr_box toplevel_box = toplevel_get_current_display_toplevel_box(toplevel);
+    struct wlr_box deco_box = toplevel_get_current_display_deco_box(toplevel);
 
     struct wlr_box dest;
-    return wlr_box_intersection(&dest, &toplevel_box, box);
+    return wlr_box_intersection(&dest, &deco_box, box);
 }
 
 void
 output_draw(struct mwc_output *output) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+
+    if(output->active_workspace->fullscreen_toplevel != NULL) {
+        // we only draw the fullscreen toplevel here
+        toplevel_draw(output->active_workspace->fullscreen_toplevel);
+        return;
+    }
+
+    if(server.grabbed_toplevel != NULL
+            && toplevel_is_in_box(server.grabbed_toplevel, &output_box)) {
+        toplevel_draw(server.grabbed_toplevel);
+    }
 
     struct mwc_output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {

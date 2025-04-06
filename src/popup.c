@@ -1,9 +1,8 @@
 #include "popup.h"
 
 #include "mwc.h"
-#include "something.h"
+#include "view.h"
 #include "toplevel.h"
-#include "workspace.h"
 #include "layer_surface.h"
 
 #include <stdlib.h>
@@ -15,14 +14,15 @@ extern struct mwc_server server;
 
 void
 server_handle_new_popup(struct wl_listener *listener, void *data) {
-    /* this event is raised when a client creates a new popup */
+    // this event is raised when a client creates a new popup
     struct wlr_xdg_popup *xdg_popup = data;
 
     struct mwc_popup *popup = calloc(1, sizeof(*popup));
     popup->xdg_popup = xdg_popup;
 
-    popup->something.type = MWC_POPUP;
-    popup->something.popup = popup;
+    // todo:
+    // popup->something.type = MWC_POPUP;
+    // popup->something.popup = popup;
 
     if(xdg_popup->parent != NULL) {
         struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
@@ -30,12 +30,12 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
         if(parent_tree == NULL) return;
 
         popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
+        view_create_for_node(&popup->scene_tree->node, MWC_POPUP, popup);
 
         xdg_popup->base->data = popup->scene_tree;
-        popup->scene_tree->node.data = &popup->something;
     } else {
-        /* if there is no parent, than we keep the reference to our mwc_popup state in this */
-        /* user data pointer, in order to later reparent this popup (see layer_surface_handle_new_popup) */
+        // if there is no parent, than we keep the reference to our mwc_popup state in this
+        // user data pointer, in order to later reparent this popup (see layer_surface_handle_new_popup)
         xdg_popup->base->data = popup;
     }
 
@@ -53,7 +53,7 @@ xdg_popup_handle_commit(struct wl_listener *listener, void *data) {
     if(!popup->xdg_popup->base->initialized) return;
 
     if(popup->xdg_popup->base->initial_commit) {
-        struct mwc_something *root = root_parent_of_surface(popup->xdg_popup->base->surface);
+        struct mwc_view *root = root_parent_of_surface(popup->xdg_popup->base->surface);
 
         if(root == NULL) {
             wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
@@ -89,16 +89,16 @@ xdg_popup_handle_destroy(struct wl_listener *listener, void *data) {
     free(popup);
 }
 
-struct mwc_something *
+struct mwc_view *
 popup_get_root_parent(struct mwc_popup *popup) {
     struct wlr_scene_tree *tree = popup->scene_tree;
 
-    struct mwc_something *something = tree->node.data;
-    while(something == NULL || something->type == MWC_POPUP) {
+    struct mwc_view *view = tree->node.data;
+    while(view == NULL || view->type == MWC_POPUP) {
         tree = tree->node.parent;
-        something = tree->node.data;
+        view = tree->node.data;
     }
 
-    return something;
+    return view;
 }
 

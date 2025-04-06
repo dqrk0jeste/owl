@@ -45,14 +45,14 @@ output_transfer_existing_workspaces(struct mwc_output *output) {
     wl_list_for_each(o, &server.outputs, link) {
         wl_list_for_each_safe(w, tmp, &o->workspaces, link) {
             if(w->config != NULL && strcmp(w->config->output, output->wlr_output->name) == 0) {
-                /* fix that outputs state */
+                // fix that outputs state
                 if(w == o->active_workspace) {
                     struct mwc_workspace *owned_workspace = output_find_owned_workspace(o);
-                    /* it should have had its own workspace */
+                    // it should have had its own workspace
                     assert(owned_workspace != NULL);
                     change_workspace(owned_workspace, false);
                 }
-                /* transfer it to this output */
+                // transfer it to this output
                 w->output = output;
                 wl_list_remove(&w->link);
                 wl_list_insert(&output->workspaces, &w->link);
@@ -72,8 +72,8 @@ struct wlr_box
 output_add_to_layout(struct mwc_output *output, struct output_config *config) {
     struct wlr_output_layout_output *layout;
     if(config != NULL) {
-        wlr_log(WLR_INFO, "setting position of output %s to %d, %d",
-                output->wlr_output->name, config->x, config->y);
+        wlr_log(WLR_INFO, "setting position of output %s to %d, %d", output->wlr_output->name,
+                config->x, config->y);
         layout = wlr_output_layout_add(server.output_layout, output->wlr_output,
                                        config->x, config->y);
     } else {
@@ -316,7 +316,7 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
         struct mwc_workspace *w;
         wl_list_for_each(w, &output->workspaces, link) {
             layout_configure(w);
-            /* this pathces some ghosts that might have been left in the scene */
+            // this pathces some ghosts that might have been left in the scene
             if(w != output->active_workspace) {
                 struct mwc_toplevel *t;
                 wl_list_for_each(t, &w->floating_toplevels, link) {

@@ -1,6 +1,6 @@
 #include <scenefx/types/wlr_scene.h>
 
-#include "something.h"
+#include "view.h"
 
 #include "mwc.h"
 #include "layer_surface.h"
@@ -14,7 +14,19 @@
 
 extern struct mwc_server server;
 
-struct mwc_something *
+void
+view_create_for_node(struct wlr_scene_node *node, enum mwc_view_type type, void *thing) {
+    struct mwc_view *view = calloc(1, sizeof(*view));
+
+    view->type = type;
+    // since they are all pointers its the same thing which one we set
+    view->toplevel = thing;
+
+    node->data = view;
+}
+
+// todo: optimize this, as a lot of logic makes sense only for popups
+struct mwc_view *
 root_parent_of_surface(struct wlr_surface *wlr_surface) {
     struct wlr_surface *root_surface = wlr_surface_get_root_surface(wlr_surface);
 
@@ -41,31 +53,25 @@ root_parent_of_surface(struct wlr_surface *wlr_surface) {
         }
     }
 
-    struct mwc_something *something = tree->node.data;
-    while(something == NULL || something->type == MWC_POPUP) {
+    struct mwc_view *view = tree->node.data;
+    while(view == NULL || view->type == MWC_POPUP) {
         tree = tree->node.parent;
-        something = tree->node.data;
+        view = tree->node.data;
     }
 
-    return something;
+    return view;
 }
 
-struct mwc_something *
-something_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *sy) {
+// todo: then also optimize this
+struct mwc_view *
+view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *sy) {
     // this returns the topmost node in the scene at the given layout coords
     struct wlr_scene_node *node = wlr_scene_node_at(&server.scene->tree.node, lx, ly, sx, sy);
     if(node == NULL) return NULL;
 
     if(node->type == WLR_SCENE_NODE_RECT) {
-        struct mwc_toplevel *toplevel = node->parent->node.data;
-        assert(toplevel != NULL);
-
         struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
-        if(rect == toplevel->titlebar.base) {
-            return &toplevel->titlebar.base_something;
-        } else {
-            return &toplevel->titlebar.close_button_something;
-        }
+        return rect->node.data;
     } else if(node->type == WLR_SCENE_NODE_BUFFER) {
         struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
         struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
@@ -76,58 +82,63 @@ something_at(double lx, double ly, struct wlr_surface **surface, double *sx, dou
         *surface = scene_surface->surface;
 
         struct wlr_scene_tree *tree = node->parent;
-        struct mwc_something *something = tree->node.data;
-        while(something == NULL || something->type == MWC_POPUP) {
+        struct mwc_view *view = tree->node.data;
+        while(view == NULL || view->type == MWC_POPUP) {
             tree = tree->node.parent;
-            something = tree->node.data;
+            view = tree->node.data;
         }
 
-        return something;
+        return view;
     }
 
     return NULL;
 }
 
 void
-focus_something(struct mwc_something *something) {
-    assert(something != NULL);
+focus_view(struct mwc_view *view) {
+    assert(view != NULL);
 
-    switch(something->type) {
+    switch(view->type) {
         case MWC_TOPLEVEL: {
-            focus_toplevel(something->toplevel);
-            return;
-        }
-        case MWC_LAYER_SURFACE: {
-            focus_layer_surface(something->layer_surface);
-            return;
-        }
-        case MWC_LOCK_SURFACE: {
-            focus_lock_surface(something->lock_surface);
-            return;
-        }
-        case MWC_TITLEBAR_BASE:
-        case MWC_TITLEBAR_CLOSE_BUTTON: {
-            struct mwc_toplevel *toplevel = something->rect->node.parent->node.data;
-            focus_toplevel(toplevel);
+            focus_toplevel(view->toplevel);
             return;
         }
         case MWC_POPUP: {
-            struct mwc_popup *popup = something->popup;
-            focus_something(popup_get_root_parent(popup));
+            struct mwc_popup *popup = view->popup;
+            focus_view(popup_get_root_parent(popup));
+            return;
+        }
+        case MWC_LAYER_SURFACE: {
+            focus_layer_surface(view->layer_surface);
+            return;
+        }
+        case MWC_LOCK_SURFACE: {
+            focus_lock_surface(view->lock_surface);
+            return;
+        }
+        case MWC_BORDER:
+        case MWC_TITLEBAR_BASE:
+        case MWC_TITLEBAR_CLOSE_BUTTON:
+        case MWC_TITLEBAR_TITLE: {
+            // these are always child of a toplevel, so we get the toplevel first, and then focus it
+            struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
+            focus_toplevel(toplevel);
             return;
         }
     }
 }
 
 struct mwc_toplevel *
-something_try_get_toplevel(struct mwc_something *something) {
-    switch(something->type) {
+view_try_get_toplevel(struct mwc_view *view) {
+    switch(view->type) {
         case MWC_TOPLEVEL: {
-            return something->toplevel;
+            return view->toplevel;
         }
+        case MWC_BORDER:
         case MWC_TITLEBAR_BASE:
-        case MWC_TITLEBAR_CLOSE_BUTTON: {
-            return something->rect->node.parent->node.data;
+        case MWC_TITLEBAR_CLOSE_BUTTON:
+        case MWC_TITLEBAR_TITLE: {
+            return view->rect->node.parent->node.data;
         }
         case MWC_POPUP:
         case MWC_LOCK_SURFACE:

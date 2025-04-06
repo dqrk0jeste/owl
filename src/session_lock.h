@@ -1,6 +1,7 @@
 #pragma once
 
-#include "something.h"
+#include "view.h"
+
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 
@@ -18,7 +19,6 @@ struct mwc_lock {
 struct mwc_lock_surface {
     struct wlr_session_lock_surface_v1 *wlr_lock_surface;
     struct wlr_scene_tree *scene_tree;
-    struct mwc_something something;
     struct mwc_lock *lock;
 
     struct wl_list link;
@@ -36,3 +36,4 @@ session_lock_manager_handle_destroy(struct wl_listener *listener, void *data);
 
 void
 focus_lock_surface(struct mwc_lock_surface *lock_surface);
+

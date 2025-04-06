@@ -7,7 +7,7 @@
 #include "mwc.h"
 #include "toplevel.h"
 #include "output.h"
-#include "something.h"
+#include "view.h"
 #include "dnd.h"
 #include "workspace.h"
 
@@ -125,6 +125,7 @@ pointer_configure(struct mwc_pointer *pointer) {
     return true;
 }
 
+// fix this
 void
 server_reset_cursor_mode() {
     /* reset the cursor mode to passthrough. */
@@ -142,20 +143,20 @@ server_reset_cursor_mode() {
 
 void
 cursor_handle_motion(uint32_t time) {
-    /* get the output that the cursor is on currently */
+    // get the output that the cursor is on currently
     struct wlr_output *wlr_output = wlr_output_layout_output_at(server.output_layout,
                                                                 server.cursor->x, server.cursor->y);
     struct mwc_output *output = wlr_output->data;
 
-    /* set global active workspace and stop moving resizing if there is a fullscreened toplevel */
+    // todo: implement this in that another way
+    // set global active workspace and stop moving resizing if there is a fullscreened toplevel
     if(output->active_workspace != server.active_workspace) {
         struct mwc_workspace *prev_workspace = server.active_workspace;
 
         if(output->active_workspace->fullscreen_toplevel != NULL) {
             if(server.cursor_mode == MWC_CURSOR_MOVE) {
                 if(!server.grabbed_toplevel->floating) {
-                    toplevel_tiled_insert_into_layout(server.grabbed_toplevel,
-                                                      server.cursor->x, server.cursor->y);
+                    layout_insert_toplevel_at(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
                 } else {
                     server.grabbed_toplevel->workspace = prev_workspace;
                     wl_list_insert(&prev_workspace->floating_toplevels, &server.grabbed_toplevel->link);
@@ -187,39 +188,39 @@ cursor_handle_motion(uint32_t time) {
     pointer_handle_focus(time, true);
 }
 
-struct mwc_something *
-pointer_get_something_under_cursor(void) {
+struct mwc_view *
+pointer_get_view_under_cursor(void) {
     double sx, sy;
     struct wlr_surface *surface;
-    return something_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
+    return view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
 }
 
 void
 pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
-    /* find something under the pointer and send the event along. */
+    // find the view under the pointer and send the event along
     double sx, sy;
     struct wlr_seat *seat = server.seat;
     struct wlr_surface *surface = NULL;
-    struct mwc_something *something = something_at(server.cursor->x, server.cursor->y,
-                                                   &surface, &sx, &sy);
-    if(something == NULL) {
+    struct mwc_view *view = view_at(server.cursor->x, server.cursor->y,
+                                    &surface, &sx, &sy);
+    if(view == NULL) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
-        /* clear pointer focus so future button events and such are not sent to
-     * the last client to have the cursor over it */
+        // clear pointer focus so future button events and such are not sent to
+        // the last client to have the cursor over it
         wlr_seat_pointer_clear_focus(seat);
         return;
     }
 
-    if(something->type == MWC_TITLEBAR_CLOSE_BUTTON) {
+    if(view->type == MWC_TITLEBAR_CLOSE_BUTTON) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "pointer");
         wlr_seat_pointer_clear_focus(seat);
-    } else if(something->type == MWC_TITLEBAR_BASE) {
+    } else if(view->type == MWC_TITLEBAR_BASE) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
         wlr_seat_pointer_clear_focus(seat);
     }
 
     if(handle_keyboard_focus) {
-        focus_something(something);
+        focus_view(view);
     }
 
     if(surface != NULL) {
@@ -305,10 +306,9 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
                                    event->button, event->state);
 
     if(event->state == WL_POINTER_BUTTON_STATE_RELEASED
-        && server.cursor_mode != MWC_CURSOR_PASSTHROUGH
-        && server.client_driven_move_resize) {
-        struct mwc_output *primary_output =
-            toplevel_get_primary_output(server.grabbed_toplevel);
+            && server.cursor_mode != MWC_CURSOR_PASSTHROUGH
+            && server.client_driven_move_resize) {
+        struct mwc_output *primary_output = toplevel_get_primary_output(server.grabbed_toplevel);
 
         if(primary_output != server.grabbed_toplevel->workspace->output) {
             server.grabbed_toplevel->workspace = primary_output->active_workspace;
@@ -318,7 +318,7 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
         }
 
         if(!server.grabbed_toplevel->floating) {
-            toplevel_tiled_insert_into_layout(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
+            layout_insert_toplevel_at(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
         } else {
             wl_list_insert(server.active_workspace->floating_toplevels.next, &server.grabbed_toplevel->link);
         }
@@ -330,30 +330,28 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
 
     struct wlr_surface *surface;
     double sx, sy;
-    struct mwc_something *something = something_at(server.cursor->x, server.cursor->y,
-                                                   &surface, &sx, &sy);
+    struct mwc_view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
 
-    if(something == NULL) return;
+    if(view == NULL) return;
 
-    if(something->type == MWC_TITLEBAR_CLOSE_BUTTON
-        && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        struct mwc_toplevel *toplevel = something->rect->node.parent->node.data;
+    if(view->type == MWC_TITLEBAR_CLOSE_BUTTON
+            && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
         wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
-    } else if(something->type == MWC_TITLEBAR_BASE
-        && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        struct mwc_toplevel *toplevel = something->rect->node.parent->node.data;
-        /* we lie here, but its the same thing, the important thing is that its not driven by a shortcut */
+    } else if(view->type == MWC_TITLEBAR_BASE
+            && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
+        // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
         server.client_driven_move_resize = true;
         toplevel_start_move(toplevel);
     }
 }
 
-
 void
 server_handle_cursor_axis(struct wl_listener *listener, void *data) {
     struct wlr_pointer_axis_event *event = data;
 
-    /* notify the client with pointer focus of the axis event */
+    // notify the client with pointer focus of the axis event
     wlr_seat_pointer_notify_axis(server.seat,
                                  event->time_msec, event->orientation, event->delta,
                                  event->delta_discrete, event->source, event->relative_direction);

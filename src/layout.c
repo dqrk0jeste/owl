@@ -124,8 +124,7 @@ layout_configure(struct mwc_workspace *workspace) {
     }
 }
 
-// this function assumes they are in the same workspace and
-// that t2 comes after t1 if in the same list
+// this function assumes they are in the same workspace and that t2 comes after t1 if in the same list
 void
 layout_swap_toplevels(struct mwc_toplevel *t1, struct mwc_toplevel *t2) {
     struct wl_list *before_t1 = t1->link.prev;
@@ -140,7 +139,7 @@ layout_swap_toplevels(struct mwc_toplevel *t1, struct mwc_toplevel *t2) {
 struct mwc_toplevel *
 layout_find_closest_toplevel(struct mwc_workspace *workspace, bool master,
                              enum mwc_direction side) {
-    /* this means there are no tiled toplevels */
+    // this means there are no tiled toplevels
     if(wl_list_empty(&workspace->masters)) return NULL;
 
     struct mwc_toplevel *first_master = wl_container_of(workspace->masters.next,
@@ -174,11 +173,11 @@ layout_find_closest_toplevel(struct mwc_workspace *workspace, bool master,
     }
 }
 
-struct mwc_toplevel *
+static struct mwc_toplevel *
 layout_toplevel_at(struct mwc_workspace *workspace, int32_t x, int32_t y) {
     struct mwc_toplevel *t;
     wl_list_for_each(t, &workspace->masters, link) {
-        struct wlr_box box = toplevel_toplevel_box_to_container_box(t->box, true, t->titlebar.has);
+        struct wlr_box box = t->deco_box;
         int32_t rx = 0, ry = 0;
 
         if(&t->link == workspace->masters.next) {
@@ -211,7 +210,7 @@ layout_toplevel_at(struct mwc_workspace *workspace, int32_t x, int32_t y) {
     };
 
     wl_list_for_each(t, &workspace->slaves, link) {
-        struct wlr_box box = toplevel_toplevel_box_to_container_box(t->box, true, t->titlebar.has);
+        struct wlr_box box = t->deco_box;
         int32_t rx = 0, ry = 0;
 
         if(&t->link == workspace->slaves.next) {
@@ -244,5 +243,44 @@ layout_toplevel_at(struct mwc_workspace *workspace, int32_t x, int32_t y) {
     }
 
     return NULL;
+}
+
+void
+layout_insert_toplevel_at(struct mwc_toplevel *toplevel, uint32_t x, uint32_t y) {
+    struct mwc_workspace *workspace = server.active_workspace;
+
+    toplevel->workspace = workspace;
+
+    struct mwc_toplevel *under_cursor = layout_toplevel_at(workspace, x, y);
+
+    if(under_cursor == NULL) {
+        if(wl_list_length(&workspace->masters) < server.config->master_count) {
+            wl_list_insert(workspace->masters.prev, &toplevel->link);
+        } else {
+            wl_list_insert(workspace->slaves.prev, &toplevel->link);
+        }
+    } else {
+        bool on_left_side = x <= under_cursor->box.x + under_cursor->box.width / 2;
+        bool on_top_side = y <= under_cursor->box.y + under_cursor->box.height / 2;
+        bool under_cursor_is_master = toplevel_is_master(under_cursor);
+
+        // we insert it before under_cursor if either:
+        // - its last master and there are some slaves
+        // - cursor is on left (top) */
+        if((under_cursor_is_master && &under_cursor->link == workspace->masters.prev
+                && wl_list_length(&workspace->slaves) > 0)
+                || (under_cursor_is_master && on_left_side)
+                || (!under_cursor_is_master && on_top_side)) {
+            wl_list_insert(under_cursor->link.prev, &toplevel->link);
+        } else {
+            wl_list_insert(&under_cursor->link, &toplevel->link);
+        }
+
+        if(wl_list_length(&workspace->masters) > server.config->master_count) {
+            struct mwc_toplevel *last = wl_container_of(workspace->masters.prev, last, link);
+            wl_list_remove(&last->link);
+            wl_list_insert(workspace->slaves.prev, &last->link);
+        }
+    }
 }
 

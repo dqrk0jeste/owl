@@ -54,7 +54,7 @@ src = [
   'src/popup.c',
   'src/rendering.c',
   'src/session_lock.c',
-  'src/something.c',
+  'src/view.c',
   'src/toplevel.c',
   'src/workspace.c',
   'src/text_buffer.c',

@@ -7,7 +7,7 @@
 #include "mwc.h"
 #include "popup.h"
 #include "output.h"
-#include "something.h"
+#include "view.h"
 #include "layout.h"
 #include "toplevel.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
@@ -71,7 +71,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
 
     // if its the first commit or something has changed we rearange the surfaces
     if(layer_surface->wlr_layer_surface->initial_commit || committed) {
-        layer_surfaces_commit(output);
+        layer_surfaces_configure(output);
     }
 
     if(server.config->blur && layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
@@ -108,6 +108,7 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
+    // todo: investigate this
     wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
 
     layout_configure(output->active_workspace);
@@ -167,7 +168,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
         }
     }
 
-    layer_surfaces_commit(output);
+    layer_surfaces_configure(output);
 }
 
 void
@@ -183,8 +184,7 @@ layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
 
 void
 layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
-    struct mwc_layer_surface *layer_surface = wl_container_of(listener,
-                                                              layer_surface, new_popup);
+    struct mwc_layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
     struct wlr_xdg_popup *xdg_popup = data;
 
     // see server_handle_new_xdg_popup()
@@ -193,10 +193,9 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
     struct wlr_scene_tree *parent_tree = layer_surface->scene->tree;
     popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
 
-    popup->something.type = MWC_POPUP;
-    popup->something.popup = popup;
+    view_create_for_node(&popup->scene_tree->node, MWC_POPUP, popup);
 
-    popup->scene_tree->node.data = &popup->something;
+    // todo: fix this
     popup->xdg_popup->base->data = popup->scene_tree;
 }
 
@@ -212,7 +211,7 @@ focus_layer_surface(struct mwc_layer_surface *layer_surface) {
     if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
             && server.exclusive) return;
 
-    /* unfocus the focused toplevel */
+    // unfocus the focused toplevel
     if(server.focused_toplevel != NULL) {
         server.prev_focused = server.focused_toplevel;
         unfocus_focused_toplevel();
@@ -220,6 +219,7 @@ focus_layer_surface(struct mwc_layer_surface *layer_surface) {
 
     server.focused_layer_surface = layer_surface;
     server.exclusive = keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
     if(keyboard != NULL) {
         wlr_seat_keyboard_notify_enter(server.seat, layer_surface->wlr_layer_surface->surface,
@@ -227,9 +227,9 @@ focus_layer_surface(struct mwc_layer_surface *layer_surface) {
     }
 }
 
-void
-layer_surfaces_commit_layer(struct mwc_output *output,
-                            enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
+static void
+layer_surfaces_configure_layer(struct mwc_output *output,
+                               enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
     struct wl_list *list = layer_get_list(output, layer);
 
     struct wlr_box full_area;
@@ -244,7 +244,7 @@ layer_surfaces_commit_layer(struct mwc_output *output,
 }
 
 void
-layer_surfaces_commit(struct mwc_output *output) {
+layer_surfaces_configure(struct mwc_output *output) {
     struct wlr_box full_area;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &full_area);
 
@@ -252,12 +252,12 @@ layer_surfaces_commit(struct mwc_output *output) {
 
     // first commit all the exclusive ones
     for(size_t i = 0; i < 4; i++) {
-        layer_surfaces_commit_layer(output, i, true);
+        layer_surfaces_configure_layer(output, i, true);
     }
 
     // then all the others
     for(size_t i = 0; i < 4; i++) {
-        layer_surfaces_commit_layer(output, i, false);
+        layer_surfaces_configure_layer(output, i, false);
     }
 
     layout_configure(output->active_workspace);
@@ -283,8 +283,9 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     layer_surface->wlr_layer_surface = wlr_layer_surface;
     wlr_layer_surface->data = layer_surface;
 
-    layer_surface->something.type = MWC_LAYER_SURFACE;
-    layer_surface->something.layer_surface = layer_surface;
+    // todo: rewrite this
+    // layer_surface->something.type = MWC_LAYER_SURFACE;
+    // layer_surface->something.layer_surface = layer_surface;
 
     if(layer_surface->wlr_layer_surface->output == NULL) {
         // we give it currently active output
@@ -310,7 +311,7 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     struct wl_list *list = layer_get_list(output, layer);
     wl_list_insert(list, &layer_surface->link);
 
-    layer_surface->scene->tree->node.data = &layer_surface->something;
+    view_create_for_node(&layer_surface->scene->tree->node, MWC_LAYER_SURFACE, layer_surface);
 
     layer_surface->commit.notify = layer_surface_handle_commit;
     wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);

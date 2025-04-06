@@ -65,7 +65,7 @@ find_animation_curve_at(struct fx_animation_curve *curve, double t) {
 	return curve->baked_points_y[up];
 }
 
-struct fx_translate_animation {
+struct fx_transform_animation {
     struct fx_animation_curve *curve;
     struct wl_event_source *timer;
 
@@ -76,13 +76,13 @@ struct fx_translate_animation {
     struct wlr_box current;
     bool done;
 
-    fx_translate_animation_callback_func_t callback;
+    fx_transform_animation_callback_func_t callback;
     void *user_data;
 };
 
 static int
 timer_animation_update(void *data) {
-    struct fx_translate_animation *animation = data;
+    struct fx_transform_animation *animation = data;
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -103,9 +103,9 @@ timer_animation_update(void *data) {
         uint32_t height = animation->start.height
             + (animation->end.height - animation->start.height) * factor;
 
-        uint32_t x = animation->start.x
+        int32_t x = animation->start.x
             + (animation->end.x - animation->start.x) * factor;
-        uint32_t y = animation->start.y
+        int32_t y = animation->start.y
             + (animation->end.y - animation->start.y) * factor;
 
         animation->current = (struct wlr_box){ x, y, width, height };
@@ -140,11 +140,11 @@ get_fastest_output_refresh_ms(void) {
 }
 
 
-struct fx_translate_animation *
-fx_translate_animation_create(struct wlr_box start, struct wlr_box end, uint32_t duration,
+struct fx_transform_animation *
+fx_transform_animation_create(struct wlr_box start, struct wlr_box end, uint32_t duration,
                               struct fx_animation_curve *curve,
-                              fx_translate_animation_callback_func_t callback, void *user_data) {
-	struct fx_translate_animation *animation = calloc(1, sizeof(*animation));
+                              fx_transform_animation_callback_func_t callback, void *user_data) {
+	struct fx_transform_animation *animation = calloc(1, sizeof(*animation));
 
 	animation->start = start;
 	animation->end = end;
@@ -174,18 +174,18 @@ fx_translate_animation_create(struct wlr_box start, struct wlr_box end, uint32_t
 }
 
 void
-fx_translate_animation_destroy(struct fx_translate_animation *animation) {
+fx_transform_animation_destroy(struct fx_transform_animation *animation) {
     wl_event_source_remove(animation->timer);
 	free(animation);
 }
 
 struct wlr_box
-fx_translate_animation_get_current(struct fx_translate_animation *animation) {
+fx_transform_animation_get_current(struct fx_transform_animation *animation) {
     return animation->current;
 }
 
 bool
-fx_translate_animation_is_done(struct fx_translate_animation *animation) {
+fx_transform_animation_is_done(struct fx_transform_animation *animation) {
     return animation->done;
 }
 

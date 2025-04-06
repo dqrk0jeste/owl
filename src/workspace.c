@@ -7,7 +7,7 @@
 #include "ipc.h"
 #include "keybinds.h"
 #include "layer_surface.h"
-#include "something.h"
+#include "view.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -224,6 +224,7 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
         double relative_y =
             (double)old_output_relative_y / old_workspace->output->usable_area.height;
 
+        // todo:
         uint32_t new_output_x = workspace->output->usable_area.x
             + relative_x * workspace->output->usable_area.width;
         uint32_t new_output_y = workspace->output->usable_area.y
@@ -231,7 +232,7 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
 
         // struct wlr_box box = toplevel_container_box_to_toplevel_box(toplevel-);
         //
-        // // FIXME: also use relative size
+        // // todo: also use relative size
         // toplevel_set_state(toplevel, (struct wlr_box){ new_output_x, new_output_y, toplevel->box.width, toplevel->box.height};
     } else {
         layout_configure(old_workspace);

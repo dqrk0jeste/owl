@@ -41,8 +41,8 @@ server_reset_cursor_mode(void);
 void
 cursor_handle_motion(uint32_t time);
 
-struct mwc_something *
-pointer_get_something_under_cursor(void);
+struct mwc_view *
+pointer_get_view_under_cursor(void);
 
 void
 pointer_handle_focus(uint32_t time, bool handle_keyboard_focus);

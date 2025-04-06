@@ -1,12 +1,12 @@
 #include "session_lock.h"
 
 #include "layer_surface.h"
-#include "something.h"
+#include "view.h"
 #include "toplevel.h"
 #include "mwc.h"
 #include "rendering.h"
-#include "wlr/util/log.h"
 
+#include <wlr/util/log.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
 
@@ -24,7 +24,7 @@ lock_surface_handle_unmap(struct wl_listener *listener, void *data) {
     struct mwc_lock_surface *lock_surface = wl_container_of(listener, lock_surface, unmap);
 
     wl_list_remove(&lock_surface->link);
-    /* we pass focus only if the thing is still locked */
+    // we pass focus only if the thing is still locked
     if(lock_surface->lock->locked && !wl_list_empty(&lock_surface->lock->surfaces)) {
         struct mwc_lock_surface *next = wl_container_of(lock_surface->lock->surfaces.next, next, link);
         focus_lock_surface(next);
@@ -50,15 +50,12 @@ session_lock_handle_new_surface(struct wl_listener *listener, void *data) {
 
     wl_list_insert(&lock->surfaces, &lock_surface->link);
 
+    wlr_lock_surface->data = lock_surface;
+    lock_surface->lock = lock;
+
     lock_surface->scene_tree = wlr_scene_subsurface_tree_create(server.session_lock_tree,
                                                                 wlr_lock_surface->surface);
-    wlr_lock_surface->data = lock_surface;
-
-    lock_surface->something.type = MWC_LOCK_SURFACE;
-    lock_surface->something.lock_surface = lock_surface;
-
-    lock_surface->scene_tree->node.data = &lock_surface->something;
-    lock_surface->lock = lock;
+    view_create_for_node(&lock_surface->scene_tree->node, MWC_LOCK_SURFACE, lock_surface);
 
     lock_surface->map.notify = lock_surface_handle_map;
     wl_signal_add(&wlr_lock_surface->surface->events.map, &lock_surface->map);
@@ -96,6 +93,7 @@ session_lock_handle_unlock(struct wl_listener *listener, void *data) {
                                                                 server.cursor->x, server.cursor->y);
     struct mwc_output *output = wlr_output->data;
 
+    // optimize this
     bool focused = false;
     struct mwc_layer_surface *l;
     wl_list_for_each(l, &output->layers.overlay, link) {
@@ -125,7 +123,7 @@ session_lock_handle_unlock(struct wl_listener *listener, void *data) {
 
     struct mwc_output *o;
     wl_list_for_each(o, &server.outputs, link) {
-        /* destroy the rectangle blocking the view */
+        // destroy the rectangle blocking the view
         wlr_scene_node_destroy(&o->session_lock_rect->node);
         o->session_lock_rect = NULL;
     }
@@ -181,7 +179,7 @@ session_lock_manager_handle_new(struct wl_listener *listener, void *data) {
         wlr_scene_node_set_position(&o->session_lock_rect->node, output_box.x, output_box.y);
     }
 
-    /* needs improvement */
+    // todo: needs improvement
     unfocus_focused_toplevel();
 
     lock->new_surface.notify = session_lock_handle_new_surface;
@@ -195,3 +193,4 @@ session_lock_manager_handle_new(struct wl_listener *listener, void *data) {
 
     wlr_session_lock_v1_send_locked(wlr_lock);
 }
+

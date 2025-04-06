@@ -13,22 +13,22 @@
 
 extern struct mwc_server server;
 
-void
+static void
 keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
     // this event is raised when a modifier key, such as shift or alt, is pressed
     struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
 
     server.last_used_keyboard = keyboard;
-    // A seat can only have one keyboard, but this is a limitation of the
-    // Wayland protocol - not wlroots. We assign all connected keyboards to the
-    // same seat. You can swap out the underlying wlr_keyboard like this and
+    // a seat can only have one keyboard, but this is a limitation of the
+    // wayland protocol - not wlroots. we assign all connected keyboards to the
+    // same seat. you can swap out the underlying wlr_keyboard like this and
     // wlr_seat handles this transparently.
     wlr_seat_set_keyboard(server.seat, keyboard->wlr_keyboard);
     // send modifiers to the client
     wlr_seat_keyboard_notify_modifiers(server.seat, &keyboard->wlr_keyboard->modifiers);
 }
 
-void
+static void
 keyboard_handle_key(struct wl_listener *listener, void *data) {
     struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, key);
     struct wlr_keyboard_key_event *event = data;
@@ -54,7 +54,7 @@ keyboard_handle_key(struct wl_listener *listener, void *data) {
     }
 }
 
-void
+static void
 keyboard_handle_destroy(struct wl_listener *listener, void *data) {
     struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
 
@@ -69,31 +69,6 @@ keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 
     xkb_state_unref(keyboard->empty);
     free(keyboard);
-}
-
-void
-server_handle_new_keyboard(struct wlr_input_device *device) {
-    struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
-
-    struct mwc_keyboard *keyboard = calloc(1, sizeof(*keyboard));
-    keyboard->wlr_keyboard = wlr_keyboard;
-
-    keyboard_configure(keyboard);
-
-    keyboard->modifiers.notify = keyboard_handle_modifiers;
-    wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
-    keyboard->key.notify = keyboard_handle_key;
-    wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
-    keyboard->destroy.notify = keyboard_handle_destroy;
-    wl_signal_add(&device->events.destroy, &keyboard->destroy);
-
-    wlr_seat_set_keyboard(server.seat, keyboard->wlr_keyboard);
-
-    wl_list_insert(&server.keyboards, &keyboard->link);
-
-    if(server.last_used_keyboard == NULL) {
-        server.last_used_keyboard = keyboard;
-    }
 }
 
 bool
@@ -128,11 +103,34 @@ keyboard_configure(struct mwc_keyboard *keyboard) {
 
     keyboard->empty = xkb_state_new(keymap);
 
-    uint32_t rate = server.config->keyboard_rate;
-    uint32_t delay = server.config->keyboard_delay;
-
-    wlr_keyboard_set_repeat_info(keyboard->wlr_keyboard, rate, delay);
+    wlr_keyboard_set_repeat_info(keyboard->wlr_keyboard, server.config->keyboard_rate,
+                                 server.config->keyboard_delay);
 
     return true;
+}
+
+void
+server_handle_new_keyboard(struct wlr_input_device *device) {
+    struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
+
+    struct mwc_keyboard *keyboard = calloc(1, sizeof(*keyboard));
+    keyboard->wlr_keyboard = wlr_keyboard;
+
+    keyboard_configure(keyboard);
+
+    keyboard->modifiers.notify = keyboard_handle_modifiers;
+    wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
+    keyboard->key.notify = keyboard_handle_key;
+    wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
+    keyboard->destroy.notify = keyboard_handle_destroy;
+    wl_signal_add(&device->events.destroy, &keyboard->destroy);
+
+    wlr_seat_set_keyboard(server.seat, keyboard->wlr_keyboard);
+
+    wl_list_insert(&server.keyboards, &keyboard->link);
+
+    if(server.last_used_keyboard == NULL) {
+        server.last_used_keyboard = keyboard;
+    }
 }
 

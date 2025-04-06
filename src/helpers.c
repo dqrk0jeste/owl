@@ -30,5 +30,5 @@ mwc_color_to_pixman_color(struct mwc_color color, pixman_color_t *dest) {
 
 uint32_t
 timespec_to_ms(struct timespec *ts) {
-    return (uint64_t)ts->tv_sec * 1000 + (uint64_t)ts->tv_nsec / 1000000;
+    return (uint32_t)ts->tv_sec * 1000 + (uint32_t)ts->tv_nsec / 1000000;
 }

@@ -30,8 +30,8 @@
 
 #define clamp(v, a, b) (max((a), min((v), (b))))
 
-/* assumes valid hex */
-uint32_t
+// assumes valid hex
+static uint32_t
 hex_to_unsigned_decimal(char *hex, size_t len) {
     uint32_t result = 0;
     for(size_t i = 0; i < len; i++) {
@@ -49,7 +49,7 @@ hex_to_unsigned_decimal(char *hex, size_t len) {
     return result;
 }
 
-bool
+static bool
 try_parse_color_hex(char *s, struct mwc_color *dest) {
     size_t len = strlen(s);
     if(len != 6 && len != 8) return false;
@@ -69,7 +69,7 @@ try_parse_color_hex(char *s, struct mwc_color *dest) {
     return true;
 }
 
-bool
+static bool
 try_parse_color_rgba_or_hex(char **args, size_t arg_count, struct mwc_color *dest) {
     if(arg_count == 4) {
         dest->r = clamp(atoi(args[0]), 0, 255);
@@ -93,7 +93,7 @@ try_parse_color_rgba_or_hex(char **args, size_t arg_count, struct mwc_color *des
     return true;
 }
 
-bool
+static bool
 config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate,
                       char **args, size_t arg_count) {
     struct layer_rule_regex condition;
@@ -125,7 +125,7 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate,
     return true;
 }
 
-bool
+static bool
 config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_regex,
                        char *predicate, char **args, size_t arg_count) {
     struct window_rule_regex condition;
@@ -168,7 +168,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         struct window_rule_size *window_rule = calloc(1, sizeof(*window_rule));
         window_rule->condition = condition;
 
-        /* if it ends with '%' we treat it as a relative unit */
+        // if it ends with '%' we treat it as a relative unit
         if(args[0][strlen(args[0]) - 1] == '%') {
             args[0][strlen(args[0]) - 1] = 0;
             window_rule->relative_width = true;
@@ -219,7 +219,7 @@ invalid:
     return false;
 }
 
-char *
+static char *
 string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
     /* append this while making sure there is enough space */
     size_t a_len = strlen(a);
@@ -229,12 +229,12 @@ string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
         a = realloc(a, *cap);
     }
 
-    /* now there is enough space to fit the new one; we add , if its not the first one */
+    // now there is enough space to fit the new one; we add , if its not the first one
     if(comma) {
         a[a_len] = ',';
         a_len++;
     }
-    /* and then copy the thing over */
+    // and then copy the thing over
     char *p = b;
     char *q = &a[a_len];
     while(*p != 0) {
@@ -247,13 +247,13 @@ string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
     return a;
 }
 
-void
+static void
 config_add_keymap(struct mwc_config *c, char *layout, char *variant) {
-    /* everything here is ugly */
+    // everything here is ugly
     static size_t layout_cap, variant_cap;
     static size_t count;
-    if(c->keymap_layouts == 0) {
-        /* it has not been allocated yet */
+    if(c->keymap_layouts == NULL) {
+        // it has not been allocated yet
         layout_cap = STRING_INITIAL_LENGTH;
         c->keymap_layouts = calloc(layout_cap, sizeof(char));
         variant_cap = STRING_INITIAL_LENGTH;
@@ -267,7 +267,7 @@ config_add_keymap(struct mwc_config *c, char *layout, char *variant) {
     count++;
 }
 
-bool
+static bool
 config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
                    char* action, char **args, size_t arg_count) {
     char *p = modifiers;
@@ -357,7 +357,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
         .key = key_sym,
     };
 
-    /* this is true for most, needs to be set to false if otherwise */
+    // this is true for most, needs to be set to false if otherwise
     k->initialized = true;
 
     if(strcmp(action, "exit") == 0) {
@@ -471,7 +471,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
     return true;
 }
 
-void
+static void
 config_free_args(char **args, size_t arg_count) {
     for(size_t i = 0; i < arg_count; i++) {
         if(args[i] != NULL) free(args[i]);
@@ -480,7 +480,7 @@ config_free_args(char **args, size_t arg_count) {
     free(args);
 }
 
-bool
+static bool
 config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg_count) {
     if(strcmp(keyword, "keyboard_rate") == 0) {
         if(arg_count < 1) goto invalid;
@@ -597,7 +597,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             .width = atoi(args[3]),
             .height = atoi(args[4]),
             .refresh_rate = atoi(args[5]) * 1000,
-            /* scale is optional, defaults to 1 */
+            // scale is optional, defaults to 1
             .scale = arg_count > 6 ? atof(args[6]) : 1,
         };
 
@@ -646,9 +646,6 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
         c->animation_curve = fx_animation_curve_create(
             (double[4]){ atof(args[0]), atof(args[1]), atof(args[2]), atof(args[3])});
-    } else if(strcmp(keyword, "placeholder_color") == 0) {
-        wlr_log(WLR_ERROR, "placeholder_color has been depricated, and should not be used anymore");
-        goto depricated;
     } else if(strcmp(keyword, "client_side_decorations") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -669,7 +666,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         c->apply_opacity_when_fullscreen = atoi(args[0]);
     } else if(strcmp(keyword, "keymap") == 0) {
         if(arg_count < 2) goto invalid;
-        /* handle appending to this string */
+        // handle appending to this string
         config_add_keymap(c, args[0], args[1]);
     } else if(strcmp(keyword, "keymap_options") == 0) {
         if(arg_count < 1) goto invalid;
@@ -678,8 +675,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "border_radius") == 0) {
         if(arg_count < 1) goto invalid;
 
-        /* we clamp it between 1 and INT_MAX so it works with current scenefx (see #75 on scenefx)*/
-        c->border_radius = clamp(atoi(args[0]), 1, INT_MAX);
+        c->border_radius = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "border_radius_location") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -861,13 +857,12 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
 invalid:
     wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-depricated:
     free(keyword);
     config_free_args(args, arg_count);
     return false;
 }
 
-void
+static void
 get_default_config_path(char *dest, size_t size) {
     char *default_config_path = getenv("MWC_DEFAULT_CONFIG_PATH");
 
@@ -881,7 +876,7 @@ get_default_config_path(char *dest, size_t size) {
     strncpy(dest, default_config_path, size);
 }
 
-bool
+static bool
 get_config_path(char *dest, size_t size) {
     char *env_conf = getenv("MWC_CONFIG_PATH");
     if(env_conf != NULL) {
@@ -905,16 +900,16 @@ get_config_path(char *dest, size_t size) {
     return false;
 }
 
-/* assumes the line is newline teriminated, as it should be with fgets() */
-bool
+// assumes the line is newline teriminated, as it should be with fgets()
+static bool
 config_handle_line(char *line, size_t line_number, char **keyword,
                    char ***args, size_t *args_count) {
     char *p = line;
 
-    /* skip whitespace */
+    // skip whitespace
     while(*p == ' ' || *p == '\t') p++;
 
-    /* if its an empty line or it starts with '#' (comment) skip */
+    // if its an empty line or it starts with '#' (comment) skip
     if(*p == '\n' || *p == '#') {
         return false;
     }
@@ -944,7 +939,7 @@ config_handle_line(char *line, size_t line_number, char **keyword,
     }
     *q = 0;
 
-    /* skip whitespace */
+    // skip whitespace
     while(*p == ' ' || *p == '\t') p++;
 
     if(*p == '\n') {
@@ -1008,11 +1003,11 @@ config_handle_line(char *line, size_t line_number, char **keyword,
     return true;
 }
 
-void
+static void
 config_set_default_needed_params(struct mwc_config *c) {
-    /* as we are initializing config with calloc, some fields that are necessary in order
-   * for mwc to not crash may be not specified in the config.
-   * we set their values to some default value.*/
+    // as we are initializing config with calloc, some fields that are necessary in order
+    // for mwc to not crash may be not specified in the config.
+    // we set their values to some default value.*/
     if(c->keyboard_rate == 0) {
         c->keyboard_rate = 150;
         wlr_log(WLR_INFO, "keyboard_rate not specified. using default %ud", c->keyboard_rate);
@@ -1030,7 +1025,7 @@ config_set_default_needed_params(struct mwc_config *c) {
         wlr_log(WLR_INFO, "master_count not specified. using default %lf", c->master_ratio);
     }
     if(c->master_ratio == 0) {
-        /* here we evenly space toplevels if there is no master_ratio specified */
+        // here we evenly space toplevels if there is no master_ratio specified
         c->master_ratio = c->master_count / (double)(c->master_count + 1);
         wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
     }
@@ -1042,7 +1037,6 @@ config_set_default_needed_params(struct mwc_config *c) {
         c->animation_curve = fx_animation_curve_create((double[4]){0});
         wlr_log(WLR_INFO, "animation_curve not specified. using linear");
     }
-    // here
     if(c->inactive_opacity == 0) {
         c->inactive_opacity = 1.0;
         wlr_log(WLR_INFO, "inactive_opacity not specified. using default %lf", c->inactive_opacity);
@@ -1063,9 +1057,9 @@ config_set_default_needed_params(struct mwc_config *c) {
 
     c->toplevel_minimum_needed_width =
         c->decorations == MWC_DECORATIONS_SERVER_SIDE && c->titlebar_include_close_button
-        ? c->titlebar_close_button_size
-        + c->titlebar_close_button_padding_left + c->titlebar_close_button_padding_right
-        : 10;
+            ? c->titlebar_close_button_size
+                + c->titlebar_close_button_padding_left + c->titlebar_close_button_padding_right
+            : 10;
 }
 
 extern struct mwc_server server;
@@ -1138,8 +1132,8 @@ config_load() {
     return c;
 }
 
-/* workspaces are the only thing that are never freed, as we do not allow
- * destroying them for the lifetime of the compositor */
+// workspaces are the only thing that are never freed, as we do not allow
+// destroying them for the lifetime of the compositor
 void
 config_destroy(struct mwc_config *c) {
     free(c->dir);
@@ -1236,7 +1230,7 @@ config_destroy(struct mwc_config *c) {
     free(c);
 }
 
-void
+static void
 toplevel_reapply_effects_etc(struct mwc_toplevel *toplevel) {
     toplevel_recheck_opacity_rules(toplevel);
 
@@ -1259,7 +1253,7 @@ toplevel_reapply_effects_etc(struct mwc_toplevel *toplevel) {
     }
 }
 
-void
+static void
 layout_reorganize(struct mwc_workspace *workspace) {
     uint32_t master_count = wl_list_length(&workspace->masters);
 
@@ -1286,6 +1280,7 @@ layout_reorganize(struct mwc_workspace *workspace) {
     }
 }
 
+// fix this so that output configuration is extracted more regarding blur etc
 void
 config_reload() {
     struct mwc_config *c = config_load();
@@ -1324,7 +1319,7 @@ config_reload() {
                     output_add_to_layout(out, o);
                 }
 
-                layer_surfaces_commit(out);
+                layer_surfaces_configure(out);
             }
         }
     }
@@ -1367,14 +1362,14 @@ config_reload() {
         struct mwc_workspace *w;
         wl_list_for_each(w, &out->workspaces, link) {
 
-            /* we rewire the keybinds */
+            // we rewire the keybinds
             struct keybind *k;
             wl_list_for_each(k, &server.config->keybinds, link) {
                 if(k->action == keybind_change_workspace && (uint64_t)k->args == w->index) {
                     k->args = w;
                     k->initialized = true;
                 } else if(k->action == keybind_move_focused_toplevel_to_workspace
-                    && (uint64_t)k->args == w->index) {
+                        && (uint64_t)k->args == w->index) {
                     k->args = w;
                     k->initialized = true;
                 }
@@ -1443,7 +1438,7 @@ config_reload() {
     config_destroy(old_config);
 }
 
-void
+static void
 idle_reload_config(void *data) {
     wlr_log(WLR_INFO, "reloading config");
     config_reload();
@@ -1472,7 +1467,7 @@ config_watch(void *arg) {
     }
 
     char buffer[BUF_LEN];
-    while(1) {
+    while(true) {
         ssize_t length = read(inotify_fd, buffer, BUF_LEN);
         if(length < 0) {
             wlr_log(WLR_ERROR, "inotify failed read");

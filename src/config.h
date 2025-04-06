@@ -99,7 +99,8 @@ struct pointer_config {
 }                                     \
 
 struct mwc_config {
-    char *dir; // NULL if default
+    // NULL if default config
+    char *dir;
 
     struct wl_list outputs;
     struct wl_list keybinds;
@@ -116,30 +117,30 @@ struct mwc_config {
         struct wl_list blur;
     } layer_rules;
 
-    /* keyboard stuff */
+    // keyboard stuff
     char *keymap_layouts;
     char *keymap_variants;
     char *keymap_options;
     uint32_t keyboard_rate;
     uint32_t keyboard_delay;
 
-    /* pointer stuff */
+    // pointer stuff
     double pointer_sensitivity;
     enum libinput_config_accel_profile pointer_acceleration;
     struct wl_list pointers;
     bool pointer_left_handed;
 
-    /* trackpad stuff */
+    // trackpad stuff
     bool trackpad_disable_while_typing;
     bool trackpad_natural_scroll;
     bool trackpad_tap_to_click;
     enum libinput_config_scroll_method trackpad_scroll_method;
 
-    /* cursor theme and size */
+    // cursor theme and size
     char *cursor_theme;
     uint32_t cursor_size;
 
-    /* general toplevel and layout stuff */
+    // general toplevel and layout stuff
     uint32_t toplevel_minimum_needed_width;
     struct mwc_color inactive_border_color;
     struct mwc_color active_border_color;
@@ -150,7 +151,7 @@ struct mwc_config {
     uint32_t outer_gaps;
     uint32_t inner_gaps;
 
-    /* eye-candy */
+    // eye-candy
     uint32_t border_radius;
     enum corner_location border_radius_location;
     bool blur;
@@ -169,7 +170,7 @@ struct mwc_config {
 
     enum mwc_decorations decorations;
 
-    /* titlebar */
+    // titlebar stuff
     uint32_t titlebar_height;
     struct mwc_color titlebar_color_active;
     struct mwc_color titlebar_color_inactive;
@@ -186,49 +187,21 @@ struct mwc_config {
     uint32_t titlebar_title_padding_left;
     uint32_t titlebar_title_padding_right;
     struct mwc_color titlebar_title_color;
-    /* will be generated from the name specified by `titlebar_title_font`, may be NULL */
+    // will be generated from the name specified by `titlebar_title_font`, may be NULL
     struct fcft_font *font;
 
-    /* animations stuff */
+    // animations stuff
     bool animations;
     uint32_t animation_duration;
     struct fx_animation_curve *animation_curve;
 
-    /* run on startup */
+    // run on startup
     char *run[64];
     size_t run_count;
 };
 
-struct vec2
-calculate_animation_curve_at(struct mwc_config *c, double t);
-
-void
-bake_bezier_curve_points(struct mwc_config *c);
-
-bool
-config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_regex,
-        char *predicate, char **args, size_t arg_count);
-
-bool
-config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
-        char* action, char **args, size_t arg_count);
-
-void
-config_free_args(char **args, size_t arg_count);
-
-bool
-config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg_count);
-
-/* assumes the line is newline teriminated, as it should be with fgets() */
-bool
-config_handle_line(char *line, size_t line_number, char **keyword,
-        char ***args, size_t *args_count);
-
 struct mwc_config *
 config_load();
-
-void
-config_set_default_needed_params(struct mwc_config *c);
 
 void
 config_reload();
@@ -238,3 +211,4 @@ config_destroy(struct mwc_config *c);
 
 void *
 config_watch(void *data);
+

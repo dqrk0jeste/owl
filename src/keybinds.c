@@ -70,10 +70,10 @@ keybind_move_focused_toplevel_to_workspace(void *data) {
 
 void
 keybind_resize_focused_toplevel(void *data) {
-    struct mwc_something *something = pointer_get_something_under_cursor();
-    if(something == NULL) return;
+    struct mwc_view *view = pointer_get_view_under_cursor();
+    if(view == NULL) return;
 
-    struct mwc_toplevel *toplevel = something_try_get_toplevel(something);
+    struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
     if(toplevel == NULL || !toplevel->floating || toplevel->fullscreen) return;
 
     uint32_t edges = toplevel_get_closest_corner(server.cursor, toplevel);
@@ -101,8 +101,7 @@ void
 keybind_stop_resize_focused_toplevel(void *data) {
     if(server.grabbed_toplevel == NULL) return;
 
-    struct mwc_output *primary_output =
-        toplevel_get_primary_output(server.grabbed_toplevel);
+    struct mwc_output *primary_output = toplevel_get_primary_output(server.grabbed_toplevel);
     if(primary_output != server.grabbed_toplevel->workspace->output) {
         server.grabbed_toplevel->workspace = primary_output->active_workspace;
         wl_list_remove(&server.grabbed_toplevel->link);
@@ -115,10 +114,11 @@ keybind_stop_resize_focused_toplevel(void *data) {
 
 void
 keybind_move_focused_toplevel(void *data) {
-    struct mwc_something *something = pointer_get_something_under_cursor();
-    if(something == NULL) return;
+    // todo: extract this logic into a function
+    struct mwc_view *view = pointer_get_view_under_cursor();
+    if(view == NULL) return;
 
-    struct mwc_toplevel *toplevel = something_try_get_toplevel(something);
+    struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
     if(toplevel == NULL || toplevel->fullscreen) return;
 
     wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "hand1");
@@ -132,8 +132,7 @@ keybind_stop_move_focused_toplevel(void *data) {
     if(server.grabbed_toplevel == NULL) return;
 
     if(!server.grabbed_toplevel->floating) {
-        toplevel_tiled_insert_into_layout(server.grabbed_toplevel,
-                                          server.cursor->x, server.cursor->y);
+        layout_insert_toplevel_at(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
     } else {
         struct mwc_output *primary_output = toplevel_get_primary_output(server.grabbed_toplevel);
         server.grabbed_toplevel->workspace = primary_output->active_workspace;
@@ -177,11 +176,11 @@ keybind_move_focus(void *data) {
             break;
     }
 
-    // if no toplevel has keyboard focus then get the output
-    // the pointer is on and try from there
+    // if no toplevel has keyboard focus then get the output the pointer is on and try from there
     if(toplevel == NULL) {
-        struct wlr_output *wlr_output = wlr_output_layout_output_at(
-            server.output_layout, server.cursor->x, server.cursor->y);
+        struct wlr_output *wlr_output = wlr_output_layout_output_at(server.output_layout,
+                                                                    server.cursor->x,
+                                                                    server.cursor->y);
         struct mwc_output *output = wlr_output->data;
         struct mwc_output *relative_output = output_get_relative(output, direction);
         if(relative_output != NULL) {
@@ -258,7 +257,7 @@ keybind_move_focus(void *data) {
         }
     }
 
-    /* only case left is that the toplevel is a slave */
+    // only case left is that the toplevel is a slave
     switch(direction) {
         case MWC_LEFT: {
             struct mwc_toplevel *last_master =
@@ -311,8 +310,7 @@ keybind_swap_focused_toplevel(void *data) {
     if(toplevel == NULL || toplevel == server.grabbed_toplevel) return;
 
     struct mwc_workspace *workspace = toplevel->workspace;
-    struct mwc_output *relative_output =
-        output_get_relative(workspace->output, direction);
+    struct mwc_output *relative_output = output_get_relative(workspace->output, direction);
 
     if(toplevel->floating || toplevel->fullscreen) {
         if(relative_output != NULL
@@ -448,7 +446,7 @@ keybind_focused_toplevel_toggle_floating(void *data) {
     wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
 
     uint32_t width, height;
-    if(toplevel_get_floating_container_size(toplevel, &width, &height)) {
+    if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
         struct wlr_box centered = output_create_centered_box(toplevel->workspace->output, width, height);
         toplevel_set_state(toplevel, centered);
     } else {
@@ -518,7 +516,7 @@ bool
 handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
     for(int i = 0; i < count; i++) {
         uint32_t vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
-        if (vt >= 1 && vt <= 12) {
+        if(vt >= 1 && vt <= 12) {
             wlr_session_change_vt(server.session, vt);
             return true;
         }
