@@ -1033,7 +1033,19 @@ toplevel_start_move(struct mwc_toplevel *toplevel, bool client_driven) {
     server.grab_x = server.cursor->x;
     server.grab_y = server.cursor->y;
 
-    server.grabbed_toplevel_initial_box = toplevel->deco_box;
+    server.grabbed_toplevel_initial_box = toplevel_get_current_display_deco_box(toplevel);
+
+    if(toplevel->animation != NULL) {
+        // if there is an animation running we need to stop it and start the drag from there
+        // we do that be first stopping the animation, and taking the current state of the toplevel
+        // as the initial toplevel box
+        fx_transform_animation_destroy(toplevel->animation);
+        toplevel->animation = NULL;
+
+        // we also immediatelly set a new toplevel state because the toplevel may have been streched
+        // or clipped, so it would look weird
+        toplevel_set_state(toplevel, server.grabbed_toplevel_initial_box);
+    }
 
     if(toplevel->floating) {
         wl_list_remove(&toplevel->link);
@@ -1061,8 +1073,20 @@ toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges, bool client
     server.grab_x = server.cursor->x;
     server.grab_y = server.cursor->y;
 
-    server.grabbed_toplevel_initial_box = toplevel->deco_box;
     server.resize_edges = edges;
+    server.grabbed_toplevel_initial_box = toplevel_get_current_display_deco_box(toplevel);
+
+    if(toplevel->animation != NULL) {
+        // if there is an animation running we need to stop it and start the drag from there
+        // we do that be first stopping the animation, and taking the current state of the toplevel
+        // as the initial toplevel box
+        fx_transform_animation_destroy(toplevel->animation);
+        toplevel->animation = NULL;
+
+        // we also immediatelly set a new toplevel state because the toplevel may have been streched
+        // or clipped, so it would look weird
+        toplevel_set_state(toplevel, server.grabbed_toplevel_initial_box);
+    }
 }
 
 void
