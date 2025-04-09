@@ -121,18 +121,11 @@ toplevel_box_to_deco_box(struct wlr_box box, bool has_border, bool has_titlebar)
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
 
-// todo: figure this out
-// void
-// focused_toplevel_init_move(void);
-//
-// void
-// focused_toplevel_init_resize(void);
+void
+toplevel_start_move(struct mwc_toplevel *toplevel, bool client_driven);
 
 void
-toplevel_start_move(struct mwc_toplevel *toplevel);
-
-void
-toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges);
+toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges, bool client_driven);
 
 void
 cursor_jump_focused_toplevel(void);
@@ -142,12 +135,6 @@ toplevel_set_fullscreen(struct mwc_toplevel *toplevel);
 
 void
 toplevel_unset_fullscreen(struct mwc_toplevel *toplevel);
-
-void
-toplevel_move(void);
-
-void
-toplevel_resize(void);
 
 void
 unfocus_focused_toplevel(void);

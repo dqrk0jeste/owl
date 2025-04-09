@@ -281,6 +281,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     focus_toplevel(toplevel);
 }
 
+// maybe clean this up a bit
 static void
 toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     // called when the surface is unmapped, and should no longer be shown
@@ -293,14 +294,16 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         server.prev_focused = NULL;
     }
 
+    // destroy the animation if its running
     if(toplevel->animation != NULL) {
         fx_transform_animation_destroy(toplevel->animation);
     }
 
     // reset the cursor mode if the grabbed toplevel was unmapped
     if(toplevel == server.grabbed_toplevel) {
-        server_reset_cursor_mode();
+        cursor_stop_move_resize();
 
+        // we find a toplevel to give focus to
         if(toplevel->floating && !wl_list_empty(&workspace->floating_toplevels)) {
             struct mwc_toplevel *t = wl_container_of(workspace->floating_toplevels.next, t, link);
             focus_toplevel(t);
@@ -315,7 +318,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         return;
     }
 
-
+    // todo: extract this logic
     if(toplevel == workspace->fullscreen_toplevel) {
         workspace->fullscreen_toplevel = NULL;
         layers_under_fullscreen_set_enabled(workspace->output, true);
@@ -337,7 +340,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 
     if(toplevel->floating) {
         if(server.focused_toplevel == toplevel) {
-            /* try to find other floating toplevels to give focus to */
+            // try to find other floating toplevels to give focus to
             struct wl_list *focus_next = toplevel->link.next;
             if(focus_next == &workspace->floating_toplevels) {
                 focus_next = toplevel->link.prev;
@@ -448,8 +451,7 @@ toplevel_handle_request_move(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *focused = view_try_get_toplevel(view);
     if(toplevel != focused) return;
 
-    server.client_driven_move_resize = true;
-    toplevel_start_move(toplevel);
+    toplevel_start_move(toplevel, true);
 }
 
 void
@@ -464,8 +466,7 @@ toplevel_handle_request_resize(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *focused = view_try_get_toplevel(view);
     if(toplevel != focused) return;
 
-    server.client_driven_move_resize = true;
-    toplevel_start_resize(toplevel, event->edges);
+    toplevel_start_resize(toplevel, event->edges, true);
 }
 
 void
@@ -639,68 +640,6 @@ toplevel_unset_fullscreen(struct mwc_toplevel *toplevel) {
 }
 
 void
-toplevel_move(void) {
-    // move the grabbed toplevel to the new position
-    struct mwc_toplevel *toplevel = server.grabbed_toplevel;
-
-    struct wlr_box box = server.grabbed_toplevel_initial_box;
-    box.x += server.cursor->x - server.grab_x;
-    box.y += server.cursor->y - server.grab_y;
-
-    toplevel_set_state(toplevel, box);
-}
-
-void
-toplevel_resize(void) {
-    struct mwc_toplevel *toplevel = server.grabbed_toplevel;
-
-    int start_x = server.grabbed_toplevel_initial_box.x;
-    int start_y = server.grabbed_toplevel_initial_box.y;
-    int start_width = server.grabbed_toplevel_initial_box.width;
-    int start_height = server.grabbed_toplevel_initial_box.height;
-
-    int new_x = server.grabbed_toplevel_initial_box.x;
-    int new_y = server.grabbed_toplevel_initial_box.y;
-    int new_width = server.grabbed_toplevel_initial_box.width;
-    int new_height = server.grabbed_toplevel_initial_box.height;
-
-    int min_width = max(toplevel->xdg_toplevel->current.min_width,
-                        server.config->toplevel_minimum_needed_width);
-    int min_height = max(toplevel->xdg_toplevel->current.min_height, 10);
-
-    if(server.resize_edges & WLR_EDGE_TOP) {
-        new_y = start_y + (server.cursor->y - server.grab_y);
-        new_height = start_height - (server.cursor->y - server.grab_y);
-        if(new_height <= min_height) {
-            new_y = start_y + start_height - min_height;
-            new_height = min_height;
-        }
-    } else if(server.resize_edges & WLR_EDGE_BOTTOM) {
-        new_y = start_y;
-        new_height = start_height + (server.cursor->y - server.grab_y);
-        if(new_height <= min_height) {
-            new_height = min_height;
-        }
-    }
-    if(server.resize_edges & WLR_EDGE_LEFT) {
-        new_x = start_x + (server.cursor->x - server.grab_x);
-        new_width = start_width - (server.cursor->x - server.grab_x);
-        if(new_width <= min_width) {
-            new_x = start_x + start_width - min_width;
-            new_width = min_width;
-        }
-    } else if(server.resize_edges & WLR_EDGE_RIGHT) {
-        new_x = start_x;
-        new_width = start_width + (server.cursor->x - server.grab_x);
-        if(new_width <= min_width) {
-            new_width = min_width;
-        }
-    }
-
-    toplevel_set_state(toplevel, (struct wlr_box){ new_x, new_y, new_width, new_height });
-}
-
-void
 unfocus_focused_toplevel(void) {
     struct mwc_toplevel *toplevel = server.focused_toplevel;
     if(toplevel == NULL) return;
@@ -837,8 +776,8 @@ toplevel_get_primary_output(struct mwc_toplevel *toplevel) {
     struct mwc_output *o;
     wl_list_for_each(o, &server.outputs, link) {
         wlr_output_layout_get_box(server.output_layout, o->wlr_output, &output_box);
-        bool intersects =
-            wlr_box_intersection(&intersection_box, &toplevel->box, &output_box);
+        bool intersects = wlr_box_intersection(&intersection_box,
+                                               &toplevel->deco_box, &output_box);
         if(intersects && box_area(&intersection_box) > max_area) {
             max_area = box_area(&intersection_box);
             max_area_output = o;
@@ -848,16 +787,14 @@ toplevel_get_primary_output(struct mwc_toplevel *toplevel) {
     return max_area_output;
 }
 
-// todo: fix this
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *toplevel) {
-    uint32_t toplevel_x = X(toplevel);
-    uint32_t toplevel_y = Y(toplevel);
+    struct wlr_box current = toplevel_get_current_display_deco_box(toplevel);
 
-    uint32_t left_dist = cursor->x - toplevel_x;
-    uint32_t right_dist = toplevel->box.width - left_dist;
-    uint32_t top_dist = cursor->y - toplevel_y;
-    uint32_t bottom_dist = toplevel->box.height - top_dist;
+    int32_t left_dist = cursor->x - current.x;
+    int32_t right_dist = current.width - left_dist;
+    int32_t top_dist = cursor->y - current.y;
+    int32_t bottom_dist = current.height - top_dist;
 
     uint32_t edges = 0;
     if(left_dist <= right_dist) {
@@ -1031,31 +968,31 @@ toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
     // this may have been left at true if the user was fast enough
     toplevel->should_choose_size = false;
 
-    // only send a configure if the size changed
-    if(toplevel->box.width != box.width || toplevel->box.height != box.height) {
-        wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, box.width, box.height);
+    // send a configure to the client; todo: maybe find a more flexible solution to not send this when moving a
+    // toplevel, but oh well, its not that big of a deal
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, box.width, box.height);
+
+    // we find where the toplevel is currently, this is just a toplevel box, with no decorations
+    struct wlr_box current;
+    if(toplevel->needs_popin_adjustment) {
+        // we patch the animation for the popin effect
+        current = (struct wlr_box){
+            .x = box.x + box.width / 2,
+            .y = box.y + box.height / 2,
+            .width = 1,
+            .height = 1,
+        };
+        toplevel->needs_popin_adjustment = false;
+    } else if(toplevel->animation != NULL) {
+        current = fx_transform_animation_get_current(toplevel->animation);
+        fx_transform_animation_destroy(toplevel->animation);
+        toplevel->animation = NULL;
+    } else {
+        current = toplevel->box;
     }
 
-    // todo: dont animate if nothing changed
     if(server.config->animations && toplevel != server.grabbed_toplevel
-            && !wlr_box_equal(&toplevel->box, &box)) {
-        struct wlr_box current;
-        if(toplevel->needs_popin_adjustment) {
-            // we patch the animation for the popin effect
-            current = (struct wlr_box){
-                .x = box.x + box.width / 2,
-                .y = box.y + box.height / 2,
-                .width = 1,
-                .height = 1,
-            };
-            toplevel->needs_popin_adjustment = false;
-        } else if(toplevel->animation != NULL) {
-            current = fx_transform_animation_get_current(toplevel->animation);
-            fx_transform_animation_destroy(toplevel->animation);
-        } else {
-            current = toplevel->box;
-        }
-
+            && !wlr_box_equal(&current, &box)) {
         toplevel->animation = fx_transform_animation_create(current, box,
                                                             server.config->animation_duration,
                                                             server.config->animation_curve,
@@ -1087,11 +1024,12 @@ toplevel_get_geometry(struct mwc_toplevel *toplevel) {
 }
 
 void
-toplevel_start_move(struct mwc_toplevel *toplevel) {
+toplevel_start_move(struct mwc_toplevel *toplevel, bool client_driven) {
     if(server.grabbed_toplevel != NULL) return;
 
     server.grabbed_toplevel = toplevel;
     server.cursor_mode = MWC_CURSOR_MOVE;
+    server.client_driven_move_resize = client_driven;
 
     server.grab_x = server.cursor->x;
     server.grab_y = server.cursor->y;
@@ -1114,11 +1052,12 @@ toplevel_start_move(struct mwc_toplevel *toplevel) {
 }
 
 void
-toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges) {
+toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges, bool client_driven) {
     if(server.grabbed_toplevel != NULL) return;
 
     server.grabbed_toplevel = toplevel;
     server.cursor_mode = MWC_CURSOR_RESIZE;
+    server.client_driven_move_resize = client_driven;
 
     server.grab_x = server.cursor->x;
     server.grab_y = server.cursor->y;
@@ -1126,7 +1065,6 @@ toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges) {
     server.grabbed_toplevel_initial_box = toplevel->deco_box;
     server.resize_edges = edges;
 }
-
 
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data) {

@@ -282,5 +282,8 @@ layout_insert_toplevel_at(struct mwc_toplevel *toplevel, uint32_t x, uint32_t y)
             wl_list_insert(workspace->slaves.prev, &last->link);
         }
     }
+
+    // finally, we set this as a new state
+    layout_configure(workspace);
 }
 

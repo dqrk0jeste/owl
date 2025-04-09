@@ -29,17 +29,14 @@ enum mwc_cursor_mode {
 void
 server_handle_new_pointer(struct wlr_input_device *device);
 
-void
-pointer_handle_destroy(struct wl_listener *listener, void *data);
-
 bool
 pointer_configure(struct mwc_pointer *pointer);
 
 void
-server_reset_cursor_mode(void);
+cursor_handle_motion(uint32_t time);
 
 void
-cursor_handle_motion(uint32_t time);
+cursor_stop_move_resize(void);
 
 struct mwc_view *
 pointer_get_view_under_cursor(void);
@@ -66,22 +63,8 @@ void
 server_handle_new_constraint(struct wl_listener *listener, void *data);
 
 void
-constraint_handle_destroy(struct wl_listener *listener, void *data);
-
-void
-constrain_apply_to_move(double *dx, double *dy);
-
-void
-constraint_remove_current(void);
-
-void
-constraint_set_as_current(struct mwc_pointer_constraint *constraint);
-
-void
-constraint_move_to_hint(struct mwc_pointer_constraint *constraint);
-
-void
 server_handle_new_relative_pointer(struct wl_listener *listener, void *data);
 
 void
 server_handle_relative_pointer_manager_destroy(struct wl_listener *listener, void *data);
+

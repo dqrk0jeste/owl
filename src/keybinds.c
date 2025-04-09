@@ -93,23 +93,14 @@ keybind_resize_focused_toplevel(void *data) {
 
     wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, cursor_image);
 
-    server.client_driven_move_resize = false;
-    toplevel_start_resize(toplevel, edges);
+    toplevel_start_resize(toplevel, edges, false);
 }
 
 void
 keybind_stop_resize_focused_toplevel(void *data) {
     if(server.grabbed_toplevel == NULL) return;
 
-    struct mwc_output *primary_output = toplevel_get_primary_output(server.grabbed_toplevel);
-    if(primary_output != server.grabbed_toplevel->workspace->output) {
-        server.grabbed_toplevel->workspace = primary_output->active_workspace;
-        wl_list_remove(&server.grabbed_toplevel->link);
-        wl_list_insert(&primary_output->active_workspace->floating_toplevels,
-                       &server.grabbed_toplevel->link);
-    }
-
-    server_reset_cursor_mode();
+    cursor_stop_move_resize();
 }
 
 void
@@ -123,25 +114,14 @@ keybind_move_focused_toplevel(void *data) {
 
     wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "hand1");
 
-    server.client_driven_move_resize = false;
-    toplevel_start_move(toplevel);
+    toplevel_start_move(toplevel, false);
 }
 
 void
 keybind_stop_move_focused_toplevel(void *data) {
     if(server.grabbed_toplevel == NULL) return;
 
-    if(!server.grabbed_toplevel->floating) {
-        layout_insert_toplevel_at(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
-    } else {
-        struct mwc_output *primary_output = toplevel_get_primary_output(server.grabbed_toplevel);
-        server.grabbed_toplevel->workspace = primary_output->active_workspace;
-        wl_list_insert(&primary_output->active_workspace->floating_toplevels,
-                       &server.grabbed_toplevel->link);
-    }
-
-    server_reset_cursor_mode();
-    layout_configure(server.active_workspace);
+    cursor_stop_move_resize();
 }
 
 void
@@ -154,7 +134,7 @@ keybind_close_keyboard_focused_toplevel(void *data) {
 
 void
 keybind_move_focus(void *data) {
-    uint64_t direction = (uint64_t)data;
+    uintptr_t direction = (uintptr_t)data;
 
     struct mwc_toplevel *toplevel = server.focused_toplevel;
     // we need grabbed toplevel to keep focus
