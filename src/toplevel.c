@@ -961,8 +961,7 @@ toplevel_get_current_display_deco_size(struct mwc_toplevel *toplevel,
 
 void
 toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
-    struct wlr_box box = toplevel_deco_box_to_box(deco_box,
-                                                  !toplevel->fullscreen,
+    struct wlr_box box = toplevel_deco_box_to_box(deco_box, !toplevel->fullscreen,
                                                   !toplevel->fullscreen && toplevel->titlebar.has);
 
     // this may have been left at true if the user was fast enough

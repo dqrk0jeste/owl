@@ -53,9 +53,14 @@ grabbed_toplevel_resize(void) {
     int new_width = server.grabbed_toplevel_initial_box.width;
     int new_height = server.grabbed_toplevel_initial_box.height;
 
-    int min_width = max(toplevel->xdg_toplevel->current.min_width,
-                        server.config->toplevel_minimum_needed_width);
-    int min_height = max(toplevel->xdg_toplevel->current.min_height, 10);
+    // we add our decorations to the reported toplevel sizes since toplevel_set_state() takes deco box
+    int min_width = max(toplevel->xdg_toplevel->current.min_width, server.config->toplevel_minimum_needed_width)
+        + 2 * server.config->border_width;
+
+    int min_height = max(toplevel->xdg_toplevel->current.min_height, 10) + 2 * server.config->border_width;
+    if(toplevel->titlebar.has) {
+        min_height += server.config->titlebar_height;
+    }
 
     if(server.resize_edges & WLR_EDGE_TOP) {
         new_y = start_y + (server.cursor->y - server.grab_y);
