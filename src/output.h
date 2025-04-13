@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_output.h>
 
 #include "workspace.h"
+#include "config.h"
 #include "mwc.h"
 
 struct mwc_output {
@@ -35,11 +36,20 @@ struct mwc_output {
 void
 server_handle_new_output(struct wl_listener *listener, void *data);
 
-struct wlr_box
-output_add_to_layout(struct mwc_output *output, struct output_config *config);
+// based on the current state and the current config creates, updates or destroys blur
+void
+output_configure_blur(struct mwc_output *output);
+
+void
+output_place_in_layout(struct mwc_output *output, struct output_config *config);
 
 bool
-output_initialize(struct wlr_output *output, struct output_config *config);
+output_configure(struct wlr_output *output, struct output_config *config);
+
+// returns `output_config *` if there is a configuration specified for output `name`,
+// or `NULL` if there is no configuration specified
+struct output_config *
+output_find_config_by_name(char *name);
 
 struct mwc_output *
 output_get_relative(struct mwc_output *output, enum mwc_direction direction);

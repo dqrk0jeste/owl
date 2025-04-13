@@ -1,32 +1,32 @@
+#include "config.h"
+
+#include <assert.h>
 #include <fcft/fcft.h>
+#include <libinput.h>
+#include <limits.h>
 #include <regex.h>
 #include <scenefx/types/fx/blur_data.h>
 #include <scenefx/types/fx/corner_location.h>
-
-#include "config.h"
-#include "keybinds.h"
-#include "keyboard.h"
-#include "layer_surface.h"
-#include "mwc.h"
-#include "output.h"
-#include "pointer.h"
-#include "workspace.h"
-#include "toplevel.h"
-#include "layout.h"
-
-#include <sys/inotify.h>
-#include <assert.h>
-#include <libinput.h>
 #include <stddef.h>
-#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/inotify.h>
 #include <unistd.h>
 #include <wayland-util.h>
-#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
+
+#include "keybinds.h"
+#include "keyboard.h"
+#include "layer_surface.h"
+#include "layout.h"
+#include "mwc.h"
+#include "output.h"
+#include "pointer.h"
+#include "toplevel.h"
+#include "workspace.h"
 
 #define clamp(v, a, b) (max((a), min((v), (b))))
 
@@ -39,9 +39,9 @@ hex_to_unsigned_decimal(char *hex, size_t len) {
         char current = hex[i];
         if(current >= '0' && current <= '9') {
             result += (current - '0');
-        } else if (current >= 'a' && current <= 'f'){
+        } else if(current >= 'a' && current <= 'f') {
             result += (current - 'a') + 10;
-        } else if (current >= 'A' && current <= 'F'){
+        } else if(current >= 'A' && current <= 'F') {
             result += (current - 'A') + 10;
         }
     }
@@ -94,8 +94,7 @@ try_parse_color_rgba_or_hex(char **args, size_t arg_count, struct mwc_color *des
 }
 
 static bool
-config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate,
-                      char **args, size_t arg_count) {
+config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char **args, size_t arg_count) {
     struct layer_rule_regex condition;
     if(strcmp(regex, "_") == 0) {
         condition.has = false;
@@ -126,8 +125,8 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate,
 }
 
 static bool
-config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_regex,
-                       char *predicate, char **args, size_t arg_count) {
+config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_regex, char *predicate, char **args,
+    size_t arg_count) {
     struct window_rule_regex condition;
     if(strcmp(app_id_regex, "_") == 0) {
         condition.has_app_id_regex = false;
@@ -192,9 +191,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         window_rule->condition = condition;
 
         window_rule->active_value = clamp(atof(args[0]), 0.0, 1.0);
-        window_rule->inactive_value = arg_count > 1
-            ? clamp(atof(args[1]), 0.0, 1.0)
-            : window_rule->active_value;
+        window_rule->inactive_value = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : window_rule->active_value;
 
         wl_list_insert(&c->window_rules.opacity, &window_rule->link);
     } else if(strcmp(predicate, "no_titlebar") == 0) {
@@ -268,8 +265,7 @@ config_add_keymap(struct mwc_config *c, char *layout, char *variant) {
 }
 
 static bool
-config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
-                   char* action, char **args, size_t arg_count) {
+config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *action, char **args, size_t arg_count) {
     char *p = modifiers;
     uint32_t modifiers_flag = 0;
 
@@ -374,8 +370,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
         k->args = args_0_copy;
     } else if(strcmp(action, "kill_active") == 0) {
         k->action = keybind_close_keyboard_focused_toplevel;
-    } else if(strcmp(action, "switch_floating_state") == 0
-        || strcmp(action, "toggle_floating") == 0) {
+    } else if(strcmp(action, "switch_floating_state") == 0 || strcmp(action, "toggle_floating") == 0) {
         k->action = keybind_focused_toplevel_toggle_floating;
     } else if(strcmp(action, "resize") == 0) {
         k->action = keybind_resize_focused_toplevel;
@@ -406,7 +401,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
         }
 
         k->action = keybind_move_focus;
-        k->args = (void*)direction;
+        k->args = (void *)direction;
     } else if(strcmp(action, "swap") == 0) {
         if(arg_count < 1) {
             wlr_log(WLR_ERROR, "invalid args to %s", action);
@@ -430,7 +425,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
         }
 
         k->action = keybind_swap_focused_toplevel;
-        k->args = (void*)direction;
+        k->args = (void *)direction;
     } else if(strcmp(action, "workspace") == 0) {
         if(arg_count < 1) {
             wlr_log(WLR_ERROR, "invalid args to %s", action);
@@ -439,7 +434,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
         }
         k->action = keybind_change_workspace;
         /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
-        k->args = (void*)atoi(args[0]);
+        k->args = (void *)atoi(args[0]);
         k->initialized = false;
     } else if(strcmp(action, "move_to_workspace") == 0) {
         if(arg_count < 1) {
@@ -449,7 +444,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
         }
         k->action = keybind_move_focused_toplevel_to_workspace;
         /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
-        k->args = (void*)atoi(args[0]);
+        k->args = (void *)atoi(args[0]);
         k->initialized = false;
     } else if(strcmp(action, "next_workspace") == 0) {
         k->action = keybind_next_workspace;
@@ -500,15 +495,13 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             config_free_args(args, arg_count);
             return false;
         }
-        c->pointer_acceleration = atoi(args[0])
-            ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
-            : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
+        c->pointer_acceleration =
+            atoi(args[0]) ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
     } else if(strcmp(keyword, "pointer") == 0) {
         if(arg_count < 3) goto invalid;
 
-        enum libinput_config_accel_profile accel = atoi(args[1])
-            ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
-            : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
+        enum libinput_config_accel_profile accel =
+            atoi(args[1]) ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
 
         struct pointer_config *p = calloc(1, sizeof(*p));
         *p = (struct pointer_config){
@@ -526,12 +519,12 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->trackpad_disable_while_typing = atoi(args[0]);
-    } else if(strcmp(keyword, "natural_scroll") == 0 // for backwards compatibility
+    } else if(strcmp(keyword, "natural_scroll") == 0  // for backwards compatibility
         || strcmp(keyword, "trackpad_natural_scroll") == 0) {
         if(arg_count < 1) goto invalid;
 
         c->trackpad_natural_scroll = atoi(args[0]);
-    } else if(strcmp(keyword, "tap_to_click") == 0 // for backwards compatibility
+    } else if(strcmp(keyword, "tap_to_click") == 0  // for backwards compatibility
         || strcmp(keyword, "trackpad_tap_to_click") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -644,8 +637,8 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "animation_curve") == 0) {
         if(arg_count < 4) goto invalid;
 
-        c->animation_curve = fx_animation_curve_create(
-            (double[4]){ atof(args[0]), atof(args[1]), atof(args[2]), atof(args[3])});
+        c->animation_curve =
+            fx_animation_curve_create((double[4]){atof(args[0]), atof(args[1]), atof(args[2]), atof(args[3])});
     } else if(strcmp(keyword, "client_side_decorations") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -797,9 +790,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->titlebar_close_button_padding_left = atoi(args[0]);
-        c->titlebar_close_button_padding_right = arg_count > 1
-            ? atoi(args[1])
-            : c->titlebar_close_button_padding_left;
+        c->titlebar_close_button_padding_right = arg_count > 1 ? atoi(args[1]) : c->titlebar_close_button_padding_left;
     } else if(strcmp(keyword, "titlebar_close_button_shape") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -828,9 +819,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->titlebar_title_padding_left = atoi(args[0]);
-        c->titlebar_title_padding_right = arg_count > 1
-            ? atoi(args[1])
-            : c->titlebar_title_padding_left;
+        c->titlebar_title_padding_right = arg_count > 1 ? atoi(args[1]) : c->titlebar_title_padding_left;
     } else if(strcmp(keyword, "titlebar_title_color") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -902,12 +891,12 @@ get_config_path(char *dest, size_t size) {
 
 // assumes the line is newline teriminated, as it should be with fgets()
 static bool
-config_handle_line(char *line, size_t line_number, char **keyword,
-                   char ***args, size_t *args_count) {
+config_handle_line(char *line, size_t line_number, char **keyword, char ***args, size_t *args_count) {
     char *p = line;
 
     // skip whitespace
-    while(*p == ' ' || *p == '\t') p++;
+    while(*p == ' ' || *p == '\t')
+        p++;
 
     // if its an empty line or it starts with '#' (comment) skip
     if(*p == '\n' || *p == '#') {
@@ -940,7 +929,8 @@ config_handle_line(char *line, size_t line_number, char **keyword,
     *q = 0;
 
     // skip whitespace
-    while(*p == ' ' || *p == '\t') p++;
+    while(*p == ' ' || *p == '\t')
+        p++;
 
     if(*p == '\n') {
         wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, kw);
@@ -964,8 +954,7 @@ config_handle_line(char *line, size_t line_number, char **keyword,
             p++;
         };
 
-        while((word && *p != '\"' && *p != '\n')
-            || (!word && *p != ' ' && *p != '\t' && *p != '\n')) {
+        while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\t' && *p != '\n')) {
             if(len >= cap) {
                 cap *= 2;
                 ars[ars_len] = realloc(ars[ars_len], cap);
@@ -994,7 +983,8 @@ config_handle_line(char *line, size_t line_number, char **keyword,
 
         if(word) p++;
         /* skip whitespace */
-        while(*p == ' ' || *p == '\t') p++;
+        while(*p == ' ' || *p == '\t')
+            p++;
     }
 
     *args_count = ars_len;
@@ -1052,14 +1042,12 @@ config_set_default_needed_params(struct mwc_config *c) {
     if(c->titlebar_close_button_size > c->titlebar_height) {
         c->titlebar_close_button_size = c->titlebar_height;
         wlr_log(WLR_INFO, "titlebar_close_button_size (%u) larger than titlebar_height (%u). setting it to %u",
-                c->titlebar_close_button_size, c->titlebar_height, c->titlebar_close_button_size);
+            c->titlebar_close_button_size, c->titlebar_height, c->titlebar_close_button_size);
     }
 
-    c->toplevel_minimum_needed_width =
-        c->decorations == MWC_DECORATIONS_SERVER_SIDE && c->titlebar_include_close_button
-            ? c->titlebar_close_button_size
-                + c->titlebar_close_button_padding_left + c->titlebar_close_button_padding_right
-            : 10;
+    c->toplevel_minimum_needed_width = c->decorations == MWC_DECORATIONS_SERVER_SIDE && c->titlebar_include_close_button
+        ? c->titlebar_close_button_size + c->titlebar_close_button_padding_left + c->titlebar_close_button_padding_right
+        : 10;
 }
 
 extern struct mwc_server server;
@@ -1285,66 +1273,52 @@ void
 config_reload() {
     struct mwc_config *c = config_load();
     if(c == NULL) {
+        // if we couldnt load the config then skip the reload
         wlr_log(WLR_ERROR, "could not reload the config, keeping the old one");
         return;
     }
 
+    // since we dont touch workspaces when reloading we destroy the old one and just patch it with old one
+    // todo: this does not seem needed, so maybe just dont do it? keep for now
     struct workspace_config *wc, *wc_temp;
     wl_list_for_each_safe(wc, wc_temp, &c->workspaces, link) {
         free(wc->output);
         free(wc);
     }
-
     c->workspaces = server.config->workspaces;
 
+    // replace the config, but keep the old one for some optimizations,
+    // since we can just skip the values that havent changed
     struct mwc_config *old_config = server.config;
     server.config = c;
 
-    struct output_config *o;
-    wl_list_for_each(o, &c->outputs, link) {
-        struct mwc_output *out;
-        wl_list_for_each(out, &server.outputs, link) {
-            if(strcmp(o->name, out->wlr_output->name) == 0) {
-                struct wlr_box output_box;
-                wlr_output_layout_get_box(server.output_layout, out->wlr_output, &output_box);
+    // handle the reloading, first we reconfigure and reposition the outputs
+    // todo: here we are very ineficient, walking the linked list for every output;
+    // will be fixed by using a hashmap instead
+    struct mwc_output *iter_output;
+    wl_list_for_each(iter_output, &server.outputs, link) {
+        struct output_config *output_config = output_find_config_by_name(iter_output->wlr_output->name);
 
-                if(o->width != output_box.width
-                        || o->height != output_box.height
-                        || abs((int32_t)o->refresh_rate - (int32_t)out->wlr_output->refresh) > 1000
-                        || o->scale != out->wlr_output->scale) {
-                    output_initialize(out->wlr_output, o);
-                }
+        // todo: maybe try it this way, but cashed values should be better anyway,
+        // this just reduces complexity
 
-                if(o->x != output_box.x || o->y != output_box.y) {
-                    output_add_to_layout(out, o);
-                }
+        // struct wlr_box output_box;
+        // wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+        //
+        // if(o->width != output_box.width
+        //     || o->height != output_box.height
+        //     || abs((int32_t)o->refresh_rate - (int32_t)out->wlr_output->refresh) > 1000
+        //     || o->scale != out->wlr_output->scale) {
+        output_configure(iter_output->wlr_output, output_config);
+        // }
 
-                layer_surfaces_configure(out);
-            }
-        }
-    }
+        // if(o->x != output_box.x || o->y != output_box.y) {
+        output_place_in_layout(iter_output, output_config);
+        // }
 
-    if(c->blur) {
-        struct mwc_output *output;
-        wl_list_for_each(output, &server.outputs, link) {
-            if(output->blur != NULL) {
-                wlr_scene_node_destroy(&output->blur->node);
-            }
-            struct wlr_box output_box;
-            wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
-
-            output->blur = wlr_scene_optimized_blur_create(&server.scene->tree,
-                                                           output_box.width, output_box.height);
-            wlr_scene_set_blur_data(server.scene, server.config->blur_params);
-            wlr_scene_node_place_above(&output->blur->node, &server.background_tree->node);
-            wlr_scene_node_set_position(&output->blur->node, output_box.x, output_box.y);
-        }
-    } else if(old_config->blur) {
-        struct mwc_output *output;
-        wl_list_for_each(output, &server.outputs, link) {
-            wlr_scene_node_destroy(&output->blur->node);
-            output->blur = NULL;
-        }
+        // todo: maybe move this down there with the toplevels
+        layer_surfaces_configure(iter_output);
+        output_configure_blur(iter_output);
     }
 
     struct mwc_keyboard *keyboard;
@@ -1357,75 +1331,71 @@ config_reload() {
         pointer_configure(pointer);
     }
 
-    struct mwc_output *out;
-    wl_list_for_each(out, &server.outputs, link) {
-        struct mwc_workspace *w;
-        wl_list_for_each(w, &out->workspaces, link) {
-
+    wl_list_for_each(iter_output, &server.outputs, link) {
+        struct mwc_workspace *iter_workspace;
+        wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
             // we rewire the keybinds
-            struct keybind *k;
-            wl_list_for_each(k, &server.config->keybinds, link) {
-                if(k->action == keybind_change_workspace && (uint64_t)k->args == w->index) {
-                    k->args = w;
-                    k->initialized = true;
-                } else if(k->action == keybind_move_focused_toplevel_to_workspace
-                        && (uint64_t)k->args == w->index) {
-                    k->args = w;
-                    k->initialized = true;
+            struct keybind *iter_keybind;
+            wl_list_for_each(iter_keybind, &server.config->keybinds, link) {
+                if(iter_keybind->action == keybind_change_workspace &&
+                    (uintptr_t)iter_keybind->args == iter_workspace->index) {
+                    iter_keybind->args = iter_workspace;
+                    iter_keybind->initialized = true;
+                } else if(iter_keybind->action == keybind_move_focused_toplevel_to_workspace &&
+                    (uintptr_t)iter_keybind->args == iter_workspace->index) {
+                    iter_keybind->args = iter_workspace;
+                    iter_keybind->initialized = true;
                 }
             }
 
             if(c->master_count != old_config->master_count) {
-                layout_reorganize(w);
+                layout_reorganize(iter_workspace);
             }
 
-            struct mwc_toplevel *t;
-            wl_list_for_each(t, &w->floating_toplevels, link) {
-                toplevel_reapply_effects_etc(t);
+            struct mwc_toplevel *iter_toplevel;
+            wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
+                toplevel_reapply_effects_etc(iter_toplevel);
             }
-            wl_list_for_each(t, &w->masters, link) {
-                toplevel_reapply_effects_etc(t);
+            wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
+                toplevel_reapply_effects_etc(iter_toplevel);
             }
-            wl_list_for_each(t, &w->slaves, link) {
-                toplevel_reapply_effects_etc(t);
+            wl_list_for_each(iter_toplevel, &iter_workspace->floating_toplevels, link) {
+                toplevel_reapply_effects_etc(iter_toplevel);
             }
 
-            layout_configure(w);
+            layout_configure(iter_workspace);
         }
 
-        struct mwc_layer_surface *layer;
+        struct mwc_layer_surface *iter_layer;
         for(size_t i = 0; i < 4; i++) {
-            wl_list_for_each(layer, &(&out->layers.background)[i], link) {
+            wl_list_for_each(iter_layer, &(&iter_output->layers.background)[i], link) {
                 struct layer_rule_blur *b;
                 bool found = false;
                 wl_list_for_each(b, &server.config->layer_rules.blur, link) {
-                    if(!b->condition.has || regexec(&b->condition.regex,
-                                                    layer->wlr_layer_surface->namespace,
-                                                    0, NULL, 0) == 0) {
-                        wlr_scene_node_for_each_buffer(&layer->scene->tree->node,
-                                                       iter_scene_buffer_apply_blur, (void *)1);
+                    if(!b->condition.has ||
+                        regexec(&b->condition.regex, iter_layer->wlr_layer_surface->namespace, 0, NULL, 0) == 0) {
+                        wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur,
+                            (void *)1);
                         found = true;
                         break;
                     }
                 }
 
                 if(!found) {
-                    wlr_scene_node_for_each_buffer(&layer->scene->tree->node,
-                                                   iter_scene_buffer_apply_blur, (void *)0);
+                    wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur,
+                        (void *)0);
                 }
             }
         }
     }
 
     wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
-                                                   c->decorations == MWC_DECORATIONS_CLIENT_SIDE
-                                                   ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
-                                                   : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+        c->decorations == MWC_DECORATIONS_CLIENT_SIDE ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
+                                                      : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
     wlr_xcursor_manager_destroy(server.cursor_mgr);
 
-    server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme,
-                                                   server.config->cursor_size);
+    server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
     char cursor_size[8];
     snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
 
@@ -1487,4 +1457,3 @@ config_watch(void *arg) {
 
     return NULL;
 }
-

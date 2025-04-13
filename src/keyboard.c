@@ -13,6 +13,7 @@
 
 extern struct mwc_server server;
 
+// todo: button remapping
 static void
 keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
     // this event is raised when a modifier key, such as shift or alt, is pressed

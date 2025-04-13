@@ -1,8 +1,8 @@
 #include "gamma_control.h"
 
-#include "mwc.h"
-
 #include <wlr/types/wlr_output.h>
+
+#include "mwc.h"
 
 extern struct mwc_server server;
 

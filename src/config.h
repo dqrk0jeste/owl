@@ -78,8 +78,8 @@ struct output_config {
 };
 
 struct workspace_config {
-    uint32_t index;
     char *output;
+    uint32_t index;
     struct wl_list link;
 };
 
@@ -102,8 +102,9 @@ struct mwc_config {
     // NULL if default config
     char *dir;
 
+    // todo: make some of these hash maps or arrays for faster lookups
     struct wl_list outputs;
-    struct wl_list keybinds;
+    struct wl_list keybinds; // especially this one, because its currently looping through a whole linked list
     struct wl_list pointer_keybinds;
     struct wl_list workspaces;
     struct {

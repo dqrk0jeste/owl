@@ -22,7 +22,7 @@ struct mwc_toplevel {
     bool floating;
     bool fullscreen;
     // if a floating toplevel becomes fullscreen, we keep its previous state here
-    struct wlr_box prev_geometry;
+    struct wlr_box prev_deco_box;
 
     // set for floating when they should choose their size
     bool should_choose_size;
@@ -85,6 +85,7 @@ void
 toplevel_floating_set_own_size(struct mwc_toplevel *toplevel);
 
 // sets the new state for this toplevels including decorations and sends the right configure event
+// this should be the only way we reposition and/or resize the clients
 void
 toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box);
 
