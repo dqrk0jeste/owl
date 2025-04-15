@@ -1,23 +1,23 @@
 #pragma once
 
 #include <scenefx/types/wlr_scene.h>
-
-#include "rendering.h"
-#include "mwc.h"
-#include "animations.h"
-
 #include <stdint.h>
-#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_xdg_shell.h>
+
+#include "animations.h"
+#include "decoration.h"
+#include "mwc.h"
+#include "rendering.h"
 
 struct mwc_toplevel {
     struct wl_list link;
     struct wlr_xdg_toplevel *xdg_toplevel;
+
     struct mwc_workspace *workspace;
+    struct decoration *decoration;
 
     struct wlr_scene_tree *scene_tree;
-    struct wlr_scene_rect *border;
-    struct wlr_scene_shadow *shadow;
 
     bool floating;
     bool fullscreen;
@@ -28,6 +28,8 @@ struct mwc_toplevel {
     bool should_choose_size;
     // this is set on map so the toplevel is setup for the popin effect animation
     bool needs_popin_adjustment;
+    // if this toplevel has titlebar
+    bool has_titlebar;
     // toplevel (with decorations) size and position of the toplevel (with decorations) in the layout
     struct wlr_box box, deco_box;
 
@@ -35,14 +37,6 @@ struct mwc_toplevel {
     double inactive_opacity, active_opacity;
 
     struct fx_transform_animation *animation;
-
-    struct {
-        bool has;
-        struct wlr_scene_tree *tree;
-        struct wlr_scene_rect *base;
-        struct wlr_scene_rect *close_button;
-        struct text_node *title;
-    } titlebar;
 
     struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
 
@@ -67,18 +61,9 @@ struct mwc_token {
     struct wl_listener destroy;
 };
 
-// strips the decoration from the sizes contained in `*width` and `*height`
-void
-toplevel_strip_decorations_of_size(uint32_t *width, uint32_t *height, bool has_border, bool has_titlebar);
-
-// adds the decoration to the sizes contained in `*width` and `*height`
-void
-toplevel_add_decorations_to_size(uint32_t *width, uint32_t *height, bool has_border, bool has_titlebar);
-
 // look up window rules to find the size of this toplevel
 bool
-toplevel_get_floating_deco_size(struct mwc_toplevel *toplevel,
-        uint32_t *width, uint32_t *height);
+toplevel_get_floating_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 
 // send the configure of 0, 0 and set things up for patching later using `toplevel_floating_patch_for_own_size()`
 void
@@ -99,8 +84,7 @@ toplevel_get_current_display_box(struct mwc_toplevel *toplevel);
 
 // get currently displayed size of this toplevel; caused by running animation
 void
-toplevel_get_current_display_size(struct mwc_toplevel *toplevel,
-        uint32_t *width, uint32_t *height);
+toplevel_get_current_display_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 
 // get currently displayed toplevel box with decorations; caused by running animation
 struct wlr_box
@@ -108,16 +92,15 @@ toplevel_get_current_display_deco_box(struct mwc_toplevel *toplevel);
 
 // get currently displayed size with decorations of this toplevel; caused by running animation
 void
-toplevel_get_current_display_deco_size(struct mwc_toplevel *toplevel,
-        uint32_t *width, uint32_t *height);
+toplevel_get_current_display_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 
 // translates the no decorations box to one with decorations; stripping the decorations
 struct wlr_box
-toplevel_deco_box_to_box(struct wlr_box box, bool has_border, bool has_titlebar);
+deco_box_to_box(struct wlr_box box, struct decoration *decoration);
 
 // translates the toplevel box to one with decorations; adding the decorations
 struct wlr_box
-toplevel_box_to_deco_box(struct wlr_box box, bool has_border, bool has_titlebar);
+box_to_deco_box(struct wlr_box box, struct decoration *decoration);
 
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
@@ -145,8 +128,7 @@ void
 focus_toplevel(struct mwc_toplevel *toplevel);
 
 struct mwc_toplevel *
-toplevel_find_closest_floating_on_workspace(struct mwc_toplevel *toplevel,
-        enum mwc_direction direction);
+toplevel_find_closest_floating_on_workspace(struct mwc_toplevel *toplevel, enum mwc_direction direction);
 
 // get the output where the most of this toplevel is drawn on
 struct mwc_output *
@@ -154,8 +136,7 @@ toplevel_get_primary_output(struct mwc_toplevel *toplevel);
 
 // get the corner closest to the cursor; FIXME: this should take the x, y coords instead
 uint32_t
-toplevel_get_closest_corner(struct wlr_cursor *cursor,
-        struct mwc_toplevel *toplevel);
+toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *toplevel);
 
 // recheck the opacity rules; FIXME: this should be more general and check other window rules
 void
@@ -166,4 +147,3 @@ xdg_activation_handle_new_token(struct wl_listener *listener, void *data);
 
 void
 xdg_activation_handle_request(struct wl_listener *listener, void *data);
-

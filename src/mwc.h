@@ -1,19 +1,18 @@
 #pragma once
 
 #include <scenefx/types/wlr_scene.h>
+#include <stdint.h>
+#include <wayland-server-protocol.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/types/wlr_server_decoration.h>
+#include <wlr/util/box.h>
 
 #include "keyboard.h"
 #include "pointer.h"
 #include "session_lock.h"
-
-#include <stdint.h>
-#include <wayland-server-protocol.h>
-#include <wlr/util/box.h>
-#include <wlr/types/wlr_server_decoration.h>
-#include <wlr/types/wlr_gamma_control_v1.h>
-#include <wlr/types/wlr_cursor_shape_v1.h>
-#include <wlr/types/wlr_pointer_constraints_v1.h>
-#include <wlr/types/wlr_relative_pointer_v1.h>
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -136,4 +135,3 @@ struct mwc_server {
 
     bool running;
 };
-

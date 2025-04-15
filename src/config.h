@@ -1,26 +1,25 @@
 #pragma once
 
-#include "helpers.h"
-#include "mwc.h"
-#include "animations.h"
-
-#include <scenefx/types/fx/blur_data.h>
-#include <scenefx/types/fx/corner_location.h>
-
 #include <libinput.h>
 #include <regex.h>
+#include <scenefx/types/fx/blur_data.h>
+#include <scenefx/types/fx/corner_location.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 
+#include "animations.h"
+#include "decoration.h"
+#include "mwc.h"
+
 #define BAKED_POINTS_COUNT 256
 
-enum mwc_decorations {
-    MWC_DECORATIONS_NONE,
-    MWC_DECORATIONS_CLIENT_SIDE,
-    MWC_DECORATIONS_SERVER_SIDE,
+enum decoration_provider {
+    DECORATION_PROVIDER_NONE,
+    DECORATION_PROVIDER_CLIENT,
+    DECORATION_PROVIDER_SERVER,
 };
 
 struct window_rule_regex {
@@ -93,10 +92,11 @@ struct pointer_config {
 /* we usually can tell if an option is specified or not by comparing them to 0 (or NULL),
  * but sometimes 0 can also mean something else. for such options we add another bool value
  * to tell if they are specified or not. */
-#define WITH_SPECIFIED(type) struct { \
-    type value;                         \
-    bool specified;                     \
-}                                     \
+#define WITH_SPECIFIED(type) \
+    struct {                 \
+        type value;          \
+        bool specified;      \
+    }
 
 struct mwc_config {
     // NULL if default config
@@ -104,7 +104,7 @@ struct mwc_config {
 
     // todo: make some of these hash maps or arrays for faster lookups
     struct wl_list outputs;
-    struct wl_list keybinds; // especially this one, because its currently looping through a whole linked list
+    struct wl_list keybinds;  // especially this one, because its currently looping through a whole linked list
     struct wl_list pointer_keybinds;
     struct wl_list workspaces;
     struct {
@@ -143,53 +143,23 @@ struct mwc_config {
 
     // general toplevel and layout stuff
     uint32_t toplevel_minimum_needed_width;
-    struct mwc_color inactive_border_color;
-    struct mwc_color active_border_color;
     double inactive_opacity;
     double active_opacity;
     bool apply_opacity_when_fullscreen;
-    uint32_t border_width;
     uint32_t outer_gaps;
     uint32_t inner_gaps;
-
-    // eye-candy
-    uint32_t border_radius;
-    enum corner_location border_radius_location;
-    bool blur;
-    struct blur_data blur_params;
-    bool shadows;
-    uint32_t shadows_size;
-    struct {
-        int32_t x;
-        int32_t y;
-    } shadows_position;
-    struct mwc_color shadows_color;
-    double shadows_blur;
 
     uint32_t master_count;
     double master_ratio;
 
-    enum mwc_decorations decorations;
+    // decorations
+    enum decoration_provider decoration_provider;
+    struct decoration_config decoration;
 
-    // titlebar stuff
-    uint32_t titlebar_height;
-    struct mwc_color titlebar_color_active;
-    struct mwc_color titlebar_color_inactive;
-    bool titlebar_include_close_button;
-    uint32_t titlebar_close_button_size;
-    uint32_t titlebar_close_button_padding_left;
-    uint32_t titlebar_close_button_padding_right;
-    bool titlebar_close_button_square;
-    bool titlebar_close_button_left;
-    struct mwc_color titlebar_close_button_color_active;
-    struct mwc_color titlebar_close_button_color_inactive;
-    bool titlebar_include_title;
-    bool titlebar_center_title;
-    uint32_t titlebar_title_padding_left;
-    uint32_t titlebar_title_padding_right;
-    struct mwc_color titlebar_title_color;
-    // will be generated from the name specified by `titlebar_title_font`, may be NULL
-    struct fcft_font *font;
+    bool blur;
+    struct blur_data blur_params;
+
+    bool shadows;
 
     // animations stuff
     bool animations;
@@ -212,4 +182,3 @@ config_destroy(struct mwc_config *c);
 
 void *
 config_watch(void *data);
-

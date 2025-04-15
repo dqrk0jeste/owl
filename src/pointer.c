@@ -1,17 +1,5 @@
 #include "pointer.h"
 
-#include "config.h"
-#include "keybinds.h"
-#include "ipc.h"
-#include "layout.h"
-#include "mwc.h"
-#include "toplevel.h"
-#include "output.h"
-#include "view.h"
-#include "dnd.h"
-#include "workspace.h"
-#include "text_node.h"
-
 #include <assert.h>
 #include <bits/time.h>
 #include <libinput.h>
@@ -19,11 +7,23 @@
 #include <wayland-server-core.h>
 #include <wayland-util.h>
 #include <wlr/backend/libinput.h>
-#include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_cursor.h>
+#include <wlr/util/edges.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
-#include <wlr/util/edges.h>
+
+#include "config.h"
+#include "dnd.h"
+#include "ipc.h"
+#include "keybinds.h"
+#include "layout.h"
+#include "mwc.h"
+#include "output.h"
+#include "text_node.h"
+#include "toplevel.h"
+#include "view.h"
+#include "workspace.h"
 
 extern struct mwc_server server;
 
@@ -53,13 +53,14 @@ grabbed_toplevel_resize(void) {
     int new_width = server.grabbed_toplevel_initial_box.width;
     int new_height = server.grabbed_toplevel_initial_box.height;
 
+    // todo: handle max sizes
     // we add our decorations to the reported toplevel sizes since toplevel_set_state() takes deco box
-    int min_width = max(toplevel->xdg_toplevel->current.min_width, server.config->toplevel_minimum_needed_width)
-        + 2 * server.config->border_width;
+    int min_width = max(toplevel->xdg_toplevel->current.min_width, server.config->toplevel_minimum_needed_width) +
+            2 * server.config->decoration.border_width;
 
-    int min_height = max(toplevel->xdg_toplevel->current.min_height, 10) + 2 * server.config->border_width;
-    if(toplevel->titlebar.has) {
-        min_height += server.config->titlebar_height;
+    int min_height = max(toplevel->xdg_toplevel->current.min_height, 10) + 2 * server.config->decoration.border_width;
+    if(decoration_has_titlebar(toplevel->decoration)) {
+        min_height += server.config->decoration.titlebar_height;
     }
 
     if(server.resize_edges & WLR_EDGE_TOP) {
@@ -91,7 +92,7 @@ grabbed_toplevel_resize(void) {
         }
     }
 
-    toplevel_set_state(toplevel, (struct wlr_box){ new_x, new_y, new_width, new_height });
+    toplevel_set_state(toplevel, (struct wlr_box){new_x, new_y, new_width, new_height});
 }
 
 static void
@@ -101,9 +102,7 @@ constraint_move_to_hint(struct mwc_pointer_constraint *constraint) {
     if(wlr_constraint->current.committed & WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT) {
         double sx = wlr_constraint->current.cursor_hint.x;
         double sy = wlr_constraint->current.cursor_hint.y;
-        wlr_cursor_warp(server.cursor, NULL,
-                        X(server.focused_toplevel) + sx,
-                        Y(server.focused_toplevel) + sy);
+        wlr_cursor_warp(server.cursor, NULL, X(server.focused_toplevel) + sx, Y(server.focused_toplevel) + sy);
 
         // make sure we are not sending unnecessary surface movements (took from labwc)
         wlr_seat_pointer_warp(server.seat, sx, sy);
@@ -152,15 +151,12 @@ constrain_apply_to_move(double *dx, double *dy) {
     double current_y = server.seat->pointer_state.sy;
 
     double constrained_x, constrained_y;
-    if(wlr_region_confine(&server.current_constraint->wlr_pointer_constraint->region,
-                          current_x, current_y,
-                          current_x + *dx, current_y + *dy,
-                          &constrained_x, &constrained_y)) {
+    if(wlr_region_confine(&server.current_constraint->wlr_pointer_constraint->region, current_x, current_y,
+               current_x + *dx, current_y + *dy, &constrained_x, &constrained_y)) {
         *dx = constrained_x - current_x;
         *dy = constrained_y - current_y;
     }
 }
-
 
 bool
 pointer_configure(struct mwc_pointer *pointer) {
@@ -191,15 +187,13 @@ pointer_configure(struct mwc_pointer *pointer) {
     }
 
     if(libinput_device_config_accel_is_available(device)) {
-        if(libinput_device_config_accel_set_speed(device, sensitivity)
-                != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if(libinput_device_config_accel_set_speed(device, sensitivity) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_ERROR, "applying sensitivity to device '%s' failed", pointer->name);
         }
 
         if(accel) {
             struct libinput_config_accel *accel_config = libinput_config_accel_create(accel);
-            if(libinput_device_config_accel_apply(device, accel_config)
-                    != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+            if(libinput_device_config_accel_apply(device, accel_config) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
                 wlr_log(WLR_ERROR, "applying acceleration profile to device '%s' failed", pointer->name);
             }
             libinput_config_accel_destroy(accel_config);
@@ -209,23 +203,23 @@ pointer_configure(struct mwc_pointer *pointer) {
     // check if trackpad
     if(libinput_device_config_tap_get_finger_count(device) > 0) {
         // then apply trackpad specific settings
-        if(libinput_device_config_tap_set_enabled(device, server.config->trackpad_tap_to_click)
-                != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if(libinput_device_config_tap_set_enabled(device, server.config->trackpad_tap_to_click) !=
+                LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_ERROR, "applying tap to click to device '%s' failed", pointer->name);
         }
 
-        if(libinput_device_config_scroll_set_natural_scroll_enabled(device,
-                server.config->trackpad_natural_scroll) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if(libinput_device_config_scroll_set_natural_scroll_enabled(device, server.config->trackpad_natural_scroll) !=
+                LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_ERROR, "applying natural scroll to device '%s' failed", pointer->name);
         }
 
-        if(libinput_device_config_scroll_set_method(device, server.config->trackpad_scroll_method)
-                != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if(libinput_device_config_scroll_set_method(device, server.config->trackpad_scroll_method) !=
+                LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_ERROR, "applying scroll method to device '%s' failed", pointer->name);
         }
 
-        if(libinput_device_config_dwt_set_enabled(device,
-                server.config->trackpad_disable_while_typing) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+        if(libinput_device_config_dwt_set_enabled(device, server.config->trackpad_disable_while_typing) !=
+                LIBINPUT_CONFIG_STATUS_SUCCESS) {
             wlr_log(WLR_ERROR, "applying disable while typing to device '%s' failed", pointer->name);
         }
     }
@@ -256,7 +250,8 @@ cursor_stop_move_resize(void) {
             wl_list_remove(&toplevel->link);
             wl_list_insert(primary_output->active_workspace->floating_toplevels.next, &toplevel->link);
         }
-    } else if(server.cursor_mode == MWC_CURSOR_MOVE) { // this is redundant since we cannot resize tiled toplevels (yet)
+    } else if(server.cursor_mode ==
+            MWC_CURSOR_MOVE) {  // this is redundant since we cannot resize tiled toplevels (yet)
         layout_insert_toplevel_at(toplevel, server.cursor->x, server.cursor->y);
     }
 
@@ -308,7 +303,7 @@ cursor_handle_motion(uint32_t time) {
     if(server.cursor_mode == MWC_CURSOR_MOVE) {
         grabbed_toplevel_move();
         return;
-    } else if (server.cursor_mode == MWC_CURSOR_RESIZE) {
+    } else if(server.cursor_mode == MWC_CURSOR_RESIZE) {
         grabbed_toplevel_resize();
         return;
     }
@@ -352,9 +347,8 @@ pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
 
     // since not all views are backed by a surface (e.g. border or titlebar), we need to check for NULL
     if(surface != NULL) {
-        struct wlr_pointer_constraint_v1 *wlr_constraint =
-            wlr_pointer_constraints_v1_constraint_for_surface(server.pointer_contrains_manager,
-                                                              surface, server.seat);
+        struct wlr_pointer_constraint_v1 *wlr_constraint = wlr_pointer_constraints_v1_constraint_for_surface(
+                server.pointer_contrains_manager, surface, server.seat);
         if(wlr_constraint == NULL || wlr_constraint->data == NULL) {
             server.current_constraint = NULL;
         } else {
@@ -376,11 +370,8 @@ server_handle_cursor_motion(struct wl_listener *listener, void *data) {
 
     constrain_apply_to_move(&event->delta_x, &event->delta_y);
 
-    wlr_relative_pointer_manager_v1_send_relative_motion(server.relative_pointer_manager,
-                                                         server.seat,
-                                                         (uint64_t)event->time_msec * 1000,
-                                                         event->delta_x, event->delta_y,
-                                                         event->unaccel_dx, event->unaccel_dy);
+    wlr_relative_pointer_manager_v1_send_relative_motion(server.relative_pointer_manager, server.seat,
+            (uint64_t)event->time_msec * 1000, event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
 
     wlr_cursor_move(server.cursor, &event->pointer->base, event->delta_x, event->delta_y);
     cursor_handle_motion(event->time_msec);
@@ -391,16 +382,13 @@ server_handle_cursor_motion_absolute(struct wl_listener *listener, void *data) {
     struct wlr_pointer_motion_absolute_event *event = data;
 
     double lx, ly;
-    wlr_cursor_absolute_to_layout_coords(server.cursor, &event->pointer->base,
-                                         event->x, event->y, &lx, &ly);
+    wlr_cursor_absolute_to_layout_coords(server.cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
 
     double dx = lx - server.cursor->x;
     double dy = ly - server.cursor->y;
 
-    wlr_relative_pointer_manager_v1_send_relative_motion(server.relative_pointer_manager,
-                                                         server.seat,
-                                                         (uint64_t)event->time_msec * 1000,
-                                                         dx, dy, dx, dy);
+    wlr_relative_pointer_manager_v1_send_relative_motion(server.relative_pointer_manager, server.seat,
+            (uint64_t)event->time_msec * 1000, dx, dy, dx, dy);
 
     wlr_cursor_warp_absolute(server.cursor, &event->pointer->base, event->x, event->y);
     cursor_handle_motion(event->time_msec);
@@ -411,23 +399,20 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     struct wlr_pointer_button_event *event = data;
 
     // we get currently active modifiers and lookup pointer keybinds
-    uint32_t modifiers = server.last_used_keyboard
-        ? wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard)
-        : 0;
+    uint32_t modifiers =
+            server.last_used_keyboard ? wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard) : 0;
 
     struct keybind *k;
     wl_list_for_each(k, &server.config->pointer_keybinds, link) {
         if(!k->initialized) continue;
 
-        if(k->active && k->stop && event->button == k->key
-                && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        if(k->active && k->stop && event->button == k->key && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
             k->active = false;
             k->stop(k->args);
             return;
         }
 
-        if(modifiers == k->modifiers && event->button == k->key
-                && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        if(modifiers == k->modifiers && event->button == k->key && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
             k->active = true;
             k->action(k->args);
             return;
@@ -440,8 +425,8 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     // we need to drop the toplevel if it was grabbed on released event
     // todo: maybe we should check for button 272 here?
     // todo: maybe also move this above keybinds so they cannot interup client driven move resize?
-    if(event->state == WL_POINTER_BUTTON_STATE_RELEASED
-            && server.cursor_mode != MWC_CURSOR_PASSTHROUGH && server.client_driven_move_resize) {
+    if(event->state == WL_POINTER_BUTTON_STATE_RELEASED && server.cursor_mode != MWC_CURSOR_PASSTHROUGH &&
+            server.client_driven_move_resize) {
         cursor_stop_move_resize();
         return;
     }
@@ -472,9 +457,8 @@ server_handle_cursor_axis(struct wl_listener *listener, void *data) {
     struct wlr_pointer_axis_event *event = data;
 
     // notify the client with pointer focus of the axis event
-    wlr_seat_pointer_notify_axis(server.seat,
-                                 event->time_msec, event->orientation, event->delta,
-                                 event->delta_discrete, event->source, event->relative_direction);
+    wlr_seat_pointer_notify_axis(server.seat, event->time_msec, event->orientation, event->delta, event->delta_discrete,
+            event->source, event->relative_direction);
 }
 
 void
@@ -533,4 +517,3 @@ server_handle_new_constraint(struct wl_listener *listener, void *data) {
     constraint->destroy.notify = constraint_handle_destroy;
     wl_signal_add(&wlr_constraint->events.destroy, &constraint->destroy);
 }
-

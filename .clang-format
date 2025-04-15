@@ -1,6 +1,7 @@
 BasedOnStyle: Google
 TabWidth: 4
 IndentWidth: 4
+ContinuationIndentWidth: 8
 AlignAfterOpenBracket: DontAlign
 AlignConsecutiveMacros: 'false'
 AlignConsecutiveAssignments: 'false'

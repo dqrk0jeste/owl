@@ -39,48 +39,34 @@ change_workspace(struct mwc_workspace *workspace, bool keep_focus) {
         return;
     }
 
-    // else remove all the toplevels on that workspace
-    struct mwc_toplevel *t;
-    wl_list_for_each(t, &workspace->output->active_workspace->floating_toplevels, link) {
-        wlr_scene_node_set_enabled(&t->scene_tree->node, false);
-    }
-    wl_list_for_each(t, &workspace->output->active_workspace->masters, link) {
-        wlr_scene_node_set_enabled(&t->scene_tree->node, false);
-    }
-    wl_list_for_each(t, &workspace->output->active_workspace->slaves, link) {
-        wlr_scene_node_set_enabled(&t->scene_tree->node, false);
-    }
+    struct mwc_workspace *current_workspace = workspace->output->active_workspace;
+    // else remove all the toplevels on the current workspace
+    workspace_toplevels_set_enabled(current_workspace, false);
 
-    // and show this workspace's toplevels
     if(workspace->fullscreen_toplevel != NULL) {
+        // if there is a fullscreen toplevel we only render it and disable all the other things
         wlr_scene_node_set_enabled(&workspace->fullscreen_toplevel->scene_tree->node, true);
         layers_under_fullscreen_set_enabled(workspace->output, false);
     } else {
-        wl_list_for_each(t, &workspace->floating_toplevels, link) {
-            wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-        }
-        wl_list_for_each(t, &workspace->masters, link) {
-            wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-        }
-        wl_list_for_each(t, &workspace->slaves, link) {
-            wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-        }
-
-        if(workspace->output->active_workspace->fullscreen_toplevel != NULL) {
-            // we reenable the layers if they were disabled
-            layers_under_fullscreen_set_enabled(workspace->output, true);
-        }
+        // else enable all of the toplevels and layers (they may have been disabled if `current_workspace` had a
+        // fullscreen toplevel on it)
+        workspace_toplevels_set_enabled(workspace, true);
+        layers_under_fullscreen_set_enabled(workspace->output, true);
     }
 
+    // also warp the cursor if this output is not on the same output as currently globally active workspace
     if(server.active_workspace->output != workspace->output) {
         cursor_jump_output(workspace->output);
     }
 
+    // set it as globally active workspace
     server.active_workspace = workspace;
+    // and also as this outputs active workspace
     workspace->output->active_workspace = workspace;
+
     ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
 
-    // same as above
+    // handle the focus change
     if(keep_focus) {
         // do nothing
     } else if(workspace->fullscreen_toplevel != NULL) {
@@ -106,10 +92,8 @@ change_workspace(struct mwc_workspace *workspace, bool keep_focus) {
 
 void
 toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *workspace) {
-    assert(toplevel != NULL && workspace != NULL);
-
     if(toplevel == server.grabbed_toplevel || toplevel->workspace == workspace ||
-        workspace->fullscreen_toplevel != NULL)
+            workspace->fullscreen_toplevel != NULL)
         return;
 
     struct mwc_workspace *old_workspace = toplevel->workspace;
@@ -154,13 +138,15 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *
         wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
         toplevel_set_state(toplevel, output_box);
 
-        layers_under_fullscreen_set_enabled(workspace->output, false);
+        // if the output changed then we enable the layers on the old output, and disable it on this one
         if(old_workspace->output != workspace->output) {
             layers_under_fullscreen_set_enabled(old_workspace->output, true);
+            layers_under_fullscreen_set_enabled(workspace->output, false);
         }
 
         if(toplevel->floating) {
-            // calculate where the toplevel should be placed after exiting fullscreen
+            // calculate where the toplevel should be placed after exiting fullscreen; we use the same relative place on
+            // this output as is was on the last one
             int32_t old_output_relative_x = toplevel->prev_deco_box.x - old_workspace->output->usable_area.x;
             double relative_x = (double)old_output_relative_x / old_workspace->output->usable_area.width;
 
@@ -169,17 +155,17 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *
 
             int32_t new_output_x = workspace->output->usable_area.x + relative_x * workspace->output->usable_area.width;
             int32_t new_output_y =
-                workspace->output->usable_area.y + relative_y * workspace->output->usable_area.height;
+                    workspace->output->usable_area.y + relative_y * workspace->output->usable_area.height;
 
+            // patch `prev_deco_box` with these new values
             toplevel->prev_deco_box.x = new_output_x;
             toplevel->prev_deco_box.y = new_output_y;
         } else {
             layout_configure(old_workspace);
         }
     } else if(toplevel->floating && old_workspace->output != workspace->output) {
-        // we want to place the toplevel to the same relative coordinates; as the
-        // new output may have a different resolution, we make sure that the
-        // relative coordinates are the same
+        // if the toplevel is moved between workspaces on the same output we dont do anything about the presentation.
+        // else we place it to the same relative coords on the new output
         int32_t old_output_relative_x = toplevel->deco_box.x - old_workspace->output->usable_area.x;
         double relative_x = (double)old_output_relative_x / old_workspace->output->usable_area.width;
 
@@ -190,38 +176,35 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *
         int32_t new_output_y = workspace->output->usable_area.y + relative_y * workspace->output->usable_area.height;
 
         toplevel_set_state(toplevel,
-            (struct wlr_box){new_output_x, new_output_y, toplevel->deco_box.width, toplevel->deco_box.height});
+                (struct wlr_box){new_output_x, new_output_y, toplevel->deco_box.width, toplevel->deco_box.height});
     } else {
+        // and if tiled we just configure the layouts of both the old one a the new one
         layout_configure(old_workspace);
         layout_configure(workspace);
     }
 
-    // change active workspace
+    // change active workspace, but keep the focus unchanged
     change_workspace(workspace, true);
 }
 
 struct mwc_toplevel *
 workspace_find_closest_floating_toplevel(struct mwc_workspace *workspace, enum mwc_direction side) {
-    struct wl_list *l = workspace->floating_toplevels.next;
-    if(l == &workspace->floating_toplevels) return NULL;
+    if(wl_list_empty(&workspace->floating_toplevels)) return NULL;
 
-    struct mwc_toplevel *t = wl_container_of(l, t, link);
+    struct mwc_toplevel *first = wl_container_of(workspace->floating_toplevels.next, first, link);
+    struct mwc_toplevel *min_x = first, *max_x = first, *min_y = first, *max_y = first;
 
-    struct mwc_toplevel *min_x = t;
-    struct mwc_toplevel *max_x = t;
-    struct mwc_toplevel *min_y = t;
-    struct mwc_toplevel *max_y = t;
-
-    wl_list_for_each(t, &workspace->floating_toplevels, link) {
-        if(X(t) < X(min_x)) {
-            min_x = t;
-        } else if(X(t) > X(max_x)) {
-            max_x = t;
+    struct mwc_toplevel *iter;
+    wl_list_for_each(iter, &workspace->floating_toplevels, link) {
+        if(iter->deco_box.x < min_x->deco_box.x) {
+            min_x = iter;
+        } else if(iter->deco_box.x > max_x->deco_box.x) {
+            max_x = iter;
         }
-        if(Y(t) < Y(min_y)) {
-            min_y = t;
-        } else if(Y(t) > Y(max_y)) {
-            max_y = t;
+        if(iter->deco_box.y < min_y->deco_box.y) {
+            min_y = iter;
+        } else if(iter->deco_box.y > max_y->deco_box.y) {
+            max_y = iter;
         }
     }
 

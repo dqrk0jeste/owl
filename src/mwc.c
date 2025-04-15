@@ -1,24 +1,9 @@
-#include <scenefx/render/fx_renderer/fx_renderer.h>
-#include <scenefx/types/wlr_scene.h>
-
 #include "mwc.h"
-
-#include "helpers.h"
-#include "ipc.h"
-#include "keyboard.h"
-#include "config.h"
-#include "output.h"
-#include "pointer.h"
-#include "toplevel.h"
-#include "popup.h"
-#include "layer_surface.h"
-#include "decoration.h"
-#include "dnd.h"
-#include "gamma_control.h"
-#include "session_lock.h"
 
 #include <fcft/fcft.h>
 #include <pthread.h>
+#include <scenefx/render/fx_renderer/fx_renderer.h>
+#include <scenefx/types/wlr_scene.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,31 +11,44 @@
 #include <sys/wait.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
-#include "wlr/util/log.h"
-#include "wlr/types/wlr_seat.h"
 #include <wlr/backend/session.h>
-#include "wlr/types/wlr_cursor.h"
-#include "wlr/types/wlr_data_device.h"
+#include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
+#include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_session_lock_v1.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
+#include <wlr/types/wlr_xdg_activation_v1.h>
+
+#include "config.h"
+#include "decoration.h"
+#include "dnd.h"
+#include "gamma_control.h"
+#include "helpers.h"
+#include "ipc.h"
+#include "keyboard.h"
+#include "layer_surface.h"
+#include "output.h"
+#include "pointer.h"
+#include "popup.h"
+#include "session_lock.h"
+#include "toplevel.h"
 #include "wlr/backend.h"
 #include "wlr/render/allocator.h"
 #include "wlr/types/wlr_compositor.h"
+#include "wlr/types/wlr_cursor.h"
+#include "wlr/types/wlr_data_control_v1.h"
+#include "wlr/types/wlr_data_device.h"
+#include "wlr/types/wlr_foreign_toplevel_management_v1.h"
+#include "wlr/types/wlr_screencopy_v1.h"
+#include "wlr/types/wlr_seat.h"
 #include "wlr/types/wlr_subcompositor.h"
-#include "wlr/types/wlr_subcompositor.h"
-#include "wlr/types/wlr_xdg_output_v1.h"
+#include "wlr/types/wlr_viewporter.h"
 #include "wlr/types/wlr_xcursor_manager.h"
 #include "wlr/types/wlr_xdg_decoration_v1.h"
-#include "wlr/types/wlr_data_control_v1.h"
-#include "wlr/types/wlr_screencopy_v1.h"
-#include "wlr/types/wlr_viewporter.h"
-#include "wlr/types/wlr_foreign_toplevel_management_v1.h"
-#include <wlr/types/wlr_export_dmabuf_v1.h>
-#include <wlr/types/wlr_virtual_pointer_v1.h>
-#include <wlr/types/wlr_virtual_keyboard_v1.h>
-#include <wlr/types/wlr_gamma_control_v1.h>
-#include <wlr/types/wlr_presentation_time.h>
-#include <wlr/types/wlr_fractional_scale_v1.h>
-#include <wlr/types/wlr_session_lock_v1.h>
-#include <wlr/types/wlr_xdg_activation_v1.h>
+#include "wlr/types/wlr_xdg_output_v1.h"
+#include "wlr/util/log.h"
 
 // we initialize an instance of our global state
 struct mwc_server server;
@@ -58,7 +56,8 @@ struct mwc_server server;
 // handles exits of child processes
 void
 sigchld_handler(int signo) {
-    while(waitpid(-1, NULL, WNOHANG) > 0);
+    while(waitpid(-1, NULL, WNOHANG) > 0)
+        ;
 }
 
 void
@@ -173,10 +172,10 @@ main(int argc, char *argv[]) {
     server.wl_display = wl_display_create();
     server.wl_event_loop = wl_display_get_event_loop(server.wl_display);
 
-   // the backend is a wlroots feature which abstracts the underlying input and
-   // output hardware. the autocreate option will choose the most suitable
-   // backend based on the current environment, such as opening an x11 window
-   // if an x11 server is running
+    // the backend is a wlroots feature which abstracts the underlying input and
+    // output hardware. the autocreate option will choose the most suitable
+    // backend based on the current environment, such as opening an x11 window
+    // if an x11 server is running
     server.backend = wlr_backend_autocreate(server.wl_event_loop, &server.session);
     if(server.backend == NULL) {
         wlr_log(WLR_ERROR, "failed to create wlr_backend");
@@ -200,13 +199,13 @@ main(int argc, char *argv[]) {
         return 1;
     }
 
-   // this creates some hands-off wlroots interfaces. the compositor is
-   // necessary for clients to allocate surfaces, the subcompositor allows to
-   // assign the role of subsurfaces to surfaces and the data device manager
-   // handles the clipboard. each of these wlroots interfaces has room for you
-   // to dig your fingers in and play with their behavior if you want. note that
-   // the clients cannot set the selection directly without compositor approval,
-   // see the handling of the request_set_selection event below
+    // this creates some hands-off wlroots interfaces. the compositor is
+    // necessary for clients to allocate surfaces, the subcompositor allows to
+    // assign the role of subsurfaces to surfaces and the data device manager
+    // handles the clipboard. each of these wlroots interfaces has room for you
+    // to dig your fingers in and play with their behavior if you want. note that
+    // the clients cannot set the selection directly without compositor approval,
+    // see the handling of the request_set_selection event below
     wlr_compositor_create(server.wl_display, 6, server.renderer);
     wlr_subcompositor_create(server.wl_display);
 
@@ -255,12 +254,11 @@ main(int argc, char *argv[]) {
     server.layer_shell->data = &server;
     wl_signal_add(&server.layer_shell->events.new_surface, &server.new_layer_surface);
 
-   // creates a cursor, which is a wlroots utility for tracking the cursor image shown on screen.
+    // creates a cursor, which is a wlroots utility for tracking the cursor image shown on screen.
     server.cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
 
-    server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme,
-                                                   server.config->cursor_size);
+    server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
     // we also add xcursor theme env variables
     char cursor_size[8];
     snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
@@ -288,10 +286,10 @@ main(int argc, char *argv[]) {
     server.new_input.notify = server_handle_new_input;
     wl_signal_add(&server.backend->events.new_input, &server.new_input);
 
-   // configures a seat, which is a single "seat" at which a user sits and
-   // operates the computer. this conceptually includes up to one keyboard,
-   // pointer, touch, and drawing tablet device. we also rig up a listener to
-   // let us know when new input devices are available on the backend.
+    // configures a seat, which is a single "seat" at which a user sits and
+    // operates the computer. this conceptually includes up to one keyboard,
+    // pointer, touch, and drawing tablet device. we also rig up a listener to
+    // let us know when new input devices are available on the backend.
     wl_list_init(&server.keyboards);
 
     server.seat = wlr_seat_create(server.wl_display, "seat0");
@@ -316,21 +314,21 @@ main(int argc, char *argv[]) {
     wlr_data_control_manager_v1_create(server.wl_display);
 
     // configures decorations
-    server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.wl_display);
+    decoration_manager_init(&server.config->decoration);
 
+    server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.wl_display);
     server.request_xdg_decoration.notify = server_handle_request_xdg_decoration;
-    wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
-                  &server.request_xdg_decoration);
+    wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration, &server.request_xdg_decoration);
+
+    server.kde_decoration_manager = wlr_server_decoration_manager_create(server.wl_display);
+    wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
+            server.config->decoration_provider == DECORATION_PROVIDER_CLIENT
+                    ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
+                    : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
     wlr_xdg_output_manager_v1_create(server.wl_display, server.output_layout);
     wlr_viewporter_create(server.wl_display);
     wlr_presentation_create(server.wl_display, server.backend);
-
-    server.kde_decoration_manager = wlr_server_decoration_manager_create(server.wl_display);
-    wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
-                                                   server.config->decorations == MWC_DECORATIONS_CLIENT_SIDE
-                                                   ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
-                                                   : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
     wlr_screencopy_manager_v1_create(server.wl_display);
     wlr_export_dmabuf_manager_v1_create(server.wl_display);
@@ -338,6 +336,7 @@ main(int argc, char *argv[]) {
 
     wlr_fractional_scale_manager_v1_create(server.wl_display, 1);
 
+    // todo: these need some wiring i think
     wlr_virtual_pointer_manager_v1_create(server.wl_display);
     wlr_virtual_keyboard_manager_v1_create(server.wl_display);
 

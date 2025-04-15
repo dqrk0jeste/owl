@@ -1,17 +1,16 @@
-#include <scenefx/types/wlr_scene.h>
-
 #include "view.h"
 
-#include "mwc.h"
-#include "layer_surface.h"
-#include "popup.h"
-#include "session_lock.h"
-
 #include <assert.h>
+#include <scenefx/types/wlr_scene.h>
 #include <wayland-util.h>
-#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_xdg_shell.h>
+
+#include "layer_surface.h"
+#include "mwc.h"
+#include "popup.h"
+#include "session_lock.h"
 
 extern struct mwc_server server;
 
@@ -82,35 +81,28 @@ view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *
 
 void
 focus_view(struct mwc_view *view) {
-    assert(view != NULL);
-
     switch(view->type) {
-        case MWC_TOPLEVEL: {
+        case MWC_TOPLEVEL:
             focus_toplevel(view->toplevel);
             return;
-        }
-        case MWC_POPUP: {
+        case MWC_POPUP:;
             struct mwc_popup *popup = view->popup;
             focus_view(popup_get_root_parent(popup));
             return;
-        }
-        case MWC_LAYER_SURFACE: {
+        case MWC_LAYER_SURFACE:
             focus_layer_surface(view->layer_surface);
             return;
-        }
-        case MWC_LOCK_SURFACE: {
+        case MWC_LOCK_SURFACE:
             focus_lock_surface(view->lock_surface);
             return;
-        }
         case MWC_BORDER:
         case MWC_TITLEBAR_BASE:
         case MWC_TITLEBAR_CLOSE_BUTTON:
-        case MWC_TITLEBAR_TITLE: {
+        case MWC_TITLEBAR_TITLE:;
             // these are always child of a toplevel, so we get the toplevel first, and then focus it
             struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
             focus_toplevel(toplevel);
             return;
-        }
     }
 }
 
@@ -136,4 +128,3 @@ view_try_get_toplevel(struct mwc_view *view) {
             return NULL;
     }
 }
-

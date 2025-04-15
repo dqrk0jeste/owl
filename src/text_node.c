@@ -1,23 +1,22 @@
 #include "text_node.h"
 
-#include "helpers.h"
-#include "mwc.h"
-#include "config.h"
-
 #include <assert.h>
 #include <drm_fourcc.h>
-#include <locale.h>
+#include <fcft/fcft.h>
+#include <pixman.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <uchar.h>
-#include <fcft/fcft.h>
-#include <pixman.h>
 #include <wayland-server-protocol.h>
-#include <wlr/types/wlr_buffer.h>
 #include <wlr/interfaces/wlr_buffer.h>
+#include <wlr/types/wlr_buffer.h>
+
+#include "config.h"
+#include "helpers.h"
+#include "mwc.h"
 
 extern struct mwc_server server;
 
@@ -27,9 +26,8 @@ pixman_buffer_handle_destroy(struct wlr_buffer *wlr_buffer) {
 }
 
 static bool
-pixman_buffer_handle_begin_data_ptr_access(struct wlr_buffer *wlr_buffer,
-                                           uint32_t flags, void **data,
-                                           uint32_t *format, size_t *stride) {
+pixman_buffer_handle_begin_data_ptr_access(struct wlr_buffer *wlr_buffer, uint32_t flags, void **data, uint32_t *format,
+        size_t *stride) {
     struct pixman_buffer *buffer = wl_container_of(wlr_buffer, buffer, base);
 
     *data = pixman_image_get_data(buffer->image);
@@ -45,9 +43,9 @@ pixman_buffer_handle_end_data_ptr_access(struct wlr_buffer *wlr_buffer) {
 }
 
 static const struct wlr_buffer_impl pixman_buffer_impl = {
-    .destroy = pixman_buffer_handle_destroy,
-    .begin_data_ptr_access = pixman_buffer_handle_begin_data_ptr_access,
-    .end_data_ptr_access = pixman_buffer_handle_end_data_ptr_access,
+        .destroy = pixman_buffer_handle_destroy,
+        .begin_data_ptr_access = pixman_buffer_handle_begin_data_ptr_access,
+        .end_data_ptr_access = pixman_buffer_handle_end_data_ptr_access,
 };
 
 struct pixman_buffer *
@@ -77,9 +75,8 @@ pixman_buffer_destroy(struct pixman_buffer *buffer) {
 }
 
 static uint32_t
-render_glyphs_to_pixman_buffer(struct pixman_buffer *buffer, pixman_image_t *color,
-                               size_t count, const struct fcft_glyph *glyphs[static count],
-                               long kern[static count]) {
+render_glyphs_to_pixman_buffer(struct pixman_buffer *buffer, pixman_image_t *color, size_t count,
+        const struct fcft_glyph *glyphs[static count], long kern[static count]) {
     long x = 0;
 
     for(size_t i = 0; i < count; i++) {
@@ -88,8 +85,8 @@ render_glyphs_to_pixman_buffer(struct pixman_buffer *buffer, pixman_image_t *col
 
         x += kern[i];
 
-        pixman_image_composite32(PIXMAN_OP_OVER, color, g->pix, buffer->image, 0, 0, 0, 0,
-                                 x + g->x, server.config->font->ascent - g->y, g->width, g->height);
+        pixman_image_composite32(PIXMAN_OP_OVER, color, g->pix, buffer->image, 0, 0, 0, 0, x + g->x,
+                server.config->decoration.font->ascent - g->y, g->width, g->height);
 
         x += g->advance.x;
     }
@@ -105,12 +102,12 @@ render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_bu
     long kern[len];
 
     for(size_t i = 0; i < len; i++) {
-        glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
+        glyphs[i] = fcft_rasterize_char_utf32(server.config->decoration.font, text[i], FCFT_SUBPIXEL_NONE);
         if(glyphs[i] == NULL) continue;
 
         kern[i] = 0;
         if(i > 0) {
-            fcft_kerning(server.config->font, text[i - 1], text[i], &kern[i], NULL);
+            fcft_kerning(server.config->decoration.font, text[i - 1], text[i], &kern[i], NULL);
         }
     }
 
@@ -119,7 +116,7 @@ render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_bu
 
 struct text_node *
 text_node_create(struct wlr_scene_tree *parent, char *text) {
-    assert(server.config->font);
+    assert(server.config->decoration.font);
 
     struct text_node *node = calloc(1, sizeof(*node));
     node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
@@ -150,19 +147,13 @@ convert_utf8_to_utf32(char *utf8, char32_t *codepoint) {
         *codepoint = utf8[0];
         return 1;
     } else if((utf8[0] & 0xE0) == 0xC0) {
-        *codepoint = ((utf8[0] & 0x1F) << 6) |
-                     (utf8[1] & 0x3F);
+        *codepoint = ((utf8[0] & 0x1F) << 6) | (utf8[1] & 0x3F);
         return 2;
     } else if((utf8[0] & 0xF0) == 0xE0) {
-        *codepoint = ((utf8[0] & 0x0F) << 12) |
-                     ((utf8[1] & 0x3F) << 6) |
-                     (utf8[2] & 0x3F);
+        *codepoint = ((utf8[0] & 0x0F) << 12) | ((utf8[1] & 0x3F) << 6) | (utf8[2] & 0x3F);
         return 3;
     } else if((utf8[0] & 0xF8) == 0xF0) {
-        *codepoint = ((utf8[0] & 0x07) << 18) |
-                     ((utf8[1] & 0x3F) << 12) |
-                     ((utf8[2] & 0x3F) << 6) |
-                     (utf8[3] & 0x3F);
+        *codepoint = ((utf8[0] & 0x07) << 18) | ((utf8[1] & 0x3F) << 12) | ((utf8[2] & 0x3F) << 6) | (utf8[3] & 0x3F);
         return 4;
     } else {
         // invalid UTF-8
@@ -177,8 +168,8 @@ text_node_set_text(struct text_node *node, char *text) {
     size_t len = strlen(text);
 
     // we approximate the width of the text
-    uint32_t width = len * (server.config->font->max_advance.x);
-    uint32_t height = server.config->font->max_advance.y;
+    uint32_t width = len * (server.config->decoration.font->max_advance.x);
+    uint32_t height = server.config->decoration.font->max_advance.y;
 
     // todo: save an allocation if the current is bigger than this one; i dont care rn
     if(node->buffer != NULL) {
@@ -205,7 +196,7 @@ text_node_set_text(struct text_node *node, char *text) {
     }
 
     pixman_color_t color;
-    mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
+    mwc_color_to_pixman_color(server.config->decoration.titlebar_title_color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
     node->width = render_chars_to_pixman_buffer(unicode, j, node->buffer, foreground_color);
@@ -213,4 +204,3 @@ text_node_set_text(struct text_node *node, char *text) {
 
     pixman_image_unref(foreground_color);
 }
-

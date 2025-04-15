@@ -1,6 +1,6 @@
 #include <fcft/fcft.h>
-#include <stdint.h>
 #include <pixman.h>
+#include <stdint.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_scene.h>
 
@@ -32,4 +32,3 @@ text_node_destroy(struct text_node *node);
 
 void
 text_node_set_text(struct text_node *node, char *text);
-

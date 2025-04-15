@@ -23,19 +23,6 @@
 
 extern struct mwc_server server;
 
-static struct mwc_workspace *
-output_find_owned_workspace(struct mwc_output *output) {
-    struct mwc_workspace *iter;
-    wl_list_for_each(iter, &output->workspaces, link) {
-        // see note for `original_output` field
-        if(strcmp(iter->original_output, output->wlr_output->name) == 0) {
-            return iter;
-        }
-    }
-
-    return NULL;
-}
-
 static void
 output_transfer_existing_workspaces(struct mwc_output *output) {
     // if this output is reconnected then its workspaces are on some other monitor,
@@ -49,13 +36,16 @@ output_transfer_existing_workspaces(struct mwc_output *output) {
 
         wl_list_for_each_safe(iter_workspace, tmp, &iter_output->workspaces, link) {
             if(strcmp(iter_workspace->original_output, output->wlr_output->name) == 0) {
-                // fix that outputs state
-                if(iter_workspace == iter_output->active_workspace) {
-                    struct mwc_workspace *owned_workspace = output_find_owned_workspace(iter_output);
-                    // it should have had its own workspace
-                    assert(owned_workspace != NULL);
-                    change_workspace(owned_workspace, false);
-                }
+                // note: this should have been done, keeping it for reference
+                // fix that outputs state. todo: optimize this by moving it to the bottom, when the only
+                // workspaces that are left should be either owned by this output or evacuated from some
+                // other output, but, anyhow, changing to this workspace must be valid if(iter_workspace
+                // == iter_output->active_workspace) {
+                //     struct mwc_workspace *owned_workspace = output_find_owned_workspace(iter_output);
+                //     // it should have had its own workspace
+                //     assert(owned_workspace != NULL);
+                //     change_workspace(owned_workspace, false);
+                // }
                 // transfer it to this output
                 iter_workspace->output = output;
                 wl_list_remove(&iter_workspace->link);
@@ -65,6 +55,13 @@ output_transfer_existing_workspaces(struct mwc_output *output) {
                     output->active_workspace = iter_workspace;
                 }
             }
+        }
+
+        // after we have moved all the workspaces from this output we need to patch its active workspace
+        if(iter_output->active_workspace->output != iter_output) {
+            assert(!wl_list_empty(&iter_output->workspaces));
+            struct mwc_workspace *first = wl_container_of(iter_output->workspaces.next, first, link);
+            change_workspace(first, false);
         }
     }
 }
@@ -153,8 +150,8 @@ output_assign_workspaces(struct mwc_output *output) {
 
 static void
 output_handle_frame(struct wl_listener *listener, void *data) {
-    // this function is called every time an output is ready to display a frame,
-    // generally at the output's refresh rate
+    // this function is called every time an output is ready to display a frame, generally at the output's refresh
+    // rate
     struct mwc_output *output = wl_container_of(listener, output, frame);
 
     output_draw(output);
@@ -240,6 +237,7 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&output->frame.link);
     wl_list_remove(&output->request_state.link);
     wl_list_remove(&output->destroy.link);
+
     wl_list_remove(&output->link);
 
     free(output);
@@ -292,7 +290,7 @@ output_configure(struct wlr_output *wlr_output, struct output_config *config) {
     struct wlr_output_mode *m;
     wl_list_for_each(m, &wlr_output->modes, link) {
         if(m->width == config->width && m->height == config->height &&
-            abs((int32_t)m->refresh - (int32_t)config->refresh_rate) < best_match_diff) {
+                abs((int32_t)m->refresh - (int32_t)config->refresh_rate) < best_match_diff) {
             best_match = m;
             best_match_diff = abs((int32_t)m->refresh - (int32_t)config->refresh_rate);
         }
@@ -311,7 +309,7 @@ output_configure(struct wlr_output *wlr_output, struct output_config *config) {
     wlr_output_state_set_scale(&state, config->scale);
 
     wlr_log(WLR_INFO, "modesetting output %s to %dx%d@%dmHz", wlr_output->name, best_match->width, best_match->height,
-        best_match->refresh);
+            best_match->refresh);
 
     // we set the mode and try to commit the state. it should not fail!
     wlr_output_state_set_mode(&state, best_match);
@@ -344,8 +342,8 @@ output_configure_blur(struct mwc_output *output) {
 void
 output_place_in_layout(struct mwc_output *output, struct output_config *config) {
     struct wlr_output_layout_output *layout = config == NULL
-        ? wlr_output_layout_add_auto(server.output_layout, output->wlr_output)
-        : wlr_output_layout_add(server.output_layout, output->wlr_output, config->x, config->y);
+            ? wlr_output_layout_add_auto(server.output_layout, output->wlr_output)
+            : wlr_output_layout_add(server.output_layout, output->wlr_output, config->x, config->y);
 
     wlr_scene_output_layout_add_output(server.scene_layout, layout, output->scene_output);
 
@@ -409,11 +407,10 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 
     // then we handle the scene part
     output->scene_output = wlr_scene_output_create(server.scene, output->wlr_output);
-
     output_place_in_layout(output, config);
-
     output_configure_blur(output);
 
+    // and create the workspaces to this output
     output_assign_workspaces(output);
 
     // we take the first workspace for the active one for this output
@@ -497,18 +494,20 @@ output_get_relative(struct mwc_output *output, enum mwc_direction direction) {
         output_box.height *= o->wlr_output->scale;
 
         if(direction == MWC_LEFT && original_output_box.x == output_box.x + output_box.width &&
-            original_output_midpoint_y > output_box.y &&
-            original_output_midpoint_y < output_box.y + output_box.height) {
+                original_output_midpoint_y > output_box.y &&
+                original_output_midpoint_y < output_box.y + output_box.height) {
             return o;
         } else if(direction == MWC_RIGHT && original_output_box.x + original_output_box.width == output_box.x &&
-            original_output_midpoint_y > output_box.y &&
-            original_output_midpoint_y < output_box.y + output_box.height) {
+                original_output_midpoint_y > output_box.y &&
+                original_output_midpoint_y < output_box.y + output_box.height) {
             return o;
         } else if(direction == MWC_UP && original_output_box.y == output_box.y + output_box.height &&
-            original_output_midpoint_x > output_box.x && original_output_midpoint_x < output_box.x + output_box.width) {
+                original_output_midpoint_x > output_box.x &&
+                original_output_midpoint_x < output_box.x + output_box.width) {
             return o;
         } else if(direction == MWC_DOWN && original_output_box.y + original_output_box.height == output_box.y &&
-            original_output_midpoint_x > output_box.x && original_output_midpoint_x < output_box.x + output_box.width) {
+                original_output_midpoint_x > output_box.x &&
+                original_output_midpoint_x < output_box.x + output_box.width) {
             return o;
         }
     }
@@ -519,9 +518,9 @@ output_get_relative(struct mwc_output *output, enum mwc_direction direction) {
 struct wlr_box
 output_create_centered_box(struct mwc_output *output, uint32_t width, uint32_t height) {
     return (struct wlr_box){
-        .x = output->usable_area.x + (output->usable_area.width - width) / 2,
-        .y = output->usable_area.y + (output->usable_area.height - height) / 2,
-        .width = width,
-        .height = height,
+            .x = output->usable_area.x + (output->usable_area.width - width) / 2,
+            .y = output->usable_area.y + (output->usable_area.height - height) / 2,
+            .width = width,
+            .height = height,
     };
 }

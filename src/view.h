@@ -36,13 +36,10 @@ void
 view_create_for_node(struct wlr_scene_node *node, enum mwc_view_type type, void *view);
 
 struct mwc_view *
-view_at(double lx, double ly,
-        struct wlr_surface **surface,
-        double *sx, double *sy);
+view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *sy);
 
 void
 focus_view(struct mwc_view *view);
 
 struct mwc_toplevel *
 view_try_get_toplevel(struct mwc_view *view);
-
