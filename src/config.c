@@ -1053,11 +1053,21 @@ config_set_default_needed_params(struct mwc_config *c) {
                 c->decoration.titlebar_close_button_size);
     }
 
-    c->toplevel_minimum_needed_width =
-            c->decoration_provider == DECORATION_PROVIDER_SERVER && c->decoration.titlebar_include_close_button
-            ? c->decoration.titlebar_close_button_size + c->decoration.titlebar_close_button_padding.left +
-                    c->decoration.titlebar_close_button_padding.right
-            : 10;
+    c->toplevel_minimum_needed_width = c->decoration.border_width;
+    c->toplevel_minimum_needed_height = c->decoration.border_width;
+
+    if(c->decoration_provider == DECORATION_PROVIDER_SERVER && c->decoration.titlebar_include_close_button) {
+        c->toplevel_minimum_needed_height += c->decoration.titlebar_height;
+
+        if(c->decoration.titlebar_include_close_button) {
+            c->toplevel_minimum_needed_width += c->decoration.titlebar_close_button_size +
+                    c->decoration.titlebar_close_button_padding.left +
+                    c->decoration.titlebar_close_button_padding.right;
+        }
+    }
+
+    c->toplevel_minimum_needed_width = max(c->toplevel_minimum_needed_width, 10);
+    c->toplevel_minimum_needed_height = max(c->toplevel_minimum_needed_height, 10);
 }
 
 extern struct mwc_server server;
@@ -1365,12 +1375,15 @@ config_reload() {
             struct mwc_toplevel *iter_toplevel;
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
                 toplevel_recheck_opacity_rules(iter_toplevel);
+                decoration_set_types(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
                 toplevel_recheck_opacity_rules(iter_toplevel);
+                decoration_set_types(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->floating_toplevels, link) {
                 toplevel_recheck_opacity_rules(iter_toplevel);
+                decoration_set_types(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
             }
 
             layout_configure(iter_workspace);

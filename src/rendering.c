@@ -112,18 +112,16 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
             : max(server.config->decoration.border_radius - server.config->decoration.border_width, 0);
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
-
-    uint32_t width, height;
-    toplevel_get_current_display_size(toplevel, &width, &height);
+    struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
 
     struct iter_scene_buffer_apply_effects_args args = {
             .root_x = toplevel->scene_tree->node.x,
             .root_y = toplevel->scene_tree->node.y,
             .geometry = geometry,
-            .width = width,
-            .height = height,
-            .width_scale = (double)width / geometry.width,
-            .height_scale = (double)height / geometry.height,
+            .width = content_box.width,
+            .height = content_box.height,
+            .width_scale = (double)content_box.width / geometry.width,
+            .height_scale = (double)content_box.height / geometry.height,
             .opacity = opacity,
             .border_radius = border_radius,
             .has_titlebar = decoration_has_titlebar(toplevel->decoration),

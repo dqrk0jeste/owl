@@ -75,17 +75,19 @@ struct decoration_manager {
 struct decoration {
     // bitmask of `decorations_types`
     uint32_t types;
-    // this pointer is provided be the caller and he is responsible for managing its lifetime
-    struct decoration_config *config;
 
     struct wlr_scene_tree *tree;
 
     struct wlr_scene_rect *border;
     struct wlr_scene_shadow *shadow;
 
-    struct wlr_scene_rect *titlebar_base;
-    struct wlr_scene_rect *titlebar_close_button;
-    struct text_node *titlebar_title;
+    struct {
+        struct wlr_scene_tree *tree;
+
+        struct wlr_scene_rect *base;
+        struct wlr_scene_rect *close_button;
+        struct text_node *title;
+    } titlebar;
 
     uint32_t width, height;
     struct wlr_box content_box;
@@ -119,13 +121,12 @@ decoration_set_enabled(struct decoration *decoration, bool enabled);
 void
 decoration_set_active(struct decoration *decoration, bool active);
 
-// configure the size and position of the decoration and clip it for the `content_box`
-// `content_box` is in decoration relative coords
+// configure the decoration to the provided size
 void
-decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height, struct wlr_box content_box);
+decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height);
 
 struct wlr_box
-content_box_to_decoration_relative(struct wlr_box box, struct decoration *decoration);
+decoration_get_content_box(struct decoration *decoration, struct wlr_box box);
 
 bool
 decoration_is_enabled(struct decoration *decoration);

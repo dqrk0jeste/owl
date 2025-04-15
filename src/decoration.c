@@ -24,21 +24,26 @@ create_border(struct decoration *decoration) {
 }
 
 static void
-update_border(struct decoration *decoration, uint32_t width, uint32_t height, struct wlr_box *content_box) {
+update_border(struct decoration *decoration, struct wlr_box *box) {
     assert(decoration->border != NULL);
 
     uint32_t border_width = manager.config->border_width;
     uint32_t border_radius = manager.config->border_radius;
     enum corner_location border_radius_location = manager.config->border_radius_location;
 
-    wlr_scene_rect_set_size(decoration->border, width, height);
+    wlr_scene_rect_set_size(decoration->border, box->width, box->height);
 
-    // wlr_scene_rect_set_clipped_region(decoration->border,
-    //         (struct clipped_region){
-    //                 .area = {border_width, border_width, width - 2 * border_width, height - 2 * border_width},
-    //                 .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
-    //                 .corners = border_radius_location,
-    //         });
+    box->x += border_width;
+    box->y += border_width;
+    box->width -= 2 * border_width;
+    box->height -= 2 * border_width;
+
+    wlr_scene_rect_set_clipped_region(decoration->border,
+            (struct clipped_region){
+                    .area = *box,
+                    .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
+                    .corners = border_radius_location,
+            });
 }
 
 static void
@@ -58,27 +63,32 @@ create_shadow(struct decoration *decoration) {
     decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, manager.config->border_radius,
             manager.config->shadows_blur, wlr_color);
 
+    // we set the position here since its always going to be the same
     wlr_scene_node_set_position(&decoration->shadow->node, manager.config->shadows_position.x,
             manager.config->shadows_position.y);
 }
 
 static void
-update_shadow(struct decoration *decoration, uint32_t width, uint32_t height, struct wlr_box *content_box) {
+update_shadow(struct decoration *decoration, struct wlr_box *box) {
     assert(decoration->shadow != NULL);
 
     struct wlr_box shadow_box = {
-            .x = 0,
-            .y = 0,
-            .width = width + manager.config->shadows_size,
-            .height = height + manager.config->shadows_size,
+            0,
+            0,
+            box->width + manager.config->shadows_size,
+            box->height + manager.config->shadows_size,
     };
 
-    struct wlr_box content_box_shadow_relative = *content_box;
-    content_box_shadow_relative.x -= manager.config->shadows_position.x;
-    content_box_shadow_relative.y -= -manager.config->shadows_position.y;
+    // in shadow relative coords
+    struct wlr_box relative_box = {
+            -manager.config->shadows_position.x,
+            -manager.config->shadows_position.y,
+            box->width,
+            box->height,
+    };
 
     struct wlr_box intersection_box;
-    wlr_box_intersection(&intersection_box, &content_box_shadow_relative, &shadow_box);
+    wlr_box_intersection(&intersection_box, &relative_box, &shadow_box);
 
     uint32_t border_radius = max((int32_t)manager.config->border_radius - (int32_t)manager.config->border_width, 0);
 
@@ -101,56 +111,60 @@ destroy_shadow(struct decoration *decoration) {
 
 static void
 create_titlebar(struct decoration *decoration) {
-    assert(decoration->titlebar_base == NULL);
+    assert(decoration->titlebar.tree == NULL);
 
-    decoration->titlebar_base = wlr_scene_rect_create(decoration->tree, 0, 0, (float[4]){0});
-    wlr_scene_node_set_position(&decoration->titlebar_base->node, manager.config->border_width,
-            manager.config->border_width);
-    wlr_scene_rect_set_corner_radius(decoration->titlebar_base,
+    // create a new tree so we can work in titlebar relative coords
+    // note: we dont place it anywhere since it depends on wheather there is a border or not
+    decoration->titlebar.tree = wlr_scene_tree_create(decoration->tree);
+
+    decoration->titlebar.base = wlr_scene_rect_create(decoration->titlebar.tree, 0, 0, (float[4]){0});
+    wlr_scene_rect_set_corner_radius(decoration->titlebar.base,
             max((int32_t)manager.config->border_radius - (int32_t)manager.config->border_width, 0),
             CORNER_LOCATION_TOP & manager.config->border_radius_location);
 
-    view_create_for_node(&decoration->titlebar_base->node, MWC_TITLEBAR_BASE, decoration->titlebar_base);
+    view_create_for_node(&decoration->titlebar.base->node, MWC_TITLEBAR_BASE, decoration->titlebar.base);
 
     if(manager.config->titlebar_include_close_button) {
         uint32_t size = manager.config->titlebar_close_button_size;
-        decoration->titlebar_close_button = wlr_scene_rect_create(decoration->tree, size, size, (float[4]){0});
+        decoration->titlebar.close_button = wlr_scene_rect_create(decoration->titlebar.tree, size, size, (float[4]){0});
 
         if(manager.config->titlebar_close_button_shape == TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE) {
-            wlr_scene_rect_set_corner_radius(decoration->titlebar_close_button, size / 2 + 1, CORNER_LOCATION_ALL);
+            wlr_scene_rect_set_corner_radius(decoration->titlebar.close_button, size / 2 + 1, CORNER_LOCATION_ALL);
         }
 
-        view_create_for_node(&decoration->titlebar_close_button->node, MWC_TITLEBAR_CLOSE_BUTTON,
-                decoration->titlebar_close_button);
+        view_create_for_node(&decoration->titlebar.close_button->node, MWC_TITLEBAR_CLOSE_BUTTON,
+                decoration->titlebar.close_button);
     }
 
     if(manager.config->titlebar_include_title && manager.config->font != NULL) {
-        decoration->titlebar_title = text_node_create(decoration->tree, NULL);
+        decoration->titlebar.title = text_node_create(decoration->tree, NULL);
 
-        view_create_for_node(&decoration->titlebar_title->scene_buffer->node, MWC_TITLEBAR_TITLE,
-                decoration->titlebar_title);
+        view_create_for_node(&decoration->titlebar.title->scene_buffer->node, MWC_TITLEBAR_TITLE,
+                decoration->titlebar.title);
     }
 }
 
 static void
-update_titlebar(struct decoration *decoration, uint32_t width, uint32_t height, struct wlr_box *content_box) {
-    assert(decoration->titlebar_base != NULL);
+update_titlebar(struct decoration *decoration, struct wlr_box *box) {
+    assert(decoration->titlebar.tree != NULL);
 
-    wlr_scene_rect_set_size(decoration->titlebar_base, width, manager.config->titlebar_height);
+    wlr_scene_node_set_position(&decoration->titlebar.tree->node, box->x, box->y);
 
-    if(decoration->titlebar_close_button != NULL) {
+    // set the size of the titlebar base
+    wlr_scene_rect_set_size(decoration->titlebar.base, box->width, manager.config->titlebar_height);
+
+    if(decoration->titlebar.close_button != NULL) {
         int32_t x = manager.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT
-                ? manager.config->border_width + manager.config->titlebar_close_button_padding.left
-                : (int32_t)width - manager.config->border_width -
-                        (int32_t)manager.config->titlebar_close_button_padding.right -
+                ? manager.config->titlebar_close_button_padding.left
+                : (int32_t)box->width - (int32_t)manager.config->titlebar_close_button_padding.right -
                         (int32_t)manager.config->titlebar_close_button_size;
-        int32_t y = manager.config->border_width +
+        int32_t y =
                 ((int32_t)manager.config->titlebar_height - (int32_t)manager.config->titlebar_close_button_size) / 2;
 
-        wlr_scene_node_set_position(&decoration->titlebar_close_button->node, x, y);
+        wlr_scene_node_set_position(&decoration->titlebar.close_button->node, x, y);
     }
 
-    if(decoration->titlebar_title != NULL) {
+    if(decoration->titlebar.title != NULL) {
         uint32_t left_pad = manager.config->titlebar_title_padding.left;
         if(manager.config->titlebar_include_close_button &&
                 manager.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT) {
@@ -160,19 +174,19 @@ update_titlebar(struct decoration *decoration, uint32_t width, uint32_t height, 
 
         int32_t x, y;
         if(manager.config->titlebar_center_title) {
-            x = ((int32_t)width - 2 * (int32_t)manager.config->border_width -
-                        (int32_t)decoration->titlebar_title->width) /
-                    2;
+            // we try to center it
+            x = ((int32_t)box->width - (int32_t)decoration->titlebar.title->width) / 2;
+            // but we dont want it placed before `left_pad`
             x = max(x, (int32_t)left_pad);
         } else {
             x = left_pad;
         }
 
-        y = ((int32_t)manager.config->titlebar_height - (int32_t)decoration->titlebar_title->height) / 2;
+        y = ((int32_t)manager.config->titlebar_height - (int32_t)decoration->titlebar.title->height) / 2;
 
-        wlr_scene_node_set_position(&decoration->titlebar_title->scene_buffer->node, x, y);
+        wlr_scene_node_set_position(&decoration->titlebar.title->scene_buffer->node, x, y);
 
-        int32_t free_width = (int32_t)width - x - (int32_t)manager.config->titlebar_title_padding.right;
+        int32_t free_width = (int32_t)box->width - x - (int32_t)manager.config->titlebar_title_padding.right;
         if(manager.config->titlebar_include_close_button &&
                 manager.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT) {
             free_width -= (int32_t)manager.config->titlebar_close_button_size +
@@ -181,38 +195,36 @@ update_titlebar(struct decoration *decoration, uint32_t width, uint32_t height, 
         }
 
         if(free_width <= 0) {
-            wlr_scene_node_set_enabled(&decoration->titlebar_title->scene_buffer->node, false);
+            wlr_scene_node_set_enabled(&decoration->titlebar.title->scene_buffer->node, false);
         } else {
-            wlr_scene_node_set_enabled(&decoration->titlebar_title->scene_buffer->node, true);
+            wlr_scene_node_set_enabled(&decoration->titlebar.title->scene_buffer->node, true);
             struct wlr_fbox box = {
                     .x = 0.0,
                     .y = 0.0,
-                    .width = min(free_width, decoration->titlebar_title->width),
-                    .height = decoration->titlebar_title->height,
+                    .width = min(free_width, decoration->titlebar.title->width),
+                    .height = decoration->titlebar.title->height,
             };
-            wlr_scene_buffer_set_source_box(decoration->titlebar_title->scene_buffer, &box);
-            wlr_scene_buffer_set_dest_size(decoration->titlebar_title->scene_buffer,
-                    min(free_width, decoration->titlebar_title->width), decoration->titlebar_title->height);
+            wlr_scene_buffer_set_source_box(decoration->titlebar.title->scene_buffer, &box);
+            wlr_scene_buffer_set_dest_size(decoration->titlebar.title->scene_buffer,
+                    min(free_width, decoration->titlebar.title->width), decoration->titlebar.title->height);
         }
     }
 }
 
 static void
 destroy_titlebar(struct decoration *decoration) {
-    assert(decoration->titlebar_base != NULL);
+    assert(decoration->titlebar.tree != NULL);
 
-    wlr_scene_node_destroy(&decoration->titlebar_base->node);
-    decoration->titlebar_base = NULL;
-
-    if(decoration->titlebar_close_button != NULL) {
-        wlr_scene_node_destroy(&decoration->titlebar_close_button->node);
-        decoration->titlebar_close_button = NULL;
+    // manually destroy this, see comment in `text_node_destroy()`
+    if(decoration->titlebar.title != NULL) {
+        text_node_destroy(decoration->titlebar.title);
     }
 
-    if(decoration->titlebar_title != NULL) {
-        text_node_destroy(decoration->titlebar_title);
-        decoration->titlebar_title = NULL;
-    }
+    wlr_scene_node_destroy(&decoration->titlebar.tree->node);
+    decoration->titlebar.tree = NULL;
+    decoration->titlebar.base = NULL;
+    decoration->titlebar.close_button = NULL;
+    decoration->titlebar.title = NULL;
 }
 
 struct decoration *
@@ -292,7 +304,7 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
 
     decoration->types = types;
     // and then configure them with the current size
-    decoration_configure(decoration, decoration->width, decoration->height, decoration->content_box);
+    decoration_configure(decoration, decoration->width, decoration->height);
 }
 
 void
@@ -314,34 +326,56 @@ decoration_set_active(struct decoration *decoration, bool active) {
         float titlebar_color[4];
         mwc_color_to_wlr_color(active ? manager.config->titlebar_color.active : manager.config->titlebar_color.inactive,
                 titlebar_color);
-        wlr_scene_rect_set_color(decoration->titlebar_base, titlebar_color);
+        wlr_scene_rect_set_color(decoration->titlebar.base, titlebar_color);
 
-        if(decoration->titlebar_close_button != NULL) {
+        if(decoration->titlebar.close_button != NULL) {
             mwc_color_to_wlr_color(active ? manager.config->titlebar_close_button_color.active
                                           : manager.config->titlebar_close_button_color.inactive,
                     titlebar_color);
-            wlr_scene_rect_set_color(decoration->titlebar_close_button, titlebar_color);
+            wlr_scene_rect_set_color(decoration->titlebar.close_button, titlebar_color);
         }
     }
 }
 
 void
-decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height, struct wlr_box content_box) {
+decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height) {
+    decoration->width = width;
+    decoration->height = height;
+
+    struct wlr_box decoration_box = {0, 0, width, height};
+
+    // update_* functions will crop the `decoration_box`, so we can pass them to the next one
     if(decoration_has_shadow(decoration)) {
-        update_shadow(decoration, width, height, &content_box);
+        update_shadow(decoration, &decoration_box);
     }
 
     if(decoration_has_border(decoration)) {
-        update_border(decoration, width, height, &content_box);
+        update_border(decoration, &decoration_box);
     }
 
     if(decoration_has_titlebar(decoration)) {
-        update_titlebar(decoration, width, height, &content_box);
+        update_titlebar(decoration, &decoration_box);
+    }
+}
+
+struct wlr_box
+decoration_get_content_box(struct decoration *decoration, struct wlr_box box) {
+    if(decoration_has_border(decoration)) {
+        box.x += manager.config->border_width;
+        box.y += manager.config->border_width;
+        box.width -= 2 * manager.config->border_width;
+        box.height -= 2 * manager.config->border_width;
     }
 
-    decoration->width = width;
-    decoration->height = height;
-    decoration->content_box = content_box;
+    if(decoration_has_titlebar(decoration)) {
+        box.y += manager.config->titlebar_height;
+        box.height -= manager.config->titlebar_height;
+    }
+
+    if(box.width <= 0) box.width = 1;
+    if(box.height <= 0) box.height = 1;
+
+    return box;
 }
 
 void
@@ -358,14 +392,14 @@ decoration_manager_init(struct decoration_config *config) {
     // we update all the decorations to this new config
     struct decoration *iter;
     wl_list_for_each(iter, &manager.decorations, link) {
-        if(decoration_has_border(iter)) {
-            destroy_border(iter);
-            create_border(iter);
-        }
-
         if(decoration_has_shadow(iter)) {
             destroy_shadow(iter);
             create_shadow(iter);
+        }
+
+        if(decoration_has_border(iter)) {
+            destroy_border(iter);
+            create_border(iter);
         }
 
         if(decoration_has_titlebar(iter)) {
@@ -373,22 +407,8 @@ decoration_manager_init(struct decoration_config *config) {
             create_titlebar(iter);
         }
 
-        decoration_configure(iter, iter->width, iter->height, iter->content_box);
+        decoration_configure(iter, iter->width, iter->height);
     }
-}
-
-struct wlr_box
-content_box_to_decoration_relative(struct wlr_box box, struct decoration *decoration) {
-    box.x = box.y = 0;
-    if(decoration->types & DECORATION_BORDER) {
-        box.x += manager.config->border_width;
-        box.y += manager.config->border_width;
-    }
-    if(decoration->types & DECORATION_TITLEBAR) {
-        box.y += manager.config->titlebar_height;
-    }
-
-    return box;
 }
 
 bool

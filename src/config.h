@@ -142,7 +142,7 @@ struct mwc_config {
     uint32_t cursor_size;
 
     // general toplevel and layout stuff
-    uint32_t toplevel_minimum_needed_width;
+    uint32_t toplevel_minimum_needed_width, toplevel_minimum_needed_height;
     double inactive_opacity;
     double active_opacity;
     bool apply_opacity_when_fullscreen;

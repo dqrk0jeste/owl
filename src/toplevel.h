@@ -31,7 +31,7 @@ struct mwc_toplevel {
     // if this toplevel has titlebar
     bool has_titlebar;
     // toplevel (with decorations) size and position of the toplevel (with decorations) in the layout
-    struct wlr_box box, deco_box;
+    struct wlr_box content_box, deco_box;
 
     // cached values for toplevels opacity
     double inactive_opacity, active_opacity;
@@ -78,29 +78,13 @@ toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box);
 struct wlr_box
 toplevel_get_geometry(struct mwc_toplevel *toplevel);
 
-// get currently displayed toplevel box; caused by running animation
+// get currently displayed toplevel content box; caused by running animation
 struct wlr_box
-toplevel_get_current_display_box(struct mwc_toplevel *toplevel);
-
-// get currently displayed size of this toplevel; caused by running animation
-void
-toplevel_get_current_display_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
+toplevel_get_current_display_content_box(struct mwc_toplevel *toplevel);
 
 // get currently displayed toplevel box with decorations; caused by running animation
 struct wlr_box
 toplevel_get_current_display_deco_box(struct mwc_toplevel *toplevel);
-
-// get currently displayed size with decorations of this toplevel; caused by running animation
-void
-toplevel_get_current_display_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
-
-// translates the no decorations box to one with decorations; stripping the decorations
-struct wlr_box
-deco_box_to_box(struct wlr_box box, struct decoration *decoration);
-
-// translates the toplevel box to one with decorations; adding the decorations
-struct wlr_box
-box_to_deco_box(struct wlr_box box, struct decoration *decoration);
 
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
@@ -141,6 +125,11 @@ toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *topl
 // recheck the opacity rules; FIXME: this should be more general and check other window rules
 void
 toplevel_recheck_opacity_rules(struct mwc_toplevel *toplevel);
+
+// get the wanted decorations for this toplevel
+// returns a bitmask of `enum decoration_type`
+uint32_t
+toplevel_get_decoration_types(struct mwc_toplevel *toplevel);
 
 void
 xdg_activation_handle_new_token(struct wl_listener *listener, void *data);

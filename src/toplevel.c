@@ -167,13 +167,11 @@ static void
 toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) {
     struct mwc_toplevel *toplevel = user_data;
 
-    toplevel_clip_tree(toplevel, current.width, current.height);
+    decoration_configure(toplevel->decoration, current.width, current.height);
 
-    struct wlr_box deco_box = box_to_deco_box(current, toplevel->decoration);
-    decoration_configure(toplevel->decoration, deco_box.width, deco_box.height,
-            content_box_to_decoration_relative(current, toplevel->decoration));
-
-    wlr_scene_node_set_position(&toplevel->scene_tree->node, current.x, current.y);
+    struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, current);
+    toplevel_clip_tree(toplevel, content_box.width, content_box.height);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
 
     if(done) {
         fx_transform_animation_destroy(toplevel->animation);
@@ -261,7 +259,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
     // its own, hit some roadblocks in my first attempt
 }
 
-static uint32_t
+uint32_t
 toplevel_get_decoration_types(struct mwc_toplevel *toplevel) {
     uint32_t types = 0;
     if(server.config->decoration.border_width > 0) {
@@ -571,9 +569,9 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
 
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
 
-    // extract this into a function in decoration.c
-    if(toplevel->decoration != NULL && toplevel->decoration->titlebar_title != NULL) {
-        text_node_set_text(toplevel->decoration->titlebar_title, toplevel->xdg_toplevel->title);
+    // todo: extract this into a function in decoration.c
+    if(toplevel->decoration != NULL && toplevel->decoration->titlebar.title != NULL) {
+        text_node_set_text(toplevel->decoration->titlebar.title, toplevel->xdg_toplevel->title);
     }
 
     if(toplevel == server.focused_toplevel) {
@@ -587,8 +585,8 @@ cursor_jump_focused_toplevel(void) {
     if(toplevel == NULL) return;
 
     // todo: investigate this
-    wlr_cursor_warp(server.cursor, NULL, toplevel->scene_tree->node.x + toplevel->box.width / 2.0,
-            toplevel->scene_tree->node.y + toplevel->box.height / 2.0);
+    wlr_cursor_warp(server.cursor, NULL, toplevel->scene_tree->node.x + toplevel->deco_box.width / 2.0,
+            toplevel->scene_tree->node.y + toplevel->deco_box.height / 2.0);
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -870,99 +868,42 @@ xdg_activation_handle_request(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_box
-deco_box_to_box(struct wlr_box box, struct decoration *decoration) {
-    if(!decoration_is_enabled(decoration)) return box;
-
-    if(decoration_has_border(decoration)) {
-        box.width -= 2 * server.config->decoration.border_width;
-        box.height -= 2 * server.config->decoration.border_width;
-        box.x += server.config->decoration.border_width;
-        box.y += server.config->decoration.border_width;
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        box.height -= server.config->decoration.titlebar_height;
-        box.y += server.config->decoration.titlebar_height;
-    }
-
-    if(box.width <= 0) box.width = 1;
-    if(box.height <= 0) box.height = 1;
-
-    return box;
-}
-
-struct wlr_box
-box_to_deco_box(struct wlr_box box, struct decoration *decoration) {
-    if(!decoration_is_enabled(decoration)) return box;
-
-    if(decoration_has_border(decoration)) {
-        box.width += 2 * server.config->decoration.border_width;
-        box.height += 2 * server.config->decoration.border_width;
-        box.x -= server.config->decoration.border_width;
-        box.y -= server.config->decoration.border_width;
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        box.height += server.config->decoration.titlebar_height;
-        box.y -= server.config->decoration.titlebar_height;
-    }
-
-    return box;
-}
-
-struct wlr_box
-toplevel_get_current_display_box(struct mwc_toplevel *toplevel) {
+toplevel_get_current_display_deco_box(struct mwc_toplevel *toplevel) {
     if(toplevel->animation != NULL) {
         return fx_transform_animation_get_current(toplevel->animation);
     }
 
-    return toplevel->box;
+    return toplevel->deco_box;
 }
 
 struct wlr_box
-toplevel_get_current_display_deco_box(struct mwc_toplevel *toplevel) {
-    struct wlr_box box = toplevel_get_current_display_box(toplevel);
-    return box_to_deco_box(box, toplevel->decoration);
-}
-
-void
-toplevel_get_current_display_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height) {
-    struct wlr_box box = toplevel_get_current_display_box(toplevel);
-
-    *width = box.width;
-    *height = box.height;
-}
-
-void
-toplevel_get_current_display_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height) {
-    struct wlr_box box = toplevel_get_current_display_deco_box(toplevel);
-
-    *width = box.width;
-    *height = box.height;
+toplevel_get_current_display_content_box(struct mwc_toplevel *toplevel) {
+    struct wlr_box deco_box = toplevel_get_current_display_deco_box(toplevel);
+    return decoration_get_content_box(toplevel->decoration, deco_box);
 }
 
 // todo: maybe dont animate thing that are not shown on the screen by checking
 // node.enabled?
 void
 toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
-    struct wlr_box box = deco_box_to_box(deco_box, toplevel->decoration);
+    struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, deco_box);
 
     // this may have been left at true if the user was fast enough
     toplevel->should_choose_size = false;
 
     // todo: maybe find a more flexible solution to not send this when moving a toplevel, but oh well, its not that big
     // of a deal send a configure to the client;
-    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, box.width, box.height);
+    wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, content_box.width, content_box.height);
 
     // we find where the toplevel is currently, this is just a toplevel box, with no decorations
     struct wlr_box current;
     if(toplevel->needs_popin_adjustment) {
         // we patch the animation for the popin effect
         current = (struct wlr_box){
-                .x = box.x + box.width / 2,
-                .y = box.y + box.height / 2,
-                .width = 1,
-                .height = 1,
+                .x = deco_box.x + (deco_box.width - server.config->toplevel_minimum_needed_width) / 2,
+                .y = deco_box.y + (deco_box.height - server.config->toplevel_minimum_needed_height) / 2,
+                .width = server.config->toplevel_minimum_needed_width,
+                .height = server.config->toplevel_minimum_needed_height,
         };
         toplevel->needs_popin_adjustment = false;
     } else if(toplevel->animation != NULL) {
@@ -970,21 +911,20 @@ toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
         fx_transform_animation_destroy(toplevel->animation);
         toplevel->animation = NULL;
     } else {
-        current = toplevel->box;
+        current = toplevel->deco_box;
     }
 
-    if(server.config->animations && toplevel != server.grabbed_toplevel && !wlr_box_equal(&current, &box)) {
-        toplevel->animation = fx_transform_animation_create(current, box, server.config->animation_duration,
+    if(server.config->animations && toplevel != server.grabbed_toplevel) {
+        toplevel->animation = fx_transform_animation_create(current, deco_box, server.config->animation_duration,
                 server.config->animation_curve, toplevel_animation_callback, toplevel);
 
     } else {
-        toplevel_clip_tree(toplevel, box.width, box.height);
-        decoration_configure(toplevel->decoration, deco_box.width, deco_box.height,
-                content_box_to_decoration_relative(box, toplevel->decoration));
-        wlr_scene_node_set_position(&toplevel->scene_tree->node, box.x, box.y);
+        decoration_configure(toplevel->decoration, deco_box.width, deco_box.height);
+        toplevel_clip_tree(toplevel, content_box.width, content_box.height);
+        wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
     }
 
-    toplevel->box = box;
+    toplevel->content_box = content_box;
     toplevel->deco_box = deco_box;
 }
 
