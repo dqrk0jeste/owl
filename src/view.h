@@ -4,14 +4,14 @@
 
 // all the things we are drawing on the screen
 enum mwc_view_type {
-    MWC_TOPLEVEL,
-    MWC_POPUP,
-    MWC_LAYER_SURFACE,
-    MWC_LOCK_SURFACE,
-    MWC_BORDER,
-    MWC_TITLEBAR_BASE,
-    MWC_TITLEBAR_CLOSE_BUTTON,
-    MWC_TITLEBAR_TITLE,
+    MWC_VIEW_TOPLEVEL,
+    MWC_VIEW_POPUP,
+    MWC_VIEW_LAYER_SURFACE,
+    MWC_VIEW_LOCK_SURFACE,
+    MWC_VIEW_BORDER,
+    MWC_VIEW_TITLEBAR_BASE,
+    MWC_VIEW_TITLEBAR_CLOSE_BUTTON,
+    MWC_VIEW_TITLEBAR_TITLE,
 };
 
 struct mwc_toplevel;

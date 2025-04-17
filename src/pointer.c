@@ -52,6 +52,10 @@ grabbed_toplevel_resize(void) {
     // add the decorations to this box
     min_box = decoration_get_decoration_box(toplevel->decoration, min_box);
 
+    // we patch it so the titlebar is drawn without overflowing
+    min_box.width = max(min_box.width, server.config->toplevel_minimum_width);
+    min_box.height = max(min_box.height, server.config->toplevel_minimum_height);
+
     struct wlr_box max_box;
     if(toplevel->xdg_toplevel->current.max_width == 0) {
         max_box = (struct wlr_box){0, 0, INT_MAX, INT_MAX};
@@ -347,10 +351,10 @@ pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
         return;
     }
 
-    if(view->type == MWC_TITLEBAR_CLOSE_BUTTON) {
+    if(view->type == MWC_VIEW_TITLEBAR_CLOSE_BUTTON) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "pointer");
         wlr_seat_pointer_clear_focus(seat);
-    } else if(view->type == MWC_TITLEBAR_BASE) {
+    } else if(view->type == MWC_VIEW_TITLEBAR_BASE) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
         wlr_seat_pointer_clear_focus(seat);
     }
@@ -448,17 +452,18 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     if(view == NULL) return;
 
     // todo: add server driven resize on border here
-    if(view->type == MWC_TITLEBAR_CLOSE_BUTTON && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
-        wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
-    } else if(view->type == MWC_TITLEBAR_BASE && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
-        // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
-        toplevel_start_move(toplevel, true);
-    } else if(view->type == MWC_TITLEBAR_TITLE && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        struct mwc_toplevel *toplevel = view->text_node->scene_buffer->node.parent->node.data;
-        // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
-        toplevel_start_move(toplevel, true);
+    if(view->type == MWC_VIEW_TITLEBAR_CLOSE_BUTTON && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
+        if(toplevel != NULL) {
+            wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
+        }
+    } else if((view->type == MWC_VIEW_TITLEBAR_BASE || view->type == MWC_VIEW_TITLEBAR_TITLE) &&
+            event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
+        if(toplevel != NULL) {
+            // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
+            toplevel_start_move(toplevel, true);
+        }
     }
 }
 

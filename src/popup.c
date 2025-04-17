@@ -1,15 +1,15 @@
 #include "popup.h"
 
-#include "mwc.h"
-#include "view.h"
-#include "toplevel.h"
-#include "layer_surface.h"
-
 #include <assert.h>
 #include <stdlib.h>
-#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
+
+#include "layer_surface.h"
+#include "mwc.h"
+#include "toplevel.h"
+#include "view.h"
 
 extern struct mwc_server server;
 
@@ -24,15 +24,15 @@ popup_handle_commit(struct wl_listener *listener, void *data) {
 
         if(root == NULL) {
             wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
-        } else if(root->type == MWC_TOPLEVEL) {
+        } else if(root->type == MWC_VIEW_TOPLEVEL) {
             struct wlr_box output_box = root->toplevel->workspace->output->usable_area;
 
             output_box.x -= root->toplevel->scene_tree->node.x;
             output_box.y -= root->toplevel->scene_tree->node.y;
 
             wlr_xdg_popup_unconstrain_from_box(popup->xdg_popup, &output_box);
-        } else if(root->type == MWC_LAYER_SURFACE) {
-            struct mwc_layer_surface *layer_surface= root->layer_surface;
+        } else if(root->type == MWC_VIEW_LAYER_SURFACE) {
+            struct mwc_layer_surface *layer_surface = root->layer_surface;
             struct wlr_output *wlr_output = layer_surface->wlr_layer_surface->output;
 
             struct wlr_box output_box;
@@ -71,8 +71,7 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
     // if there is no parent, then this popup may be reparented later
     // see layer_surface_handle_new_popup()
     if(xdg_popup->parent != NULL) {
-        struct wlr_xdg_surface *parent_xdg_surface =
-            wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
+        struct wlr_xdg_surface *parent_xdg_surface = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
 
         struct wlr_scene_tree *parent_tree;
         if(parent_xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
@@ -96,7 +95,7 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
         }
 
         popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
-        view_create_for_node(&popup->scene_tree->node, MWC_POPUP, popup);
+        view_create_for_node(&popup->scene_tree->node, MWC_VIEW_POPUP, popup);
     }
 
     popup->commit.notify = popup_handle_commit;
@@ -111,11 +110,10 @@ popup_get_root_parent(struct mwc_popup *popup) {
     struct wlr_scene_tree *tree = popup->scene_tree;
 
     struct mwc_view *view = tree->node.data;
-    while(view == NULL || view->type == MWC_POPUP) {
+    while(view == NULL || view->type == MWC_VIEW_POPUP) {
         tree = tree->node.parent;
         view = tree->node.data;
     }
 
     return view;
 }
-

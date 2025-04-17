@@ -11,6 +11,7 @@
 #include "mwc.h"
 #include "popup.h"
 #include "session_lock.h"
+#include "text_node.h"
 
 extern struct mwc_server server;
 
@@ -53,7 +54,7 @@ view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *
         struct mwc_view *view = scene_buffer->node.data;
         if(view != NULL) {
             // if we desribed this node then it must be title
-            assert(view->type == MWC_TITLEBAR_TITLE);
+            assert(view->type == MWC_VIEW_TITLEBAR_TITLE);
             return view;
         } else {
             // then its just a regular surface
@@ -67,7 +68,7 @@ view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *
             // we climb the tree and find a top most node
             struct wlr_scene_tree *tree = node->parent;
             struct mwc_view *view = tree->node.data;
-            while(view == NULL || view->type == MWC_POPUP) {
+            while(view == NULL || view->type == MWC_VIEW_POPUP) {
                 tree = tree->node.parent;
                 view = tree->node.data;
             }
@@ -82,49 +83,95 @@ view_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *
 void
 focus_view(struct mwc_view *view) {
     switch(view->type) {
-        case MWC_TOPLEVEL:
+        case MWC_VIEW_TOPLEVEL: {
             focus_toplevel(view->toplevel);
             return;
-        case MWC_POPUP:;
+        }
+        case MWC_VIEW_POPUP: {
             struct mwc_popup *popup = view->popup;
             focus_view(popup_get_root_parent(popup));
             return;
-        case MWC_LAYER_SURFACE:
+        }
+        case MWC_VIEW_LAYER_SURFACE: {
             focus_layer_surface(view->layer_surface);
             return;
-        case MWC_LOCK_SURFACE:
+        }
+        case MWC_VIEW_LOCK_SURFACE: {
             focus_lock_surface(view->lock_surface);
             return;
-        case MWC_BORDER:
-        case MWC_TITLEBAR_BASE:
-        case MWC_TITLEBAR_CLOSE_BUTTON:
-        case MWC_TITLEBAR_TITLE:;
-            // these are always child of a toplevel, so we get the toplevel first, and then focus it
-            struct mwc_toplevel *toplevel = view->rect->node.parent->node.data;
-            focus_toplevel(toplevel);
+        }
+        case MWC_VIEW_BORDER:
+        case MWC_VIEW_TITLEBAR_BASE:
+        case MWC_VIEW_TITLEBAR_CLOSE_BUTTON: {
+            struct wlr_scene_rect *border = view->rect;
+            // we climb the scene tree while there is something described
+            struct wlr_scene_tree *tree = border->node.parent;
+            while(tree->node.data == NULL) {
+                tree = tree->node.parent;
+            }
+
+            // and focus the view
+            focus_view(tree->node.data);
             return;
+        }
+        case MWC_VIEW_TITLEBAR_TITLE: {
+            struct text_node *title = view->text_node;
+            // same thing
+            struct wlr_scene_tree *tree = title->scene_buffer->node.parent;
+            while(tree->node.data == NULL) {
+                tree = tree->node.parent;
+            }
+
+            // and focus the view
+            focus_view(tree->node.data);
+            return;
+        }
     }
 }
 
 struct mwc_toplevel *
 view_try_get_toplevel(struct mwc_view *view) {
     switch(view->type) {
-        case MWC_TOPLEVEL:
+        case MWC_VIEW_TOPLEVEL:
             return view->toplevel;
-        case MWC_POPUP:;
+        case MWC_VIEW_POPUP: {
             struct mwc_popup *popup = view->popup;
             struct mwc_view *root = popup_get_root_parent(popup);
-            if(root->type == MWC_TOPLEVEL) {
+            if(root->type == MWC_VIEW_TOPLEVEL) {
                 return root->toplevel;
             }
             return NULL;
-        case MWC_BORDER:
-        case MWC_TITLEBAR_BASE:
-        case MWC_TITLEBAR_CLOSE_BUTTON:
-        case MWC_TITLEBAR_TITLE:
-            return view->rect->node.parent->node.data;
-        case MWC_LOCK_SURFACE:
-        case MWC_LAYER_SURFACE:
+        }
+        case MWC_VIEW_BORDER:
+        case MWC_VIEW_TITLEBAR_BASE:
+        case MWC_VIEW_TITLEBAR_CLOSE_BUTTON: {
+            struct wlr_scene_rect *border = view->rect;
+            // we climb the scene tree while there is something described
+            struct wlr_scene_tree *tree = border->node.parent;
+            while(tree->node.data == NULL) {
+                tree = tree->node.parent;
+            }
+
+            struct mwc_view *view = tree->node.data;
+            if(view->type == MWC_VIEW_TOPLEVEL) {
+                return view->toplevel;
+            }
+        }
+        case MWC_VIEW_TITLEBAR_TITLE: {
+            struct text_node *title = view->text_node;
+            // same thing
+            struct wlr_scene_tree *tree = title->scene_buffer->node.parent;
+            while(tree->node.data == NULL) {
+                tree = tree->node.parent;
+            }
+
+            struct mwc_view *view = tree->node.data;
+            if(view->type == MWC_VIEW_TOPLEVEL) {
+                return view->toplevel;
+            }
+        }
+        case MWC_VIEW_LOCK_SURFACE:
+        case MWC_VIEW_LAYER_SURFACE:
             return NULL;
     }
 }

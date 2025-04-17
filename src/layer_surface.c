@@ -191,7 +191,7 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
     struct wlr_scene_tree *parent_tree = layer_surface->scene->tree;
     popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
 
-    view_create_for_node(&popup->scene_tree->node, MWC_POPUP, popup);
+    view_create_for_node(&popup->scene_tree->node, MWC_VIEW_POPUP, popup);
 
     // todo: fix this
     popup->xdg_popup->base->data = popup->scene_tree;
@@ -305,7 +305,7 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     struct wl_list *list = layer_get_list(output, layer);
     wl_list_insert(list, &layer_surface->link);
 
-    view_create_for_node(&layer_surface->scene->tree->node, MWC_LAYER_SURFACE, layer_surface);
+    view_create_for_node(&layer_surface->scene->tree->node, MWC_VIEW_LAYER_SURFACE, layer_surface);
 
     layer_surface->commit.notify = layer_surface_handle_commit;
     wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);

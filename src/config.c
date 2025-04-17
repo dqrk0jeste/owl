@@ -1291,15 +1291,17 @@ config_reload() {
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
+                decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
+                decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->floating_toplevels, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
-                decoration_destroy(iter_toplevel->decoration);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
+                decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
             }
 
             // master_count might have changed in the new config, so we update the layout

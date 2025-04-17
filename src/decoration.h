@@ -70,6 +70,10 @@ decoration_configure(struct decoration *decoration, uint32_t width, uint32_t hei
 void
 decoration_recreate(struct decoration *decoration, uint32_t types);
 
+// set the title if there is one, you can call this function safely even if there isnt a titlebar
+void
+decoration_titlebar_set_title(struct decoration *decoration, char *title);
+
 // get the content box from the decoration box
 struct wlr_box
 decoration_get_content_box(struct decoration *decoration, struct wlr_box box);

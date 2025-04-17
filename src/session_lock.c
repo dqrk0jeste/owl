@@ -1,14 +1,14 @@
 #include "session_lock.h"
 
-#include "layer_surface.h"
-#include "view.h"
-#include "toplevel.h"
-#include "mwc.h"
-#include "rendering.h"
-
-#include <wlr/util/log.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
+#include <wlr/util/log.h>
+
+#include "layer_surface.h"
+#include "mwc.h"
+#include "rendering.h"
+#include "toplevel.h"
+#include "view.h"
 
 extern struct mwc_server server;
 
@@ -53,9 +53,8 @@ session_lock_handle_new_surface(struct wl_listener *listener, void *data) {
     wlr_lock_surface->data = lock_surface;
     lock_surface->lock = lock;
 
-    lock_surface->scene_tree = wlr_scene_subsurface_tree_create(server.session_lock_tree,
-                                                                wlr_lock_surface->surface);
-    view_create_for_node(&lock_surface->scene_tree->node, MWC_LOCK_SURFACE, lock_surface);
+    lock_surface->scene_tree = wlr_scene_subsurface_tree_create(server.session_lock_tree, wlr_lock_surface->surface);
+    view_create_for_node(&lock_surface->scene_tree->node, MWC_VIEW_LOCK_SURFACE, lock_surface);
 
     lock_surface->map.notify = lock_surface_handle_map;
     wl_signal_add(&wlr_lock_surface->surface->events.map, &lock_surface->map);
@@ -77,9 +76,8 @@ void
 focus_lock_surface(struct mwc_lock_surface *lock_surface) {
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
     if(keyboard != NULL) {
-        wlr_seat_keyboard_notify_enter(server.seat, lock_surface->wlr_lock_surface->surface,
-                                       keyboard->keycodes, keyboard->num_keycodes,
-                                       &keyboard->modifiers);
+        wlr_seat_keyboard_notify_enter(server.seat, lock_surface->wlr_lock_surface->surface, keyboard->keycodes,
+                keyboard->num_keycodes, &keyboard->modifiers);
     }
 }
 
@@ -89,8 +87,8 @@ session_lock_handle_unlock(struct wl_listener *listener, void *data) {
     lock->locked = false;
     server.lock = NULL;
 
-    struct wlr_output *wlr_output = wlr_output_layout_output_at(server.output_layout,
-                                                                server.cursor->x, server.cursor->y);
+    struct wlr_output *wlr_output =
+            wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
     struct mwc_output *output = wlr_output->data;
 
     // optimize this
@@ -111,12 +109,10 @@ session_lock_handle_unlock(struct wl_listener *listener, void *data) {
 
     if(!focused) {
         if(!wl_list_empty(&server.active_workspace->masters)) {
-            struct mwc_toplevel *first = wl_container_of(server.active_workspace->masters.next,
-                                                         first, link);
+            struct mwc_toplevel *first = wl_container_of(server.active_workspace->masters.next, first, link);
             focus_toplevel(first);
         } else if(!wl_list_empty(&server.active_workspace->floating_toplevels)) {
-            struct mwc_toplevel *first = wl_container_of(server.active_workspace->floating_toplevels.next,
-                                                         first, link);
+            struct mwc_toplevel *first = wl_container_of(server.active_workspace->floating_toplevels.next, first, link);
             focus_toplevel(first);
         }
     }
@@ -168,14 +164,14 @@ session_lock_manager_handle_new(struct wl_listener *listener, void *data) {
 
     server.lock = lock;
 
-    float black[4] = { 0.0, 0.0, 0.0, 1.0 };
+    float black[4] = {0.0, 0.0, 0.0, 1.0};
     struct mwc_output *o;
     wl_list_for_each(o, &server.outputs, link) {
         struct wlr_box output_box;
         wlr_output_layout_get_box(server.output_layout, o->wlr_output, &output_box);
 
-        o->session_lock_rect = wlr_scene_rect_create(server.session_lock_tree,
-                                                     output_box.width, output_box.height, black);
+        o->session_lock_rect =
+                wlr_scene_rect_create(server.session_lock_tree, output_box.width, output_box.height, black);
         wlr_scene_node_set_position(&o->session_lock_rect->node, output_box.x, output_box.y);
     }
 
@@ -193,4 +189,3 @@ session_lock_manager_handle_new(struct wl_listener *listener, void *data) {
 
     wlr_session_lock_v1_send_locked(wlr_lock);
 }
-

@@ -143,7 +143,7 @@ toplevel_clip_tree(struct mwc_toplevel *toplevel, uint32_t width, uint32_t heigh
     struct wlr_scene_node *n;
     wl_list_for_each(n, &toplevel->scene_tree->children, link) {
         struct mwc_view *view = n->data;
-        if(view != NULL && view->type == MWC_POPUP) {
+        if(view != NULL && view->type == MWC_VIEW_POPUP) {
             wlr_scene_subsurface_tree_set_clip(n, NULL);
         }
     }
@@ -287,10 +287,11 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     // in the node we want to keep information what that node represents. we do
     // that be keeping mwc_view in user data field, which is a union of all
     // possible 'things' we can have on the screen
-    view_create_for_node(&toplevel->scene_tree->node, MWC_TOPLEVEL, toplevel);
+    view_create_for_node(&toplevel->scene_tree->node, MWC_VIEW_TOPLEVEL, toplevel);
 
-    // create a decoration object
+    // create a decoration object and set the initial title
     toplevel->decoration = decoration_create(toplevel->scene_tree, toplevel_get_decoration_types(toplevel));
+    decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
 
     // we set this flag for the popin animation
     toplevel->needs_popin_adjustment = server.config->animations;
@@ -333,6 +334,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     if(toplevel == server.grabbed_toplevel) {
         cursor_stop_move_resize();
 
+        server.focused_toplevel = NULL;
         // we find a toplevel to give focus to
         if(toplevel->floating && !wl_list_empty(&workspace->floating_toplevels)) {
             struct mwc_toplevel *t = wl_container_of(workspace->floating_toplevels.next, t, link);
@@ -341,7 +343,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
             struct mwc_toplevel *t = wl_container_of(workspace->masters.next, t, link);
             focus_toplevel(t);
         } else {
-            server.focused_toplevel = NULL;
             ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
         }
 
@@ -352,24 +353,13 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     if(toplevel == workspace->fullscreen_toplevel) {
         workspace->fullscreen_toplevel = NULL;
         layers_under_fullscreen_set_enabled(workspace->output, true);
-
-        struct mwc_toplevel *t;
-        wl_list_for_each(t, &workspace->masters, link) {
-            if(t == toplevel) continue;
-            wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-        }
-        wl_list_for_each(t, &workspace->slaves, link) {
-            if(t == toplevel) continue;
-            wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-        }
-        wl_list_for_each(t, &workspace->floating_toplevels, link) {
-            if(t == toplevel) continue;
-            wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-        }
+        workspace_toplevels_set_enabled(workspace, true);
     }
 
     if(toplevel->floating) {
         if(server.focused_toplevel == toplevel) {
+            // first we set this so focusing next wont unfocus this one
+            server.focused_toplevel = NULL;
             // try to find other floating toplevels to give focus to
             struct wl_list *focus_next = toplevel->link.next;
             if(focus_next == &workspace->floating_toplevels) {
@@ -386,7 +376,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
                 struct mwc_toplevel *t = wl_container_of(focus_next, t, link);
                 focus_toplevel(t);
             } else {
-                server.focused_toplevel = NULL;
                 ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
             }
         }
@@ -403,6 +392,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
             wl_list_insert(workspace->masters.prev, &s->link);
         }
         if(toplevel == server.focused_toplevel) {
+            server.focused_toplevel = NULL;
             // we want to give focus to some other toplevel
             struct wl_list *focus_next = toplevel->link.next;
             if(focus_next == &workspace->masters) {
@@ -419,7 +409,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
                 struct mwc_toplevel *t = wl_container_of(focus_next, t, link);
                 focus_toplevel(t);
             } else {
-                server.focused_toplevel = NULL;
                 ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
             }
         }
@@ -428,6 +417,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         wl_list_remove(&toplevel->link);
     } else {
         if(toplevel == server.focused_toplevel) {
+            server.focused_toplevel = NULL;
             // we want to give focus to some other toplevel
             struct wl_list *focus_next = toplevel->link.next;
             if(focus_next == &workspace->slaves) {
@@ -581,7 +571,6 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
 
     toplevel_recheck_window_rules(toplevel);
-
     if(toplevel->decoration != NULL) {
         decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
     }
@@ -600,14 +589,10 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
     toplevel_recheck_window_rules(toplevel);
     if(toplevel->decoration != NULL) {
         decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
+        decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
     }
 
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
-
-    // todo: extract this into a function in decoration.c
-    if(toplevel->decoration != NULL && toplevel->decoration->titlebar.title != NULL) {
-        text_node_set_text(toplevel->decoration->titlebar.title, toplevel->xdg_toplevel->title);
-    }
 
     if(toplevel == server.focused_toplevel) {
         ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
@@ -898,11 +883,11 @@ xdg_activation_handle_request(struct wl_listener *listener, void *data) {
     struct mwc_view *view = tree->node.data;
     if(view == NULL) return;
 
-    if(view->type == MWC_POPUP) {
+    if(view->type == MWC_VIEW_POPUP) {
         view = popup_get_root_parent(view->popup);
     }
 
-    if(view->type != MWC_TOPLEVEL) return;
+    if(view->type != MWC_VIEW_TOPLEVEL) return;
 
     struct mwc_toplevel *toplevel = view->toplevel;
     focus_toplevel(toplevel);
