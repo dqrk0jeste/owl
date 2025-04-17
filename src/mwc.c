@@ -322,9 +322,8 @@ main(int argc, char *argv[]) {
 
     server.kde_decoration_manager = wlr_server_decoration_manager_create(server.wl_display);
     wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
-            server.config->decoration_provider == DECORATION_PROVIDER_CLIENT
-                    ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
-                    : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+            server.config->client_side_decorations ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
+                                                   : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
     wlr_xdg_output_manager_v1_create(server.wl_display, server.output_layout);
     wlr_viewporter_create(server.wl_display);

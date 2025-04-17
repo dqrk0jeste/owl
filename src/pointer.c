@@ -53,9 +53,9 @@ grabbed_toplevel_resize(void) {
     int new_width = server.grabbed_toplevel_initial_box.width;
     int new_height = server.grabbed_toplevel_initial_box.height;
 
-    // todo: handle max sizes
+    // todo: handle max sizes and min height
     // we add our decorations to the reported toplevel sizes since toplevel_set_state() takes deco box
-    int min_width = max(toplevel->xdg_toplevel->current.min_width, server.config->toplevel_minimum_needed_width) +
+    int min_width = max(toplevel->xdg_toplevel->current.min_width, server.config->toplevel_minimum_width) +
             2 * server.config->decoration.border_width;
 
     int min_height = max(toplevel->xdg_toplevel->current.min_height, 10) + 2 * server.config->decoration.border_width;

@@ -88,7 +88,7 @@ toplevel_should_float(struct mwc_toplevel *toplevel) {
 
 static bool
 toplevel_should_draw_titlebar(struct mwc_toplevel *toplevel) {
-    if(server.config->decoration_provider != DECORATION_PROVIDER_SERVER) return false;
+    if(!server.config->titlebars) return false;
 
     struct window_rule_float *w;
     wl_list_for_each(w, &server.config->window_rules.no_titlebar, link) {
@@ -532,20 +532,16 @@ void
 toplevel_recheck_opacity_rules(struct mwc_toplevel *toplevel) {
     // check if it satisfies some window rule
     struct window_rule_opacity *w;
-    bool set = false;
     wl_list_for_each(w, &server.config->window_rules.opacity, link) {
         if(toplevel_matches_window_rule(toplevel, &w->condition)) {
-            toplevel->inactive_opacity = w->inactive_value;
             toplevel->active_opacity = w->active_value;
-            set = true;
-            break;
+            toplevel->inactive_opacity = w->inactive_value;
+            return;
         }
     }
 
-    if(!set) {
-        toplevel->inactive_opacity = server.config->inactive_opacity;
-        toplevel->active_opacity = server.config->active_opacity;
-    }
+    toplevel->active_opacity = server.config->opacity.active;
+    toplevel->inactive_opacity = server.config->opacity.inactive;
 }
 
 void
@@ -900,10 +896,10 @@ toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
     if(toplevel->needs_popin_adjustment) {
         // we patch the animation for the popin effect
         current = (struct wlr_box){
-                .x = deco_box.x + (deco_box.width - server.config->toplevel_minimum_needed_width) / 2,
-                .y = deco_box.y + (deco_box.height - server.config->toplevel_minimum_needed_height) / 2,
-                .width = server.config->toplevel_minimum_needed_width,
-                .height = server.config->toplevel_minimum_needed_height,
+                .x = deco_box.x + (deco_box.width - server.config->toplevel_minimum_width) / 2,
+                .y = deco_box.y + (deco_box.height - server.config->toplevel_minimum_height) / 2,
+                .width = server.config->toplevel_minimum_width,
+                .height = server.config->toplevel_minimum_height,
         };
         toplevel->needs_popin_adjustment = false;
     } else if(toplevel->animation != NULL) {
@@ -1019,8 +1015,8 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *toplevel = calloc(1, sizeof(*toplevel));
     toplevel->xdg_toplevel = xdg_toplevel;
 
-    toplevel->active_opacity = server.config->active_opacity;
-    toplevel->inactive_opacity = server.config->inactive_opacity;
+    toplevel->active_opacity = server.config->opacity.active;
+    toplevel->inactive_opacity = server.config->opacity.inactive;
 
     toplevel->workspace = server.active_workspace;
 

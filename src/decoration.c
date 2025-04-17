@@ -16,13 +16,13 @@ create_shadow(struct decoration *decoration) {
     assert(decoration->shadow == NULL);
 
     float wlr_color[4];
-    mwc_color_to_wlr_color(manager.config->shadows_color, wlr_color);
+    mwc_color_to_wlr_color(manager.config->shadow_color, wlr_color);
     decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, manager.config->border_radius,
-            manager.config->shadows_blur, wlr_color);
+            manager.config->shadow_blur, wlr_color);
 
     // we set the position here since its always going to be the same
-    wlr_scene_node_set_position(&decoration->shadow->node, manager.config->shadows_position.x,
-            manager.config->shadows_position.y);
+    wlr_scene_node_set_position(&decoration->shadow->node, manager.config->shadow_position.x,
+            manager.config->shadow_position.y);
 }
 
 static void
@@ -32,14 +32,14 @@ update_shadow(struct decoration *decoration, struct wlr_box *box) {
     struct wlr_box shadow_box = {
             0,
             0,
-            box->width + manager.config->shadows_size,
-            box->height + manager.config->shadows_size,
+            box->width + manager.config->shadow_size,
+            box->height + manager.config->shadow_size,
     };
 
     // in shadow relative coords
     struct wlr_box relative_box = {
-            -manager.config->shadows_position.x,
-            -manager.config->shadows_position.y,
+            -manager.config->shadow_position.x,
+            -manager.config->shadow_position.y,
             box->width,
             box->height,
     };
@@ -449,7 +449,6 @@ server_handle_request_xdg_decoration(struct wl_listener *listener, void *data) {
     struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
 
     wlr_xdg_toplevel_decoration_v1_set_mode(decoration,
-            server.config->decoration_provider == DECORATION_PROVIDER_CLIENT
-                    ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
-                    : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+            server.config->client_side_decorations ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                                   : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }

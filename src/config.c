@@ -627,11 +627,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->opacity.active = clamp(atof(args[0]), 0.0, 1.0);
-        if(arg_count > 1) {
-            c->opacity.inactive = clamp(atof(args[1]), 0.0, 1.0);
-        } else {
-            c->opacity.inactive = c->opacity.active;
-        }
+        c->opacity.inactive = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : c->opacity.active;
     } else if(strcmp(keyword, "opacity_apply_when_fullscreen") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -1389,8 +1385,8 @@ config_reload() {
     }
 
     wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
-            c->decoration_provider == DECORATION_PROVIDER_CLIENT ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
-                                                                 : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+            c->client_side_decorations ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
+                                       : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
     // todo: make this more efficient
     wlr_xcursor_manager_destroy(server.cursor_mgr);
