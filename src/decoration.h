@@ -5,8 +5,6 @@
 #include <wayland-server-core.h>
 #include <wlr/util/box.h>
 
-#include "helpers.h"
-
 enum decorations_type {
     DECORATION_BORDER = 1,
     DECORATION_SHADOW = 2,
@@ -21,55 +19,6 @@ enum titlebar_close_button_shape {
 enum titlebar_close_button_position {
     TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT = 0,
     TITLEBAR_CLOSE_BUTTON_POSITION_LEFT,
-};
-
-struct decoration_config {
-    uint32_t border_width;
-    uint32_t border_radius;
-    enum corner_location border_radius_location;
-    struct {
-        struct mwc_color active, inactive;
-    } border_color;
-
-    uint32_t shadow_size;
-    struct {
-        int32_t x, y;
-    } shadow_position;
-    struct mwc_color shadow_color;
-    double shadow_blur;
-
-    uint32_t titlebar_height;
-    struct {
-        struct mwc_color active, inactive;
-    } titlebar_color;
-
-    bool titlebar_include_close_button;
-    uint32_t titlebar_close_button_size;
-    struct {
-        uint32_t left, right;
-    } titlebar_close_button_padding;
-    enum titlebar_close_button_shape titlebar_close_button_shape;
-    enum titlebar_close_button_position titlebar_close_button_position;
-    struct {
-        struct mwc_color active, inactive;
-    } titlebar_close_button_color;
-
-    bool titlebar_include_title;
-    bool titlebar_center_title;
-    struct {
-        uint32_t left, right;
-    } titlebar_title_padding;
-    struct mwc_color titlebar_title_color;
-
-    // will be generated from the name specified by `titlebar_title_font`, may be NULL
-    struct fcft_font *font;
-};
-
-struct decoration_manager {
-    bool inited;
-
-    struct decoration_config *config;
-    struct wl_list decorations;
 };
 
 struct decoration {
@@ -91,15 +40,7 @@ struct decoration {
 
     uint32_t width, height;
     bool active;
-
-    struct wl_list link;
 };
-
-// initializes the decoration manager with the provided config
-// this can be called multiple times to update the config. all the decorations created up to that moment will be
-// automatically updated to this new config
-void
-decoration_manager_init(struct decoration_config *config);
 
 // create a new decoration with `parent` as parent scene tree and `types` of decoration
 struct decoration *
@@ -125,8 +66,17 @@ decoration_set_active(struct decoration *decoration, bool active);
 void
 decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height);
 
+// recreate this decoration; you may call this for it to match the new config
+void
+decoration_recreate(struct decoration *decoration, uint32_t types);
+
+// get the content box from the decoration box
 struct wlr_box
 decoration_get_content_box(struct decoration *decoration, struct wlr_box box);
+
+// get the decoration box from the content box
+struct wlr_box
+decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box);
 
 bool
 decoration_is_enabled(struct decoration *decoration);

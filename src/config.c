@@ -524,7 +524,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "border_width") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.border_width = max(atoi(args[0]), 0);
+        c->border_width = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "outer_gaps") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -552,12 +552,12 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "border_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color(args[0], &c->decoration.border_color.active)) {
+        if(!try_parse_color(args[0], &c->border_color.active)) {
             goto invalid;
         }
 
-        if(arg_count == 1 || !try_parse_color(args[1], &c->decoration.border_color.inactive)) {
-            c->decoration.border_color.inactive = c->decoration.border_color.active;
+        if(arg_count == 1 || !try_parse_color(args[1], &c->border_color.inactive)) {
+            c->border_color.inactive = c->border_color.active;
         }
     } else if(strcmp(keyword, "output") == 0) {
         if(arg_count < 6) goto invalid;
@@ -643,30 +643,30 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "border_radius") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.border_radius = max(atoi(args[0]), 0);
+        c->border_radius = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "border_radius_location") == 0) {
         if(arg_count < 1) goto invalid;
 
         if(strcmp(args[0], "all") == 0) {
-            c->decoration.border_radius_location = CORNER_LOCATION_ALL;
+            c->border_radius_location = CORNER_LOCATION_ALL;
         } else {
             for(size_t i = 0; i < arg_count; i++) {
                 if(strcmp(args[i], "top") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_TOP;
+                    c->border_radius_location |= CORNER_LOCATION_TOP;
                 } else if(strcmp(args[i], "bottom") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_BOTTOM;
+                    c->border_radius_location |= CORNER_LOCATION_BOTTOM;
                 } else if(strcmp(args[i], "right") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_RIGHT;
+                    c->border_radius_location |= CORNER_LOCATION_RIGHT;
                 } else if(strcmp(args[i], "left") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_LEFT;
+                    c->border_radius_location |= CORNER_LOCATION_LEFT;
                 } else if(strcmp(args[i], "top_right") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_TOP_RIGHT;
+                    c->border_radius_location |= CORNER_LOCATION_TOP_RIGHT;
                 } else if(strcmp(args[i], "bottom_right") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_BOTTOM_RIGHT;
+                    c->border_radius_location |= CORNER_LOCATION_BOTTOM_RIGHT;
                 } else if(strcmp(args[i], "bottom_left") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_BOTTOM_LEFT;
+                    c->border_radius_location |= CORNER_LOCATION_BOTTOM_LEFT;
                 } else if(strcmp(args[i], "top_left") == 0) {
-                    c->decoration.border_radius_location |= CORNER_LOCATION_TOP_LEFT;
+                    c->border_radius_location |= CORNER_LOCATION_TOP_LEFT;
                 }
             }
         }
@@ -705,20 +705,20 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "shadow_size") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.shadow_size = max(atoi(args[0]), 0);
+        c->shadow_size = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "shadow_blur") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.shadow_blur = max(atof(args[0]), 0.0);
+        c->shadow_blur = max(atof(args[0]), 0.0);
     } else if(strcmp(keyword, "shadow_position") == 0) {
         if(arg_count < 2) goto invalid;
 
-        c->decoration.shadow_position.x = atoi(args[0]);
-        c->decoration.shadow_position.y = atoi(args[1]);
+        c->shadow_position.x = atoi(args[0]);
+        c->shadow_position.y = atoi(args[1]);
     } else if(strcmp(keyword, "shadow_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color(args[0], &c->decoration.shadow_color)) {
+        if(!try_parse_color(args[0], &c->shadow_color)) {
             goto invalid;
         }
     } else if(strcmp(keyword, "layer_rule") == 0) {
@@ -732,82 +732,80 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "titlebar_height") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_height = max(atoi(args[0]), 0);
+        c->titlebar_height = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "titlebar_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color(args[0], &c->decoration.titlebar_color.active)) {
+        if(!try_parse_color(args[0], &c->titlebar_color.active)) {
             goto invalid;
         }
 
-        if(arg_count == 1 || !try_parse_color(args[1], &c->decoration.titlebar_color.inactive)) {
-            c->decoration.titlebar_color.inactive = c->decoration.titlebar_color.active;
+        if(arg_count == 1 || !try_parse_color(args[1], &c->titlebar_color.inactive)) {
+            c->titlebar_color.inactive = c->titlebar_color.active;
         }
     } else if(strcmp(keyword, "titlebar_include_close_button") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_include_close_button = atoi(args[0]);
+        c->titlebar_include_close_button = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_close_button_size") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_close_button_size = atoi(args[0]);
+        c->titlebar_close_button_size = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_close_button_position") == 0) {
         if(arg_count < 1) goto invalid;
 
         if(strcmp(args[0], "left") == 0) {
-            c->decoration.titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_LEFT;
+            c->titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_LEFT;
         } else if(strcmp(args[0], "right") == 0) {
-            c->decoration.titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT;
+            c->titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT;
         }
     } else if(strcmp(keyword, "titlebar_close_button_padding") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_close_button_padding.left = atoi(args[0]);
-        c->decoration.titlebar_close_button_padding.right =
-                arg_count > 1 ? atoi(args[1]) : c->decoration.titlebar_close_button_padding.left;
+        c->titlebar_close_button_padding.left = atoi(args[0]);
+        c->titlebar_close_button_padding.right = arg_count > 1 ? atoi(args[1]) : c->titlebar_close_button_padding.left;
     } else if(strcmp(keyword, "titlebar_close_button_shape") == 0) {
         if(arg_count < 1) goto invalid;
 
         if(strcmp(args[0], "square") == 0) {
-            c->decoration.titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_SQUARE;
+            c->titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_SQUARE;
         } else if(strcmp(args[0], "circle") == 0) {
-            c->decoration.titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE;
+            c->titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE;
         }
     } else if(strcmp(keyword, "titlebar_close_button_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color(args[0], &c->decoration.titlebar_close_button_color.active)) {
+        if(!try_parse_color(args[0], &c->titlebar_close_button_color.active)) {
             goto invalid;
         }
 
-        if(arg_count == 1 || !try_parse_color(args[1], &c->decoration.titlebar_close_button_color.inactive)) {
-            c->decoration.titlebar_close_button_color.inactive = c->decoration.titlebar_close_button_color.active;
+        if(arg_count == 1 || !try_parse_color(args[1], &c->titlebar_close_button_color.inactive)) {
+            c->titlebar_close_button_color.inactive = c->titlebar_close_button_color.active;
         }
     } else if(strcmp(keyword, "titlebar_include_title") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_include_title = atoi(args[0]);
+        c->titlebar_include_title = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_center_title") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_center_title = atoi(args[0]);
+        c->titlebar_center_title = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_title_padding") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.titlebar_title_padding.left = atoi(args[0]);
-        c->decoration.titlebar_title_padding.right =
-                arg_count > 1 ? atoi(args[1]) : c->decoration.titlebar_title_padding.left;
+        c->titlebar_title_padding.left = atoi(args[0]);
+        c->titlebar_title_padding.right = arg_count > 1 ? atoi(args[1]) : c->titlebar_title_padding.left;
     } else if(strcmp(keyword, "titlebar_title_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color(args[0], &c->decoration.titlebar_title_color)) {
+        if(!try_parse_color(args[0], &c->titlebar_title_color)) {
             goto invalid;
         }
     } else if(strcmp(keyword, "titlebar_title_font") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.font = fcft_from_name(1, (const char **)&args[0], NULL);
-        if(c->decoration.font == NULL) {
+        c->font = fcft_from_name(1, (const char **)&args[0], NULL);
+        if(c->font == NULL) {
             wlr_log(WLR_ERROR, "error while loading a font '%s', title wont be drawn", args[0]);
         }
     } else {
@@ -1010,31 +1008,30 @@ config_set_default_needed_params(struct mwc_config *c) {
         c->opacity.inactive = 1.0;
         wlr_log(WLR_INFO, "opacity not specified. using default %lf %lf", c->opacity.active, c->opacity.inactive);
     }
-    if(c->decoration.border_radius_location == 0) {
-        c->decoration.border_radius_location = CORNER_LOCATION_ALL;
+    if(c->border_radius_location == 0) {
+        c->border_radius_location = CORNER_LOCATION_ALL;
         wlr_log(WLR_INFO, "border_radius_location not specified. using all");
     }
-    if(c->decoration.titlebar_close_button_size > c->decoration.titlebar_height) {
+    if(c->titlebar_close_button_size > c->titlebar_height) {
         wlr_log(WLR_INFO, "titlebar_close_button_size (%u) larger than titlebar_height (%u). setting it to %u",
-                c->decoration.titlebar_close_button_size, c->decoration.titlebar_height, c->decoration.titlebar_height);
-        c->decoration.titlebar_close_button_size = c->decoration.titlebar_height;
+                c->titlebar_close_button_size, c->titlebar_height, c->titlebar_height);
+        c->titlebar_close_button_size = c->titlebar_height;
     }
 
     c->toplevel_minimum_width = 0;
     c->toplevel_minimum_height = 0;
 
     if(c->borders) {
-        c->toplevel_minimum_width += c->decoration.border_width;
-        c->toplevel_minimum_height += c->decoration.border_width;
+        c->toplevel_minimum_width += c->border_width;
+        c->toplevel_minimum_height += c->border_width;
     }
 
-    if(c->titlebars && c->decoration.titlebar_include_close_button) {
-        c->toplevel_minimum_height += c->decoration.titlebar_height;
+    if(c->titlebars && c->titlebar_include_close_button) {
+        c->toplevel_minimum_height += c->titlebar_height;
 
-        if(c->decoration.titlebar_include_close_button) {
-            c->toplevel_minimum_width += c->decoration.titlebar_close_button_size +
-                    c->decoration.titlebar_close_button_padding.left +
-                    c->decoration.titlebar_close_button_padding.right;
+        if(c->titlebar_include_close_button) {
+            c->toplevel_minimum_width += c->titlebar_close_button_size + c->titlebar_close_button_padding.left +
+                    c->titlebar_close_button_padding.right;
         }
     }
 
@@ -1195,8 +1192,8 @@ config_destroy(struct mwc_config *c) {
         free(p);
     }
 
-    if(c->decoration.font != NULL) {
-        fcft_destroy(c->decoration.font);
+    if(c->font != NULL) {
+        fcft_destroy(c->font);
     }
 
     free(c->cursor_theme);
@@ -1208,29 +1205,6 @@ config_destroy(struct mwc_config *c) {
     }
 
     free(c);
-}
-
-static void
-toplevel_reapply_effects_etc(struct mwc_toplevel *toplevel) {
-    toplevel_recheck_opacity_rules(toplevel);
-
-    // if(toplevel->shadow != NULL) {
-    //     wlr_scene_node_destroy(&toplevel->shadow->node);
-    //     toplevel->shadow = NULL;
-    // }
-    //
-    // if(toplevel->border != NULL) {
-    //     wlr_scene_node_destroy(&toplevel->border->node);
-    //     toplevel->border = NULL;
-    // }
-    //
-    // if(toplevel->titlebar.tree != NULL) {
-    //     wlr_scene_node_destroy(&toplevel->titlebar.tree->node);
-    //     toplevel->titlebar.tree = NULL;
-    //     toplevel->titlebar.base = NULL;
-    //     toplevel->titlebar.close_button = NULL;
-    //     toplevel->titlebar.title = NULL;
-    // }
 }
 
 static void
@@ -1278,51 +1252,25 @@ config_reload() {
     }
     c->workspaces = server.config->workspaces;
 
-    // replace the config, but keep the old one for some optimizations, since we can just skip the values that havent
-    // changed
-    struct mwc_config *old_config = server.config;
+    // we destroy the old config and set the new one
+    config_destroy(server.config);
     server.config = c;
 
-    // handle the reloading, first we reconfigure and reposition the outputs
+    // handle the reloading
+    // first we reconfigure and reposition the outputs and then workspaces and toplevels
     struct mwc_output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
         struct output_config *output_config = output_find_config_by_name(iter_output->wlr_output->name);
 
-        // todo: maybe try it this way, but cashed values should be better anyway,
-        // this just reduces complexity
-
-        // struct wlr_box output_box;
-        // wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
-        //
-        // if(o->width != output_box.width
-        //     || o->height != output_box.height
-        //     || abs((int32_t)o->refresh_rate - (int32_t)out->wlr_output->refresh) > 1000
-        //     || o->scale != out->wlr_output->scale) {
         output_configure(iter_output->wlr_output, output_config);
-        // }
-
-        // if(o->x != output_box.x || o->y != output_box.y) {
         output_place_in_layout(iter_output, output_config);
-        // }
 
-        // todo: maybe move this down there with the toplevels
-        layer_surfaces_configure(iter_output);
         output_configure_blur(iter_output);
-    }
 
-    decoration_manager_init(&c->decoration);
+        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
+        // todo: consider making this function not call layout_configure()
+        layer_surfaces_configure(iter_output);
 
-    struct mwc_keyboard *keyboard;
-    wl_list_for_each(keyboard, &server.keyboards, link) {
-        keyboard_configure(keyboard);
-    }
-
-    struct mwc_pointer *pointer;
-    wl_list_for_each(pointer, &server.pointers, link) {
-        pointer_configure(pointer);
-    }
-
-    wl_list_for_each(iter_output, &server.outputs, link) {
         struct mwc_workspace *iter_workspace;
         wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
             // we rewire the keybinds
@@ -1339,49 +1287,36 @@ config_reload() {
                 }
             }
 
-            if(c->master_count != old_config->master_count) {
-                layout_reorganize(iter_workspace);
-            }
-
             struct mwc_toplevel *iter_toplevel;
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
-                toplevel_recheck_opacity_rules(iter_toplevel);
-                decoration_set_types(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
+                toplevel_recheck_window_rules(iter_toplevel);
+                decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
-                toplevel_recheck_opacity_rules(iter_toplevel);
-                decoration_set_types(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
+                toplevel_recheck_window_rules(iter_toplevel);
+                decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->floating_toplevels, link) {
-                toplevel_recheck_opacity_rules(iter_toplevel);
-                decoration_set_types(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
+                toplevel_recheck_window_rules(iter_toplevel);
+                decoration_destroy(iter_toplevel->decoration);
+                decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
             }
 
+            // master_count might have changed in the new config, so we update the layout
+            layout_reorganize(iter_workspace);
+            // and than send the configures to all the tiled toplevels
             layout_configure(iter_workspace);
         }
+    }
 
-        // todo: fix this mess
-        struct mwc_layer_surface *iter_layer;
-        for(size_t i = 0; i < 4; i++) {
-            wl_list_for_each(iter_layer, &(&iter_output->layers.background)[i], link) {
-                struct layer_rule_blur *b;
-                bool found = false;
-                wl_list_for_each(b, &server.config->layer_rules.blur, link) {
-                    if(!b->condition.has ||
-                            regexec(&b->condition.regex, iter_layer->wlr_layer_surface->namespace, 0, NULL, 0) == 0) {
-                        wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur,
-                                (void *)1);
-                        found = true;
-                        break;
-                    }
-                }
+    struct mwc_keyboard *keyboard;
+    wl_list_for_each(keyboard, &server.keyboards, link) {
+        keyboard_configure(keyboard);
+    }
 
-                if(!found) {
-                    wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur,
-                            (void *)0);
-                }
-            }
-        }
+    struct mwc_pointer *pointer;
+    wl_list_for_each(pointer, &server.pointers, link) {
+        pointer_configure(pointer);
     }
 
     wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
@@ -1400,8 +1335,6 @@ config_reload() {
         setenv("XCURSOR_THEME", server.config->cursor_theme, true);
     }
     setenv("XCURSOR_SIZE", cursor_size, true);
-
-    config_destroy(old_config);
 }
 
 static void

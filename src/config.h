@@ -12,6 +12,7 @@
 
 #include "animations.h"
 #include "decoration.h"
+#include "helpers.h"
 #include "mwc.h"
 
 #define BAKED_POINTS_COUNT 256
@@ -144,8 +145,49 @@ struct mwc_config {
 
     // decorations
     bool client_side_decorations;
-    bool titlebars, shadows, borders;
-    struct decoration_config decoration;
+
+    bool borders;
+    uint32_t border_width;
+    uint32_t border_radius;
+    enum corner_location border_radius_location;
+    struct {
+        struct mwc_color active, inactive;
+    } border_color;
+
+    bool shadows;
+    uint32_t shadow_size;
+    struct {
+        int32_t x, y;
+    } shadow_position;
+    struct mwc_color shadow_color;
+    double shadow_blur;
+
+    bool titlebars;
+    uint32_t titlebar_height;
+    struct {
+        struct mwc_color active, inactive;
+    } titlebar_color;
+
+    bool titlebar_include_close_button;
+    uint32_t titlebar_close_button_size;
+    struct {
+        uint32_t left, right;
+    } titlebar_close_button_padding;
+    enum titlebar_close_button_shape titlebar_close_button_shape;
+    enum titlebar_close_button_position titlebar_close_button_position;
+    struct {
+        struct mwc_color active, inactive;
+    } titlebar_close_button_color;
+
+    bool titlebar_include_title;
+    bool titlebar_center_title;
+    struct {
+        uint32_t left, right;
+    } titlebar_title_padding;
+    struct mwc_color titlebar_title_color;
+
+    // will be generated from the name specified by `titlebar_title_font`, may be NULL
+    struct fcft_font *font;
 
     // opacity and blur
     struct {

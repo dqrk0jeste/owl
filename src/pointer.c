@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <bits/time.h>
 #include <libinput.h>
+#include <limits.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
@@ -43,56 +44,65 @@ static void
 grabbed_toplevel_resize(void) {
     struct mwc_toplevel *toplevel = server.grabbed_toplevel;
 
-    int start_x = server.grabbed_toplevel_initial_box.x;
-    int start_y = server.grabbed_toplevel_initial_box.y;
-    int start_width = server.grabbed_toplevel_initial_box.width;
-    int start_height = server.grabbed_toplevel_initial_box.height;
+    struct wlr_box start_box = server.grabbed_toplevel_initial_box;
+    struct wlr_box new_box = server.grabbed_toplevel_initial_box;
 
-    int new_x = server.grabbed_toplevel_initial_box.x;
-    int new_y = server.grabbed_toplevel_initial_box.y;
-    int new_width = server.grabbed_toplevel_initial_box.width;
-    int new_height = server.grabbed_toplevel_initial_box.height;
+    struct wlr_box min_box = {0, 0, max(toplevel->xdg_toplevel->current.min_width, 10),
+            max(toplevel->xdg_toplevel->current.min_height, 10)};
+    // add the decorations to this box
+    min_box = decoration_get_decoration_box(toplevel->decoration, min_box);
 
-    // todo: handle max sizes and min height
-    // we add our decorations to the reported toplevel sizes since toplevel_set_state() takes deco box
-    int min_width = max(toplevel->xdg_toplevel->current.min_width, server.config->toplevel_minimum_width) +
-            2 * server.config->decoration.border_width;
-
-    int min_height = max(toplevel->xdg_toplevel->current.min_height, 10) + 2 * server.config->decoration.border_width;
-    if(decoration_has_titlebar(toplevel->decoration)) {
-        min_height += server.config->decoration.titlebar_height;
+    struct wlr_box max_box;
+    if(toplevel->xdg_toplevel->current.max_width == 0) {
+        max_box = (struct wlr_box){0, 0, INT_MAX, INT_MAX};
+    } else {
+        max_box = (struct wlr_box){0, 0, toplevel->xdg_toplevel->current.max_width,
+                toplevel->xdg_toplevel->current.max_height};
+        // add the decorations to this box
+        max_box = decoration_get_decoration_box(toplevel->decoration, max_box);
     }
 
     if(server.resize_edges & WLR_EDGE_TOP) {
-        new_y = start_y + (server.cursor->y - server.grab_y);
-        new_height = start_height - (server.cursor->y - server.grab_y);
-        if(new_height <= min_height) {
-            new_y = start_y + start_height - min_height;
-            new_height = min_height;
+        new_box.y = start_box.y + (server.cursor->y - server.grab_y);
+        new_box.height = start_box.height - (server.cursor->y - server.grab_y);
+        if(new_box.height < min_box.height) {
+            new_box.y = start_box.y + start_box.height - min_box.height;
+            new_box.height = min_box.height;
+        } else if(new_box.height > max_box.height) {
+            new_box.y = start_box.y + start_box.height - max_box.height;
+            new_box.height = max_box.height;
         }
     } else if(server.resize_edges & WLR_EDGE_BOTTOM) {
-        new_y = start_y;
-        new_height = start_height + (server.cursor->y - server.grab_y);
-        if(new_height <= min_height) {
-            new_height = min_height;
-        }
-    }
-    if(server.resize_edges & WLR_EDGE_LEFT) {
-        new_x = start_x + (server.cursor->x - server.grab_x);
-        new_width = start_width - (server.cursor->x - server.grab_x);
-        if(new_width <= min_width) {
-            new_x = start_x + start_width - min_width;
-            new_width = min_width;
-        }
-    } else if(server.resize_edges & WLR_EDGE_RIGHT) {
-        new_x = start_x;
-        new_width = start_width + (server.cursor->x - server.grab_x);
-        if(new_width <= min_width) {
-            new_width = min_width;
+        new_box.y = start_box.y;
+        new_box.height = start_box.height + (server.cursor->y - server.grab_y);
+        if(new_box.height < min_box.height) {
+            new_box.height = min_box.height;
+        } else if(new_box.height > max_box.height) {
+            new_box.height = max_box.height;
         }
     }
 
-    toplevel_set_state(toplevel, (struct wlr_box){new_x, new_y, new_width, new_height});
+    if(server.resize_edges & WLR_EDGE_LEFT) {
+        new_box.x = start_box.x + (server.cursor->x - server.grab_x);
+        new_box.width = start_box.width - (server.cursor->x - server.grab_x);
+        if(new_box.width < min_box.width) {
+            new_box.x = start_box.x + start_box.width - min_box.width;
+            new_box.width = min_box.width;
+        } else if(new_box.height > max_box.height) {
+            new_box.x = start_box.x + start_box.width - max_box.width;
+            new_box.width = max_box.width;
+        }
+    } else if(server.resize_edges & WLR_EDGE_RIGHT) {
+        new_box.x = start_box.x;
+        new_box.width = start_box.width + (server.cursor->x - server.grab_x);
+        if(new_box.width < min_box.width) {
+            new_box.width = min_box.width;
+        } else if(new_box.width > max_box.width) {
+            new_box.width = max_box.width;
+        }
+    }
+
+    toplevel_set_state(toplevel, new_box);
 }
 
 static void

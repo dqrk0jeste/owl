@@ -63,22 +63,21 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
 
     enum corner_location corners = 0;
 
-    if(server.config->decoration.border_radius_location & CORNER_LOCATION_TOP_LEFT && !args->has_titlebar && x == 0 &&
-            y == 0) {
+    if(server.config->border_radius_location & CORNER_LOCATION_TOP_LEFT && !args->has_titlebar && x == 0 && y == 0) {
         corners |= CORNER_LOCATION_TOP_LEFT;
     }
 
-    if(server.config->decoration.border_radius_location & CORNER_LOCATION_BOTTOM_LEFT && x == 0 &&
+    if(server.config->border_radius_location & CORNER_LOCATION_BOTTOM_LEFT && x == 0 &&
             y + surface->current.height == args->geometry.height) {
         corners |= CORNER_LOCATION_BOTTOM_LEFT;
     }
 
-    if(server.config->decoration.border_radius_location & CORNER_LOCATION_TOP_RIGHT && !args->has_titlebar &&
+    if(server.config->border_radius_location & CORNER_LOCATION_TOP_RIGHT && !args->has_titlebar &&
             x + surface->current.width == args->geometry.width && y == 0) {
         corners |= CORNER_LOCATION_TOP_RIGHT;
     }
 
-    if(server.config->decoration.border_radius_location & CORNER_LOCATION_BOTTOM_RIGHT &&
+    if(server.config->border_radius_location & CORNER_LOCATION_BOTTOM_RIGHT &&
             x + surface->current.width == args->geometry.width &&
             y + surface->current.height == args->geometry.height) {
         corners |= CORNER_LOCATION_BOTTOM_RIGHT;
@@ -98,6 +97,7 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
     }
 }
 
+// todo: create one for layers
 static void
 toplevel_apply_effects(struct mwc_toplevel *toplevel) {
     double opacity;
@@ -107,9 +107,8 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
         opacity = 1.0;
     }
 
-    uint32_t border_radius = toplevel->fullscreen
-            ? 0
-            : max(server.config->decoration.border_radius - server.config->decoration.border_width, 0);
+    uint32_t border_radius =
+            toplevel->fullscreen ? 0 : max(server.config->border_radius - server.config->border_width, 0);
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
     struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
@@ -148,6 +147,29 @@ output_draw(struct mwc_output *output) {
         toplevel_apply_effects(output->active_workspace->fullscreen_toplevel);
         return;
     }
+
+    // todo: fix this mess, but it should be here
+    // struct mwc_layer_surface *iter_layer;
+    // for(size_t i = 0; i < 4; i++) {
+    //     wl_list_for_each(iter_layer, &(&iter_output->layers.background)[i], link) {
+    //         struct layer_rule_blur *b;
+    //         bool found = false;
+    //         wl_list_for_each(b, &server.config->layer_rules.blur, link) {
+    //             if(!b->condition.has ||
+    //                     regexec(&b->condition.regex, iter_layer->wlr_layer_surface->namespace, 0, NULL, 0) == 0) {
+    //                 wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur,
+    //                         (void *)1);
+    //                 found = true;
+    //                 break;
+    //             }
+    //         }
+    //
+    //         if(!found) {
+    //             wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur, (void
+    //             *)0);
+    //         }
+    //     }
+    // }
 
     if(server.grabbed_toplevel != NULL && toplevel_is_in_box(server.grabbed_toplevel, &output_box)) {
         toplevel_apply_effects(server.grabbed_toplevel);

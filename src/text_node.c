@@ -86,7 +86,7 @@ render_glyphs_to_pixman_buffer(struct pixman_buffer *buffer, pixman_image_t *col
         x += kern[i];
 
         pixman_image_composite32(PIXMAN_OP_OVER, color, g->pix, buffer->image, 0, 0, 0, 0, x + g->x,
-                server.config->decoration.font->ascent - g->y, g->width, g->height);
+                server.config->font->ascent - g->y, g->width, g->height);
 
         x += g->advance.x;
     }
@@ -102,12 +102,12 @@ render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_bu
     long kern[len];
 
     for(size_t i = 0; i < len; i++) {
-        glyphs[i] = fcft_rasterize_char_utf32(server.config->decoration.font, text[i], FCFT_SUBPIXEL_NONE);
+        glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
         if(glyphs[i] == NULL) continue;
 
         kern[i] = 0;
         if(i > 0) {
-            fcft_kerning(server.config->decoration.font, text[i - 1], text[i], &kern[i], NULL);
+            fcft_kerning(server.config->font, text[i - 1], text[i], &kern[i], NULL);
         }
     }
 
@@ -116,7 +116,7 @@ render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_bu
 
 struct text_node *
 text_node_create(struct wlr_scene_tree *parent, char *text) {
-    assert(server.config->decoration.font);
+    assert(server.config->font);
 
     struct text_node *node = calloc(1, sizeof(*node));
     node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
@@ -168,8 +168,8 @@ text_node_set_text(struct text_node *node, char *text) {
     size_t len = strlen(text);
 
     // we approximate the width of the text
-    uint32_t width = len * (server.config->decoration.font->max_advance.x);
-    uint32_t height = server.config->decoration.font->max_advance.y;
+    uint32_t width = len * (server.config->font->max_advance.x);
+    uint32_t height = server.config->font->max_advance.y;
 
     // todo: save an allocation if the current is bigger than this one; i dont care rn
     if(node->buffer != NULL) {
@@ -196,7 +196,7 @@ text_node_set_text(struct text_node *node, char *text) {
     }
 
     pixman_color_t color;
-    mwc_color_to_pixman_color(server.config->decoration.titlebar_title_color, &color);
+    mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
     node->width = render_chars_to_pixman_buffer(unicode, j, node->buffer, foreground_color);

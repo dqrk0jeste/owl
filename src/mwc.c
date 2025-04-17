@@ -314,8 +314,6 @@ main(int argc, char *argv[]) {
     wlr_data_control_manager_v1_create(server.wl_display);
 
     // configures decorations
-    decoration_manager_init(&server.config->decoration);
-
     server.xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server.wl_display);
     server.request_xdg_decoration.notify = server_handle_request_xdg_decoration;
     wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration, &server.request_xdg_decoration);

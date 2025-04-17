@@ -1,23 +1,22 @@
-#include <regex.h>
-#include <scenefx/types/wlr_scene.h>
-
 #include "layer_surface.h"
 
-#include "config.h"
-#include "mwc.h"
-#include "popup.h"
-#include "output.h"
-#include "view.h"
-#include "layout.h"
-#include "toplevel.h"
-#include "wlr-layer-shell-unstable-v1-protocol.h"
-#include "workspace.h"
-
 #include <math.h>
+#include <regex.h>
+#include <scenefx/types/wlr_scene.h>
 #include <stdlib.h>
 #include <wayland-util.h>
-#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_scene.h>
+
+#include "config.h"
+#include "layout.h"
+#include "mwc.h"
+#include "output.h"
+#include "popup.h"
+#include "toplevel.h"
+#include "view.h"
+#include "wlr-layer-shell-unstable-v1-protocol.h"
+#include "workspace.h"
 
 extern struct mwc_server server;
 
@@ -81,8 +80,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
 
 // todo: extract this logic
 void
-iter_scene_buffer_apply_blur(struct wlr_scene_buffer *buffer,
-                             int sx, int sy, void *data) {
+iter_scene_buffer_apply_blur(struct wlr_scene_buffer *buffer, int sx, int sy, void *data) {
     wlr_scene_buffer_set_backdrop_blur(buffer, data);
     wlr_scene_buffer_set_backdrop_blur_optimized(buffer, data);
     wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, data);
@@ -100,7 +98,8 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
         struct layer_rule_blur *b;
         wl_list_for_each(b, &server.config->layer_rules.blur, link) {
             if(!b->condition.has || regexec(&b->condition.regex, wlr_layer_surface->namespace, 0, NULL, 0) == 0) {
-                wlr_scene_node_for_each_buffer(&layer_surface->scene->tree->node, iter_scene_buffer_apply_blur, (void *)1);
+                wlr_scene_node_for_each_buffer(&layer_surface->scene->tree->node, iter_scene_buffer_apply_blur,
+                        (void *)1);
             }
         }
     }
@@ -157,12 +156,11 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
             if(server.prev_focused != NULL && server.prev_focused->workspace == server.active_workspace) {
                 focus_toplevel(server.prev_focused);
             } else if(!wl_list_empty(&server.active_workspace->masters)) {
-                struct mwc_toplevel *first = wl_container_of(server.active_workspace->masters.next,
-                                                             first, link);
+                struct mwc_toplevel *first = wl_container_of(server.active_workspace->masters.next, first, link);
                 focus_toplevel(first);
             } else if(!wl_list_empty(&server.active_workspace->floating_toplevels)) {
-                struct mwc_toplevel *first = wl_container_of(server.active_workspace->floating_toplevels.next,
-                                                             first, link);
+                struct mwc_toplevel *first =
+                        wl_container_of(server.active_workspace->floating_toplevels.next, first, link);
                 focus_toplevel(first);
             }
         }
@@ -204,12 +202,11 @@ focus_layer_surface(struct mwc_layer_surface *layer_surface) {
     if(server.lock != NULL) return;
 
     enum zwlr_layer_surface_v1_keyboard_interactivity keyboard_interactive =
-        layer_surface->wlr_layer_surface->current.keyboard_interactive;
+            layer_surface->wlr_layer_surface->current.keyboard_interactive;
 
     if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) return;
 
-    if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND
-            && server.exclusive) return;
+    if(keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND && server.exclusive) return;
 
     // unfocus the focused toplevel
     if(server.focused_toplevel != NULL) {
@@ -222,14 +219,13 @@ focus_layer_surface(struct mwc_layer_surface *layer_surface) {
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
     if(keyboard != NULL) {
-        wlr_seat_keyboard_notify_enter(server.seat, layer_surface->wlr_layer_surface->surface,
-                                       keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+        wlr_seat_keyboard_notify_enter(server.seat, layer_surface->wlr_layer_surface->surface, keyboard->keycodes,
+                keyboard->num_keycodes, &keyboard->modifiers);
     }
 }
 
 static void
-layer_surfaces_configure_layer(struct mwc_output *output,
-                               enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
+layer_surfaces_configure_layer(struct mwc_output *output, enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
     struct wl_list *list = layer_get_list(output, layer);
 
     struct wlr_box full_area;
@@ -293,10 +289,8 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     }
 
     struct mwc_output *output = layer_surface->wlr_layer_surface->output->data;
-    wlr_fractional_scale_v1_notify_scale(layer_surface->wlr_layer_surface->surface,
-                                         output->wlr_output->scale);
-    wlr_surface_set_preferred_buffer_scale(layer_surface->wlr_layer_surface->surface,
-                                           ceil(output->wlr_output->scale));
+    wlr_fractional_scale_v1_notify_scale(layer_surface->wlr_layer_surface->surface, output->wlr_output->scale);
+    wlr_surface_set_preferred_buffer_scale(layer_surface->wlr_layer_surface->surface, ceil(output->wlr_output->scale));
 
     enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
 
@@ -328,4 +322,3 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     layer_surface->destroy.notify = layer_surface_handle_destroy;
     wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
 }
-

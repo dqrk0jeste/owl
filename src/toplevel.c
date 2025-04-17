@@ -86,30 +86,16 @@ toplevel_should_float(struct mwc_toplevel *toplevel) {
     return false;
 }
 
-static bool
-toplevel_should_draw_titlebar(struct mwc_toplevel *toplevel) {
-    if(!server.config->titlebars) return false;
-
-    struct window_rule_float *w;
-    wl_list_for_each(w, &server.config->window_rules.no_titlebar, link) {
-        if(toplevel_matches_window_rule(toplevel, &w->condition)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static struct wlr_box
 toplevel_floating_deco_box_for_own_size(struct mwc_toplevel *toplevel) {
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
 
     // we need to convert this to deco box
-    uint32_t width = geometry.width + 2 * server.config->decoration.border_width;
-    uint32_t height = geometry.height + 2 * server.config->decoration.border_width;
+    uint32_t width = geometry.width + 2 * server.config->border_width;
+    uint32_t height = geometry.height + 2 * server.config->border_width;
 
     if(toplevel->has_titlebar) {
-        height += server.config->decoration.titlebar_height;
+        height += server.config->titlebar_height;
     }
 
     return output_create_centered_box(toplevel->workspace->output, width, height);
@@ -184,12 +170,12 @@ strip_decoration_of_size(uint32_t *width, uint32_t *height, bool has_border, boo
     uint32_t starting_width = *width;
     uint32_t starting_height = *height;
     if(has_border) {
-        *width -= 2 * server.config->decoration.border_width;
-        *height -= 2 * server.config->decoration.border_width;
+        *width -= 2 * server.config->border_width;
+        *height -= 2 * server.config->border_width;
     }
 
     if(has_titlebar) {
-        *height -= server.config->decoration.titlebar_height;
+        *height -= server.config->titlebar_height;
     }
 
     // if there has been overflow we patch it to 1
@@ -201,14 +187,15 @@ static void
 toplevel_handle_initial_commit(struct mwc_toplevel *toplevel) {
     // when an xdg_surface performs an initial commit, the compositor must
     // reply with a configure so the client can map the surface.
+
+    // unlike other window rules we only check the floating ones on initial commit
     toplevel->floating = toplevel_should_float(toplevel);
-    toplevel->has_titlebar = toplevel_should_draw_titlebar(toplevel);
 
     uint32_t width, height;
     if(toplevel->floating) {
         // we lookup window rules
         if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
-            strip_decoration_of_size(&width, &height, true, toplevel->has_titlebar);
+            strip_decoration_of_size(&width, &height, toplevel->has_border, toplevel->has_titlebar);
         } else {
             width = height = 0;
             toplevel->should_choose_size = true;
@@ -223,7 +210,7 @@ toplevel_handle_initial_commit(struct mwc_toplevel *toplevel) {
         } else {
             layout_get_slaves_container_size(output, slave_count + 1, &width, &height);
         }
-        strip_decoration_of_size(&width, &height, true, toplevel->has_titlebar);
+        strip_decoration_of_size(&width, &height, toplevel->has_border, toplevel->has_titlebar);
     }
 
     // send the initial configure
@@ -262,7 +249,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
 uint32_t
 toplevel_get_decoration_types(struct mwc_toplevel *toplevel) {
     uint32_t types = 0;
-    if(server.config->decoration.border_width > 0) {
+    if(toplevel->has_border) {
         types |= DECORATION_BORDER;
     }
     if(server.config->shadows) {
@@ -304,7 +291,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
 
     // create a decoration object
     toplevel->decoration = decoration_create(toplevel->scene_tree, toplevel_get_decoration_types(toplevel));
-    decoration_set_active(toplevel->decoration, false);
 
     // we set this flag for the popin animation
     toplevel->needs_popin_adjustment = server.config->animations;
@@ -528,14 +514,13 @@ toplevel_handle_request_fullscreen(struct wl_listener *listener, void *data) {
     }
 }
 
-void
-toplevel_recheck_opacity_rules(struct mwc_toplevel *toplevel) {
-    // check if it satisfies some window rule
-    struct window_rule_opacity *w;
-    wl_list_for_each(w, &server.config->window_rules.opacity, link) {
-        if(toplevel_matches_window_rule(toplevel, &w->condition)) {
-            toplevel->active_opacity = w->active_value;
-            toplevel->inactive_opacity = w->inactive_value;
+static void
+recheck_opacity_rules(struct mwc_toplevel *toplevel) {
+    struct window_rule_opacity *iter;
+    wl_list_for_each(iter, &server.config->window_rules.opacity, link) {
+        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+            toplevel->active_opacity = iter->active_value;
+            toplevel->inactive_opacity = iter->inactive_value;
             return;
         }
     }
@@ -544,11 +529,62 @@ toplevel_recheck_opacity_rules(struct mwc_toplevel *toplevel) {
     toplevel->inactive_opacity = server.config->opacity.inactive;
 }
 
+static void
+recheck_no_titlebar_rules(struct mwc_toplevel *toplevel) {
+    // we only care about these rules if we are drawing the titlebars globally
+    if(!server.config->titlebars) {
+        toplevel->has_titlebar = false;
+        return;
+    }
+
+    struct window_rule_no_titlebar *iter;
+    wl_list_for_each(iter, &server.config->window_rules.no_titlebar, link) {
+        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+            toplevel->has_titlebar = false;
+            return;
+        }
+    }
+
+    toplevel->has_titlebar = true;
+}
+
+static void
+recheck_no_border_rules(struct mwc_toplevel *toplevel) {
+    // we only care about these rules if we are drawing the borders globally
+    if(!server.config->borders) {
+        toplevel->has_border = false;
+        return;
+    }
+
+    toplevel->has_border = true;
+
+    // struct window_rule_no_titlebar *iter;
+    // wl_list_for_each(iter, &server.config->window_rules.no_titlebar, link) {
+    //     if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+    //         toplevel->has_titlebar = false;
+    //         return;
+    //     }
+    // }
+    //
+    // toplevel->has_titlebar = true;
+}
+
+void
+toplevel_recheck_window_rules(struct mwc_toplevel *toplevel) {
+    recheck_opacity_rules(toplevel);
+    recheck_no_titlebar_rules(toplevel);
+    recheck_no_border_rules(toplevel);
+}
+
 void
 toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
 
-    toplevel_recheck_opacity_rules(toplevel);
+    toplevel_recheck_window_rules(toplevel);
+
+    if(toplevel->decoration != NULL) {
+        decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
+    }
 
     wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->app_id);
 
@@ -561,7 +597,10 @@ void
 toplevel_handle_set_title(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
-    toplevel_recheck_opacity_rules(toplevel);
+    toplevel_recheck_window_rules(toplevel);
+    if(toplevel->decoration != NULL) {
+        decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
+    }
 
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
 
@@ -611,6 +650,9 @@ toplevel_set_fullscreen(struct mwc_toplevel *toplevel) {
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
     wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, true);
 
+    // disable the decorations; be sure to call this before set state so it gets the right size
+    decoration_set_enabled(toplevel->decoration, false);
+
     toplevel_set_state(toplevel, output_box);
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
 
@@ -632,6 +674,9 @@ toplevel_unset_fullscreen(struct mwc_toplevel *toplevel) {
 
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
     wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
+
+    // enable the decorations; be sure to call this before set state so it gets the right size
+    decoration_set_enabled(toplevel->decoration, true);
 
     if(toplevel->floating) {
         toplevel_set_state(toplevel, toplevel->prev_deco_box);
@@ -1015,15 +1060,20 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     struct mwc_toplevel *toplevel = calloc(1, sizeof(*toplevel));
     toplevel->xdg_toplevel = xdg_toplevel;
 
+    // these values can be later rewritten by window rules; check toplevel_recheck_window_rules()
     toplevel->active_opacity = server.config->opacity.active;
     toplevel->inactive_opacity = server.config->opacity.inactive;
+    toplevel->has_titlebar = server.config->titlebars;
+    toplevel->has_border = server.config->borders;
 
+    // we give it the currently active workspace
     toplevel->workspace = server.active_workspace;
 
     wlr_fractional_scale_v1_notify_scale(toplevel->xdg_toplevel->base->surface,
             toplevel->workspace->output->wlr_output->scale);
     wlr_surface_set_preferred_buffer_scale(toplevel->xdg_toplevel->base->surface,
             ceil(toplevel->workspace->output->wlr_output->scale));
+
     // add foreign toplevel handler
     toplevel->foreign_toplevel_handle = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
 

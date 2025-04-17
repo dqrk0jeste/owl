@@ -28,8 +28,8 @@ struct mwc_toplevel {
     bool should_choose_size;
     // this is set on map so the toplevel is setup for the popin effect animation
     bool needs_popin_adjustment;
-    // if this toplevel has titlebar
-    bool has_titlebar;
+    // if this toplevel has titlebar (border)
+    bool has_titlebar, has_border;
     // toplevel (with decorations) size and position of the toplevel (with decorations) in the layout
     struct wlr_box content_box, deco_box;
 
@@ -122,9 +122,11 @@ toplevel_get_primary_output(struct mwc_toplevel *toplevel);
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *toplevel);
 
-// recheck the opacity rules; FIXME: this should be more general and check other window rules
+// recheck the window rules for this toplevel
+// note: this function will only update the flags, but you need to handle the updating of the actual presentation
+// seperatelly, e.g. by calling decoration_set_types()
 void
-toplevel_recheck_opacity_rules(struct mwc_toplevel *toplevel);
+toplevel_recheck_window_rules(struct mwc_toplevel *toplevel);
 
 // get the wanted decorations for this toplevel
 // returns a bitmask of `enum decoration_type`
