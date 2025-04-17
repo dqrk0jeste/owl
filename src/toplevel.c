@@ -688,7 +688,7 @@ focus_toplevel(struct mwc_toplevel *toplevel) {
         wlr_xdg_toplevel_set_activated(prev_toplevel->xdg_toplevel, false);
         wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
 
-        decoration_set_active(toplevel->decoration, false);
+        decoration_set_active(prev_toplevel->decoration, false);
     }
 
     server.focused_toplevel = toplevel;

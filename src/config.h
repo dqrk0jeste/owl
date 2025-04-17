@@ -16,12 +16,6 @@
 
 #define BAKED_POINTS_COUNT 256
 
-enum decoration_provider {
-    DECORATION_PROVIDER_NONE,
-    DECORATION_PROVIDER_CLIENT,
-    DECORATION_PROVIDER_SERVER,
-};
-
 struct window_rule_regex {
     bool has_app_id_regex;
     regex_t app_id_regex;
@@ -142,10 +136,6 @@ struct mwc_config {
     uint32_t cursor_size;
 
     // general toplevel and layout stuff
-    uint32_t toplevel_minimum_needed_width, toplevel_minimum_needed_height;
-    double inactive_opacity;
-    double active_opacity;
-    bool apply_opacity_when_fullscreen;
     uint32_t outer_gaps;
     uint32_t inner_gaps;
 
@@ -153,13 +143,17 @@ struct mwc_config {
     double master_ratio;
 
     // decorations
-    enum decoration_provider decoration_provider;
+    bool client_side_decorations;
+    bool titlebars, shadows, borders;
     struct decoration_config decoration;
 
+    // opacity and blur
+    struct {
+        double active, inactive;
+    } opacity;
+    bool opacity_apply_when_fullscreen;
     bool blur;
     struct blur_data blur_params;
-
-    bool shadows;
 
     // animations stuff
     bool animations;
@@ -169,6 +163,9 @@ struct mwc_config {
     // run on startup
     char *run[64];
     size_t run_count;
+
+    // extracted
+    uint32_t toplevel_minimum_width, toplevel_minimum_height;
 };
 
 struct mwc_config *

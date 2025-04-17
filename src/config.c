@@ -50,7 +50,7 @@ hex_to_unsigned_decimal(char *hex, size_t len) {
 }
 
 static bool
-try_parse_color_hex(char *s, struct mwc_color *dest) {
+try_parse_color(char *s, struct mwc_color *dest) {
     size_t len = strlen(s);
     if(len != 6 && len != 8) return false;
 
@@ -64,30 +64,6 @@ try_parse_color_hex(char *s, struct mwc_color *dest) {
         dest->g = clamp(hex_to_unsigned_decimal(s + 2, 2), 0, 255);
         dest->b = clamp(hex_to_unsigned_decimal(s + 4, 2), 0, 255);
         dest->a = clamp(hex_to_unsigned_decimal(s + 6, 2), 0, 255);
-    }
-
-    return true;
-}
-
-static bool
-try_parse_color_rgba_or_hex(char **args, size_t arg_count, struct mwc_color *dest) {
-    if(arg_count == 4) {
-        dest->r = clamp(atoi(args[0]), 0, 255);
-        dest->g = clamp(atoi(args[1]), 0, 255);
-        dest->b = clamp(atoi(args[2]), 0, 255);
-        dest->a = clamp(atoi(args[3]), 0, 255);
-    } else if(strlen(args[0]) == 6) {
-        dest->r = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255);
-        dest->g = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255);
-        dest->b = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255);
-        dest->a = 255;
-    } else if(strlen(args[0]) == 8) {
-        dest->r = clamp(hex_to_unsigned_decimal(args[0] + 0, 2), 0, 255);
-        dest->g = clamp(hex_to_unsigned_decimal(args[0] + 2, 2), 0, 255);
-        dest->b = clamp(hex_to_unsigned_decimal(args[0] + 4, 2), 0, 255);
-        dest->a = clamp(hex_to_unsigned_decimal(args[0] + 6, 2), 0, 255);
-    } else {
-        return false;
     }
 
     return true;
@@ -519,13 +495,11 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->trackpad_disable_while_typing = atoi(args[0]);
-    } else if(strcmp(keyword, "natural_scroll") == 0  // for backwards compatibility
-            || strcmp(keyword, "trackpad_natural_scroll") == 0) {
+    } else if(strcmp(keyword, "trackpad_natural_scroll") == 0) {
         if(arg_count < 1) goto invalid;
 
         c->trackpad_natural_scroll = atoi(args[0]);
-    } else if(strcmp(keyword, "tap_to_click") == 0  // for backwards compatibility
-            || strcmp(keyword, "trackpad_tap_to_click") == 0) {
+    } else if(strcmp(keyword, "trackpad_tap_to_click") == 0) {
         if(arg_count < 1) goto invalid;
 
         c->trackpad_tap_to_click = atoi(args[0]);
@@ -543,18 +517,22 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         } else {
             goto invalid;
         }
+    } else if(strcmp(keyword, "borders") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        c->borders = atoi(args[0]);
     } else if(strcmp(keyword, "border_width") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.border_width = clamp(atoi(args[0]), 0, INT_MAX);
+        c->decoration.border_width = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "outer_gaps") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->outer_gaps = clamp(atoi(args[0]), 0, INT_MAX);
+        c->outer_gaps = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "inner_gaps") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->inner_gaps = clamp(atoi(args[0]), 0, INT_MAX);
+        c->inner_gaps = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "master_ratio") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -562,7 +540,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "master_count") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->master_count = clamp(atoi(args[0]), 1, INT_MAX);
+        c->master_count = max(atoi(args[0]), 1);
     } else if(strcmp(keyword, "cursor_theme") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -570,14 +548,16 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "cursor_size") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->cursor_size = clamp(atoi(args[0]), 0, INT_MAX);
-    } else if(strcmp(keyword, "inactive_border_color") == 0) {
-        if(!try_parse_color_rgba_or_hex(args, arg_count, &c->decoration.border_color.inactive)) {
+        c->cursor_size = max(atoi(args[0]), 0);
+    } else if(strcmp(keyword, "border_color") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        if(!try_parse_color(args[0], &c->decoration.border_color.active)) {
             goto invalid;
         }
-    } else if(strcmp(keyword, "active_border_color") == 0) {
-        if(!try_parse_color_rgba_or_hex(args, arg_count, &c->decoration.border_color.active)) {
-            goto invalid;
+
+        if(arg_count == 1 || !try_parse_color(args[1], &c->decoration.border_color.inactive)) {
+            c->decoration.border_color.inactive = c->decoration.border_color.active;
         }
     } else if(strcmp(keyword, "output") == 0) {
         if(arg_count < 6) goto invalid;
@@ -642,21 +622,20 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "client_side_decorations") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(atoi(args[0]) != 0) {
-            c->decoration_provider = DECORATION_PROVIDER_CLIENT;
+        c->client_side_decorations = atoi(args[0]);
+    } else if(strcmp(keyword, "opacity") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        c->opacity.active = clamp(atof(args[0]), 0.0, 1.0);
+        if(arg_count > 1) {
+            c->opacity.inactive = clamp(atof(args[1]), 0.0, 1.0);
+        } else {
+            c->opacity.inactive = c->opacity.active;
         }
-    } else if(strcmp(keyword, "inactive_opacity") == 0) {
+    } else if(strcmp(keyword, "opacity_apply_when_fullscreen") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->inactive_opacity = clamp(atof(args[0]), 0.0, 1.0);
-    } else if(strcmp(keyword, "active_opacity") == 0) {
-        if(arg_count < 1) goto invalid;
-
-        c->active_opacity = clamp(atof(args[0]), 0.0, 1.0);
-    } else if(strcmp(keyword, "apply_opacity_when_fullscreen") == 0) {
-        if(arg_count < 1) goto invalid;
-
-        c->apply_opacity_when_fullscreen = atoi(args[0]);
+        c->opacity_apply_when_fullscreen = atoi(args[0]);
     } else if(strcmp(keyword, "keymap") == 0) {
         if(arg_count < 2) goto invalid;
         // handle appending to this string
@@ -727,37 +706,33 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->shadows = atoi(args[0]);
-    } else if(strcmp(keyword, "shadows_size") == 0) {
+    } else if(strcmp(keyword, "shadow_size") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.shadows_size = max(atoi(args[0]), 0);
-    } else if(strcmp(keyword, "shadows_blur") == 0) {
+        c->decoration.shadow_size = max(atoi(args[0]), 0);
+    } else if(strcmp(keyword, "shadow_blur") == 0) {
         if(arg_count < 1) goto invalid;
 
-        c->decoration.shadows_blur = max(atof(args[0]), 0.0);
-    } else if(strcmp(keyword, "shadows_position") == 0) {
+        c->decoration.shadow_blur = max(atof(args[0]), 0.0);
+    } else if(strcmp(keyword, "shadow_position") == 0) {
         if(arg_count < 2) goto invalid;
 
-        c->decoration.shadows_position.x = atoi(args[0]);
-        c->decoration.shadows_position.y = atoi(args[1]);
-    } else if(strcmp(keyword, "shadows_color") == 0) {
-        if(!try_parse_color_rgba_or_hex(args, arg_count, &c->decoration.shadows_color)) {
+        c->decoration.shadow_position.x = atoi(args[0]);
+        c->decoration.shadow_position.y = atoi(args[1]);
+    } else if(strcmp(keyword, "shadow_color") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        if(!try_parse_color(args[0], &c->decoration.shadow_color)) {
             goto invalid;
         }
     } else if(strcmp(keyword, "layer_rule") == 0) {
         if(arg_count < 2) goto invalid;
 
         config_add_layer_rule(c, args[0], args[1], &args[2], arg_count - 2);
-    } else if(strcmp(keyword, "decorations") == 0) {
+    } else if(strcmp(keyword, "titlebars") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(strcmp(args[0], "client") == 0) {
-            c->decoration_provider = DECORATION_PROVIDER_CLIENT;
-        } else if(strcmp(args[0], "server") == 0) {
-            c->decoration_provider = DECORATION_PROVIDER_SERVER;
-        } else if(strcmp(args[0], "none") == 0) {
-            c->decoration_provider = DECORATION_PROVIDER_NONE;
-        }
+        c->titlebars = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_height") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -765,11 +740,11 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "titlebar_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color_hex(args[0], &c->decoration.titlebar_color.active)) {
+        if(!try_parse_color(args[0], &c->decoration.titlebar_color.active)) {
             goto invalid;
         }
 
-        if(arg_count == 1 || !try_parse_color_hex(args[1], &c->decoration.titlebar_color.inactive)) {
+        if(arg_count == 1 || !try_parse_color(args[1], &c->decoration.titlebar_color.inactive)) {
             c->decoration.titlebar_color.inactive = c->decoration.titlebar_color.active;
         }
     } else if(strcmp(keyword, "titlebar_include_close_button") == 0) {
@@ -805,11 +780,11 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "titlebar_close_button_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color_hex(args[0], &c->decoration.titlebar_close_button_color.active)) {
+        if(!try_parse_color(args[0], &c->decoration.titlebar_close_button_color.active)) {
             goto invalid;
         }
 
-        if(arg_count == 1 || !try_parse_color_hex(args[1], &c->decoration.titlebar_close_button_color.inactive)) {
+        if(arg_count == 1 || !try_parse_color(args[1], &c->decoration.titlebar_close_button_color.inactive)) {
             c->decoration.titlebar_close_button_color.inactive = c->decoration.titlebar_close_button_color.active;
         }
     } else if(strcmp(keyword, "titlebar_include_title") == 0) {
@@ -829,7 +804,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "titlebar_title_color") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(!try_parse_color_rgba_or_hex(args, arg_count, &c->decoration.titlebar_title_color)) {
+        if(!try_parse_color(args[0], &c->decoration.titlebar_title_color)) {
             goto invalid;
         }
     } else if(strcmp(keyword, "titlebar_title_font") == 0) {
@@ -1034,40 +1009,41 @@ config_set_default_needed_params(struct mwc_config *c) {
         c->animation_curve = fx_animation_curve_create((double[4]){0});
         wlr_log(WLR_INFO, "animation_curve not specified. using linear");
     }
-    if(c->inactive_opacity == 0) {
-        c->inactive_opacity = 1.0;
-        wlr_log(WLR_INFO, "inactive_opacity not specified. using default %lf", c->inactive_opacity);
-    }
-    if(c->active_opacity == 0) {
-        c->active_opacity = 1.0;
-        wlr_log(WLR_INFO, "active_opacity not specified. using default %lf", c->active_opacity);
+    if(c->opacity.active == 0) {
+        c->opacity.active = 1.0;
+        c->opacity.inactive = 1.0;
+        wlr_log(WLR_INFO, "opacity not specified. using default %lf %lf", c->opacity.active, c->opacity.inactive);
     }
     if(c->decoration.border_radius_location == 0) {
         c->decoration.border_radius_location = CORNER_LOCATION_ALL;
         wlr_log(WLR_INFO, "border_radius_location not specified. using all");
     }
     if(c->decoration.titlebar_close_button_size > c->decoration.titlebar_height) {
-        c->decoration.titlebar_close_button_size = c->decoration.titlebar_height;
         wlr_log(WLR_INFO, "titlebar_close_button_size (%u) larger than titlebar_height (%u). setting it to %u",
-                c->decoration.titlebar_close_button_size, c->decoration.titlebar_height,
-                c->decoration.titlebar_close_button_size);
+                c->decoration.titlebar_close_button_size, c->decoration.titlebar_height, c->decoration.titlebar_height);
+        c->decoration.titlebar_close_button_size = c->decoration.titlebar_height;
     }
 
-    c->toplevel_minimum_needed_width = c->decoration.border_width;
-    c->toplevel_minimum_needed_height = c->decoration.border_width;
+    c->toplevel_minimum_width = 0;
+    c->toplevel_minimum_height = 0;
 
-    if(c->decoration_provider == DECORATION_PROVIDER_SERVER && c->decoration.titlebar_include_close_button) {
-        c->toplevel_minimum_needed_height += c->decoration.titlebar_height;
+    if(c->borders) {
+        c->toplevel_minimum_width += c->decoration.border_width;
+        c->toplevel_minimum_height += c->decoration.border_width;
+    }
+
+    if(c->titlebars && c->decoration.titlebar_include_close_button) {
+        c->toplevel_minimum_height += c->decoration.titlebar_height;
 
         if(c->decoration.titlebar_include_close_button) {
-            c->toplevel_minimum_needed_width += c->decoration.titlebar_close_button_size +
+            c->toplevel_minimum_width += c->decoration.titlebar_close_button_size +
                     c->decoration.titlebar_close_button_padding.left +
                     c->decoration.titlebar_close_button_padding.right;
         }
     }
 
-    c->toplevel_minimum_needed_width = max(c->toplevel_minimum_needed_width, 10);
-    c->toplevel_minimum_needed_height = max(c->toplevel_minimum_needed_height, 10);
+    c->toplevel_minimum_width = max(c->toplevel_minimum_width, 10);
+    c->toplevel_minimum_height = max(c->toplevel_minimum_height, 10);
 }
 
 extern struct mwc_server server;
@@ -1121,7 +1097,7 @@ config_load() {
     wl_list_init(&c->window_rules.no_titlebar);
     wl_list_init(&c->layer_rules.blur);
 
-    /* you aint gonna have lines longer than 1kB */
+    // you aint gonna have lines longer than 1kB
     char line_buffer[1024] = {0};
     char *keyword, **args;
     size_t args_count;
@@ -1288,7 +1264,6 @@ layout_reorganize(struct mwc_workspace *workspace) {
     }
 }
 
-// fix this so that output configuration is extracted more regarding blur etc
 void
 config_reload() {
     struct mwc_config *c = config_load();
@@ -1298,7 +1273,7 @@ config_reload() {
         return;
     }
 
-    // since we dont touch workspaces when reloading we destroy the old one and just patch it with old one
+    // since we dont touch workspaces when reloading we destroy the new one and just patch it with old one
     // todo: this does not seem needed, so maybe just dont do it? keep for now
     struct workspace_config *wc, *wc_temp;
     wl_list_for_each_safe(wc, wc_temp, &c->workspaces, link) {
@@ -1307,8 +1282,8 @@ config_reload() {
     }
     c->workspaces = server.config->workspaces;
 
-    // replace the config, but keep the old one for some optimizations,
-    // since we can just skip the values that havent changed
+    // replace the config, but keep the old one for some optimizations, since we can just skip the values that havent
+    // changed
     struct mwc_config *old_config = server.config;
     server.config = c;
 

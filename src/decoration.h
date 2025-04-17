@@ -31,12 +31,12 @@ struct decoration_config {
         struct mwc_color active, inactive;
     } border_color;
 
-    uint32_t shadows_size;
+    uint32_t shadow_size;
     struct {
         int32_t x, y;
-    } shadows_position;
-    struct mwc_color shadows_color;
-    double shadows_blur;
+    } shadow_position;
+    struct mwc_color shadow_color;
+    double shadow_blur;
 
     uint32_t titlebar_height;
     struct {
@@ -90,7 +90,7 @@ struct decoration {
     } titlebar;
 
     uint32_t width, height;
-    struct wlr_box content_box;
+    bool active;
 
     struct wl_list link;
 };

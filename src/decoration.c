@@ -12,49 +12,6 @@
 static struct decoration_manager manager = {0};
 
 static void
-create_border(struct decoration *decoration) {
-    assert(decoration->border == NULL);
-
-    // its automatically placed at the container start
-    decoration->border = wlr_scene_rect_create(decoration->tree, 0, 0, (float[4]){0});
-    wlr_scene_rect_set_corner_radius(decoration->border, manager.config->border_radius,
-            manager.config->border_radius_location);
-
-    view_create_for_node(&decoration->border->node, MWC_BORDER, decoration->border);
-}
-
-static void
-update_border(struct decoration *decoration, struct wlr_box *box) {
-    assert(decoration->border != NULL);
-
-    uint32_t border_width = manager.config->border_width;
-    uint32_t border_radius = manager.config->border_radius;
-    enum corner_location border_radius_location = manager.config->border_radius_location;
-
-    wlr_scene_rect_set_size(decoration->border, box->width, box->height);
-
-    box->x += border_width;
-    box->y += border_width;
-    box->width -= 2 * border_width;
-    box->height -= 2 * border_width;
-
-    wlr_scene_rect_set_clipped_region(decoration->border,
-            (struct clipped_region){
-                    .area = *box,
-                    .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
-                    .corners = border_radius_location,
-            });
-}
-
-static void
-destroy_border(struct decoration *decoration) {
-    assert(decoration->border != NULL);
-
-    wlr_scene_node_destroy(&decoration->border->node);
-    decoration->border = NULL;
-}
-
-static void
 create_shadow(struct decoration *decoration) {
     assert(decoration->shadow == NULL);
 
@@ -107,6 +64,49 @@ destroy_shadow(struct decoration *decoration) {
 
     wlr_scene_node_destroy(&decoration->shadow->node);
     decoration->shadow = NULL;
+}
+
+static void
+create_border(struct decoration *decoration) {
+    assert(decoration->border == NULL);
+
+    // its automatically placed at the container start
+    decoration->border = wlr_scene_rect_create(decoration->tree, 0, 0, (float[4]){0});
+    wlr_scene_rect_set_corner_radius(decoration->border, manager.config->border_radius,
+            manager.config->border_radius_location);
+
+    view_create_for_node(&decoration->border->node, MWC_BORDER, decoration->border);
+}
+
+static void
+update_border(struct decoration *decoration, struct wlr_box *box) {
+    assert(decoration->border != NULL);
+
+    uint32_t border_width = manager.config->border_width;
+    uint32_t border_radius = manager.config->border_radius;
+    enum corner_location border_radius_location = manager.config->border_radius_location;
+
+    wlr_scene_rect_set_size(decoration->border, box->width, box->height);
+
+    box->x += border_width;
+    box->y += border_width;
+    box->width -= 2 * border_width;
+    box->height -= 2 * border_width;
+
+    wlr_scene_rect_set_clipped_region(decoration->border,
+            (struct clipped_region){
+                    .area = *box,
+                    .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
+                    .corners = border_radius_location,
+            });
+}
+
+static void
+destroy_border(struct decoration *decoration) {
+    assert(decoration->border != NULL);
+
+    wlr_scene_node_destroy(&decoration->border->node);
+    decoration->border = NULL;
 }
 
 static void
@@ -227,6 +227,17 @@ destroy_titlebar(struct decoration *decoration) {
     decoration->titlebar.title = NULL;
 }
 
+static void
+set_root_position(struct decoration *decoration) {
+    int32_t x = -manager.config->border_width;
+    int32_t y = -manager.config->border_width;
+    if(decoration_has_titlebar(decoration)) {
+        y -= manager.config->titlebar_height;
+    }
+
+    wlr_scene_node_set_position(&decoration->tree->node, x, y);
+}
+
 struct decoration *
 decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
     struct decoration *decoration = calloc(1, sizeof(*decoration));
@@ -238,14 +249,7 @@ decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
 
     decoration->tree = wlr_scene_tree_create(parent);
     wlr_scene_node_lower_to_bottom(&decoration->tree->node);
-
-    int32_t x = -manager.config->border_width;
-    int32_t y = -manager.config->border_width;
-    if(decoration_has_titlebar(decoration)) {
-        y -= manager.config->titlebar_height;
-    }
-
-    wlr_scene_node_set_position(&decoration->tree->node, x, y);
+    set_root_position(decoration);
 
     // and create the wanted decorations
     if(decoration_has_shadow(decoration)) {
@@ -259,6 +263,9 @@ decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
     if(decoration_has_titlebar(decoration)) {
         create_titlebar(decoration);
     }
+
+    // we give it initial coloring
+    decoration_set_active(decoration, false);
 
     return decoration;
 }
@@ -303,8 +310,10 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
     }
 
     decoration->types = types;
-    // and then configure them with the current size
+    set_root_position(decoration);
+    // and then configure them with the current size and state
     decoration_configure(decoration, decoration->width, decoration->height);
+    decoration_set_active(decoration, decoration->active);
 }
 
 void
@@ -314,7 +323,8 @@ decoration_set_enabled(struct decoration *decoration, bool enabled) {
 
 void
 decoration_set_active(struct decoration *decoration, bool active) {
-    // we set the things to their active/inactive colors
+    decoration->active = active;
+    // we set things to their active/inactive colors
     if(decoration_has_border(decoration)) {
         float border_color[4];
         mwc_color_to_wlr_color(active ? manager.config->border_color.active : manager.config->border_color.inactive,
@@ -408,6 +418,7 @@ decoration_manager_init(struct decoration_config *config) {
         }
 
         decoration_configure(iter, iter->width, iter->height);
+        decoration_set_active(iter, iter->active);
     }
 }
 
