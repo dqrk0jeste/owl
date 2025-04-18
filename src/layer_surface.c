@@ -78,6 +78,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
         wlr_scene_optimized_blur_mark_dirty(output->blur);
     }
 }
+
 static void
 layer_surface_handle_map(struct wl_listener *listener, void *data) {
     struct mwc_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
@@ -91,6 +92,7 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
 
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+    // todo: investigate, i dont think this is needed
     wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
     layout_configure(output->active_workspace);
 
@@ -170,13 +172,8 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
     // see server_handle_new_xdg_popup()
     struct mwc_popup *popup = xdg_popup->base->data;
 
-    struct wlr_scene_tree *parent_tree = layer_surface->scene->tree;
-    popup->scene_tree = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
-
+    popup->scene_tree = wlr_scene_xdg_surface_create(layer_surface->scene->tree, xdg_popup->base);
     view_create_for_node(&popup->scene_tree->node, MWC_VIEW_POPUP, popup);
-
-    // todo: fix this
-    popup->xdg_popup->base->data = popup->scene_tree;
 }
 
 void

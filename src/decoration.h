@@ -40,6 +40,7 @@ struct decoration {
 
     uint32_t width, height;
     bool active;
+    bool blur, blur_xray;
 };
 
 // create a new decoration with `parent` as parent scene tree and `types` of decoration
@@ -81,6 +82,9 @@ decoration_get_content_box(struct decoration *decoration, struct wlr_box box);
 // get the decoration box from the content box
 struct wlr_box
 decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box);
+
+void
+decoration_set_blur(struct decoration *decoration, bool blur, bool xray);
 
 bool
 decoration_is_enabled(struct decoration *decoration);

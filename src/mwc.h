@@ -70,6 +70,7 @@ struct mwc_server {
     struct wl_listener new_input;
     struct wl_listener request_cursor;
     struct wl_listener request_set_selection;
+    struct wl_listener request_set_primary_selection;
 
     bool drag_active;
     struct wlr_scene_tree *drag_icon_tree;

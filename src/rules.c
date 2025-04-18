@@ -11,27 +11,11 @@ toplevel_matches_window_rule(struct mwc_toplevel *toplevel, struct window_rule_r
     char *app_id = toplevel->xdg_toplevel->app_id;
     char *title = toplevel->xdg_toplevel->title;
 
-    bool matches_app_id;
-    if(condition->has_app_id_regex) {
-        if(app_id == NULL) {
-            matches_app_id = false;
-        } else {
-            matches_app_id = regexec(&condition->app_id_regex, app_id, 0, NULL, 0) == 0;
-        }
-    } else {
-        matches_app_id = true;
-    }
+    bool matches_app_id = !condition->has_app_id_regex ||
+            (app_id != NULL && regexec(&condition->app_id_regex, app_id, 0, NULL, 0) == 0);
 
-    bool matches_title;
-    if(condition->has_title_regex) {
-        if(title == NULL) {
-            matches_title = false;
-        } else {
-            matches_title = regexec(&condition->title_regex, title, 0, NULL, 0) == 0;
-        }
-    } else {
-        matches_title = true;
-    }
+    bool matches_title =
+            !condition->has_title_regex || (title != NULL && regexec(&condition->title_regex, title, 0, NULL, 0) == 0);
 
     return matches_app_id && matches_title;
 }
@@ -184,6 +168,7 @@ check_blur_ignore_transparent_rules(struct mwc_layer_surface *layer_surface) {
 
     layer_surface->blur_ignore_transparent = false;
 }
+
 void
 layer_surface_check_rules(struct mwc_layer_surface *layer_surface) {
     // since all the rules affect blur we dont check any if blur is disabled globally

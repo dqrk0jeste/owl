@@ -129,6 +129,10 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *
         }
     }
 
+    // change the active workspace before handling the presentation, so the right damage is tracked and for some
+    // animation optimizations while keeping the focus on this toplevel
+    change_workspace(workspace, true);
+
     // handle presentation
     if(toplevel->fullscreen) {
         old_workspace->fullscreen_toplevel = NULL;
@@ -178,13 +182,10 @@ toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *
         toplevel_set_state(toplevel,
                 (struct wlr_box){new_output_x, new_output_y, toplevel->deco_box.width, toplevel->deco_box.height});
     } else {
-        // and if tiled we just configure the layouts of both the old one a the new one
+        // and if tiled we just configure the layouts of both the old one and the new one
         layout_configure(old_workspace);
         layout_configure(workspace);
     }
-
-    // change active workspace, but keep the focus unchanged
-    change_workspace(workspace, true);
 }
 
 struct mwc_toplevel *

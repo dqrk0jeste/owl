@@ -26,7 +26,6 @@
 #include "mwc.h"
 #include "output.h"
 #include "pointer.h"
-#include "popup.h"
 #include "rendering.h"
 #include "rules.h"
 #include "text_node.h"
@@ -59,9 +58,12 @@ static struct wlr_box
 toplevel_floating_deco_box_for_own_size(struct mwc_toplevel *toplevel) {
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
 
-    // we need to convert this to deco box
-    uint32_t width = geometry.width + 2 * server.config->border_width;
-    uint32_t height = geometry.height + 2 * server.config->border_width;
+    uint32_t width = geometry.width;
+    uint32_t height = geometry.height;
+    if(toplevel->has_border) {
+        width += 2 * server.config->border_width;
+        height += 2 * server.config->border_width;
+    }
 
     if(toplevel->has_titlebar) {
         height += server.config->titlebar_height;
@@ -70,8 +72,6 @@ toplevel_floating_deco_box_for_own_size(struct mwc_toplevel *toplevel) {
     return output_create_centered_box(toplevel->workspace->output, width, height);
 }
 
-// looks up window rules and returns true if found, with the size in `*width`
-// and `*height`, else return false
 bool
 toplevel_get_floating_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height) {
     struct window_rule_size *w;
@@ -115,22 +115,6 @@ toplevel_clip_tree(struct mwc_toplevel *toplevel, uint32_t width, uint32_t heigh
         if(view != NULL && view->type == MWC_VIEW_POPUP) {
             wlr_scene_subsurface_tree_set_clip(n, NULL);
         }
-    }
-}
-
-static void
-toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) {
-    struct mwc_toplevel *toplevel = user_data;
-
-    decoration_configure(toplevel->decoration, current.width, current.height);
-
-    struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, current);
-    toplevel_clip_tree(toplevel, content_box.width, content_box.height);
-    wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
-
-    if(done) {
-        fx_transform_animation_destroy(toplevel->animation);
-        toplevel->animation = NULL;
     }
 }
 
@@ -209,7 +193,13 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
         toplevel->should_choose_size = false;
         struct wlr_box box = toplevel_floating_deco_box_for_own_size(toplevel);
         toplevel_set_state(toplevel, box);
+        return;
     }
+
+    // toplevels geometry might have changed, so we update the clip accordingly. this can happen when the user toggles
+    // `client_side_decorations` config option
+    struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
+    toplevel_clip_tree(toplevel, content_box.width, content_box.height);
 
     // todo: try to handle the case when a floating toplevel changes its size on
     // its own, hit some roadblocks in my first attempt
@@ -236,9 +226,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     // called when the surface is mapped, or ready to display on the screen
     struct mwc_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
-    // we keep the toplevel in this free field so we can obtain it when needed
-    toplevel->xdg_toplevel->base->data = toplevel;
-
     // we insert it into a right list, and create a scene tree for the toplevel
     if(toplevel->floating) {
         wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
@@ -261,6 +248,8 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     // create a decoration object and set the initial title
     toplevel->decoration = decoration_create(toplevel->scene_tree, toplevel_get_decoration_types(toplevel));
     decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
+    // we also set the initial blur for this toplevels decoration
+    decoration_set_blur(toplevel->decoration, toplevel->has_blur, server.config->blur_xray && toplevel->floating);
 
     // we set this flag for the popin animation
     toplevel->needs_popin_adjustment = server.config->animations;
@@ -479,6 +468,8 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
     toplevel_recheck_window_rules(toplevel);
     if(toplevel->decoration != NULL) {
         decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
+        // we also set the blur for this toplevels decoration
+        decoration_set_blur(toplevel->decoration, toplevel->has_blur, server.config->blur_xray && toplevel->floating);
     }
 
     wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->app_id);
@@ -495,6 +486,8 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
     toplevel_recheck_window_rules(toplevel);
     if(toplevel->decoration != NULL) {
         decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
+        // we also set the blur for this toplevels decoration
+        decoration_set_blur(toplevel->decoration, toplevel->has_blur, server.config->blur_xray && toplevel->floating);
         decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
     }
 
@@ -751,54 +744,6 @@ toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *topl
 
     return edges;
 }
-
-void
-xdg_activation_handle_token_destroy(struct wl_listener *listener, void *data) {
-    struct mwc_token *token_data = wl_container_of(listener, token_data, destroy);
-    wl_list_remove(&token_data->destroy.link);
-
-    free(token_data);
-}
-
-void
-xdg_activation_handle_new_token(struct wl_listener *listener, void *data) {
-    struct wlr_xdg_activation_token_v1 *wlr_token = data;
-    if(wlr_token->surface == NULL || wlr_token->seat == NULL) return;
-
-    struct mwc_token *token = calloc(1, sizeof(*token));
-    token->wlr_token = wlr_token;
-    wlr_token->data = token;
-
-    token->destroy.notify = xdg_activation_handle_token_destroy;
-    wl_signal_add(&wlr_token->events.destroy, &token->destroy);
-}
-
-void
-xdg_activation_handle_request(struct wl_listener *listener, void *data) {
-    const struct wlr_xdg_activation_v1_request_activate_event *event = data;
-
-    struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(event->surface);
-    if(xdg_surface == NULL) return;
-
-    struct wlr_scene_tree *tree = xdg_surface->data;
-    // this happens if the toplevel has not been mapped yet. anyway it does not
-    // make sense to request that i activate this surface that is not on the
-    // screen
-    if(tree == NULL) return;
-
-    struct mwc_view *view = tree->node.data;
-    if(view == NULL) return;
-
-    if(view->type == MWC_VIEW_POPUP) {
-        view = popup_get_root_parent(view->popup);
-    }
-
-    if(view->type != MWC_VIEW_TOPLEVEL) return;
-
-    struct mwc_toplevel *toplevel = view->toplevel;
-    focus_toplevel(toplevel);
-}
-
 struct wlr_box
 toplevel_get_current_display_deco_box(struct mwc_toplevel *toplevel) {
     if(toplevel->animation != NULL) {
@@ -814,8 +759,22 @@ toplevel_get_current_display_content_box(struct mwc_toplevel *toplevel) {
     return decoration_get_content_box(toplevel->decoration, deco_box);
 }
 
-// todo: maybe dont animate thing that are not shown on the screen by checking
-// node.enabled?
+static void
+toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) {
+    struct mwc_toplevel *toplevel = user_data;
+
+    decoration_configure(toplevel->decoration, current.width, current.height);
+
+    struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, current);
+    toplevel_clip_tree(toplevel, content_box.width, content_box.height);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
+
+    if(done) {
+        fx_transform_animation_destroy(toplevel->animation);
+        toplevel->animation = NULL;
+    }
+}
+
 void
 toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
     struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, deco_box);
@@ -824,7 +783,7 @@ toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
     toplevel->should_choose_size = false;
 
     // todo: maybe find a more flexible solution to not send this when moving a toplevel, but oh well, its not that big
-    // of a deal send a configure to the client;
+    // of a deal send a configure to the client
     wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, content_box.width, content_box.height);
 
     // we find where the toplevel is currently, this is just a toplevel box, with no decorations
@@ -846,10 +805,10 @@ toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box) {
         current = toplevel->deco_box;
     }
 
-    if(server.config->animations && toplevel != server.grabbed_toplevel) {
+    if(server.config->animations && toplevel->scene_tree->node.enabled && toplevel != server.grabbed_toplevel &&
+            !wlr_box_equal(&toplevel->deco_box, &deco_box)) {
         toplevel->animation = fx_transform_animation_create(current, deco_box, server.config->animation_duration,
                 server.config->animation_curve, toplevel_animation_callback, toplevel);
-
     } else {
         decoration_configure(toplevel->decoration, deco_box.width, deco_box.height);
         toplevel_clip_tree(toplevel, content_box.width, content_box.height);
@@ -950,6 +909,8 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     // allocate an mwc_toplevel for this surface
     struct mwc_toplevel *toplevel = calloc(1, sizeof(*toplevel));
     toplevel->xdg_toplevel = xdg_toplevel;
+    // we keep the toplevel in this free field so we can obtain it when needed
+    toplevel->xdg_toplevel->base->data = toplevel;
 
     // these values can be later rewritten by window rules; check toplevel_recheck_window_rules()
     toplevel->has_titlebar = server.config->titlebars;
@@ -999,4 +960,45 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
 
     toplevel->set_title.notify = toplevel_handle_set_title;
     wl_signal_add(&xdg_toplevel->events.set_title, &toplevel->set_title);
+}
+
+void
+xdg_activation_handle_token_destroy(struct wl_listener *listener, void *data) {
+    struct mwc_token *token_data = wl_container_of(listener, token_data, destroy);
+    wl_list_remove(&token_data->destroy.link);
+
+    free(token_data);
+}
+
+void
+xdg_activation_handle_new_token(struct wl_listener *listener, void *data) {
+    struct wlr_xdg_activation_token_v1 *wlr_token = data;
+    if(wlr_token->surface == NULL || wlr_token->seat == NULL) return;
+
+    struct mwc_token *token = calloc(1, sizeof(*token));
+    token->wlr_token = wlr_token;
+    wlr_token->data = token;
+
+    token->destroy.notify = xdg_activation_handle_token_destroy;
+    wl_signal_add(&wlr_token->events.destroy, &token->destroy);
+}
+
+void
+xdg_activation_handle_request(struct wl_listener *listener, void *data) {
+    const struct wlr_xdg_activation_v1_request_activate_event *event = data;
+
+    struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(event->surface);
+    if(xdg_surface == NULL || xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+        wlr_log(WLR_ERROR, "requested activation surface is not a toplevel! skipping.");
+        return;
+    }
+
+    struct mwc_toplevel *toplevel = xdg_surface->data;
+    // we cannot focus toplevels that are not mapped yet
+    if(!toplevel->xdg_toplevel->base->surface->mapped) {
+        wlr_log(WLR_ERROR, "requested activation toplevel is not mapped yet! skipping");
+        return;
+    }
+
+    focus_toplevel(toplevel);
 }

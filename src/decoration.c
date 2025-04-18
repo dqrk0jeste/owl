@@ -317,6 +317,7 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
     // and then configure them with the current size and state
     decoration_configure(decoration, decoration->width, decoration->height);
     decoration_set_active(decoration, decoration->active);
+    decoration_set_blur(decoration, decoration->blur, decoration->blur_xray);
 }
 
 void
@@ -421,6 +422,22 @@ decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box)
     }
 
     return box;
+}
+
+void
+decoration_set_blur(struct decoration *decoration, bool blur, bool xray) {
+    if(decoration_has_border(decoration)) {
+        wlr_scene_rect_set_backdrop_blur(decoration->border, blur);
+        wlr_scene_rect_set_backdrop_blur_optimized(decoration->border, xray);
+    }
+
+    if(decoration_has_titlebar(decoration)) {
+        wlr_scene_rect_set_backdrop_blur(decoration->titlebar.base, blur);
+        wlr_scene_rect_set_backdrop_blur_optimized(decoration->titlebar.base, xray);
+    }
+
+    decoration->blur = blur;
+    decoration->blur_xray = xray;
 }
 
 bool

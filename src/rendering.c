@@ -44,7 +44,7 @@ layer_surface_apply_effects(struct mwc_layer_surface *layer_surface) {
     wlr_scene_node_for_each_buffer(&layer_surface->scene->tree->node, iter_layer_apply_blur, &args);
 }
 
-struct iter_scene_buffer_apply_effects_args {
+struct iter_toplevel_apply_effects_args {
     int32_t root_x;
     int32_t root_y;
     struct wlr_box geometry;
@@ -60,7 +60,7 @@ struct iter_scene_buffer_apply_effects_args {
 
 static void
 iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, void *data) {
-    struct iter_scene_buffer_apply_effects_args *args = data;
+    struct iter_toplevel_apply_effects_args *args = data;
 
     wlr_scene_buffer_set_opacity(buffer, args->opacity);
 
@@ -134,7 +134,7 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
     struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
 
-    struct iter_scene_buffer_apply_effects_args args = {
+    struct iter_toplevel_apply_effects_args args = {
             .root_x = toplevel->scene_tree->node.x,
             .root_y = toplevel->scene_tree->node.y,
             .geometry = geometry,
@@ -148,7 +148,6 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
             .has_blur = toplevel->has_blur,
             .blur_xray = server.config->blur_xray && toplevel->floating,
     };
-
     wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, iter_toplevel_apply_effects, &args);
 }
 

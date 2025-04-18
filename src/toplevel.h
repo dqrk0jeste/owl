@@ -62,7 +62,8 @@ struct mwc_token {
     struct wl_listener destroy;
 };
 
-// look up window rules to find the size of this toplevel
+// looks up window rules and returns true if found, with the size in `*width`
+// and `*height`, else return false
 bool
 toplevel_get_floating_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
 

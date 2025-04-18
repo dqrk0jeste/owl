@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <drm_fourcc.h>
 #include <fcft/fcft.h>
+#include <locale.h>
 #include <pixman.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -74,46 +75,6 @@ pixman_buffer_destroy(struct pixman_buffer *buffer) {
     free(buffer);
 }
 
-static uint32_t
-render_glyphs_to_pixman_buffer(struct pixman_buffer *buffer, pixman_image_t *color, size_t count,
-        const struct fcft_glyph *glyphs[static count], long kern[static count]) {
-    long x = 0;
-
-    for(size_t i = 0; i < count; i++) {
-        const struct fcft_glyph *g = glyphs[i];
-        if(g == NULL) continue;
-
-        x += kern[i];
-
-        pixman_image_composite32(PIXMAN_OP_OVER, color, g->pix, buffer->image, 0, 0, 0, 0, x + g->x,
-                server.config->font->ascent - g->y, g->width, g->height);
-
-        x += g->advance.x;
-    }
-
-    return x;
-}
-
-static uint32_t
-render_chars_to_pixman_buffer(const char32_t *text, size_t len, struct pixman_buffer *buffer, pixman_image_t *color) {
-    if(len == 0) return 0;
-
-    const struct fcft_glyph *glyphs[len];
-    long kern[len];
-
-    for(size_t i = 0; i < len; i++) {
-        glyphs[i] = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
-        if(glyphs[i] == NULL) continue;
-
-        kern[i] = 0;
-        if(i > 0) {
-            fcft_kerning(server.config->font, text[i - 1], text[i], &kern[i], NULL);
-        }
-    }
-
-    return render_glyphs_to_pixman_buffer(buffer, color, len, glyphs, kern);
-}
-
 struct text_node *
 text_node_create(struct wlr_scene_tree *parent, char *text) {
     assert(server.config->font);
@@ -140,7 +101,8 @@ text_node_destroy(struct text_node *node) {
     free(node);
 }
 
-// function to decode a single utf8 character into a utf32 code point
+// function to decode a single utf8 character into a utf32 code point; note: this function can read data from outside
+// its buffer. i dont think thats a problem since it cannot write it? todo: add end pointer in any case
 static ssize_t
 convert_utf8_to_utf32(char *utf8, char32_t *codepoint) {
     if((utf8[0] & 0x80) == 0x00) {
@@ -161,17 +123,54 @@ convert_utf8_to_utf32(char *utf8, char32_t *codepoint) {
     }
 }
 
+// wayland protocol specifies that a string must be a valid utf8, so i will trust it that it does
+static size_t
+utf8_strlen(const char *str) {
+    size_t len = 0;
+    while(*str) {
+        if((*str & 0xC0) != 0x80) {
+            len++;
+        }
+        str++;
+    }
+
+    return len;
+}
+
+static uint32_t
+render_text(struct pixman_buffer *buffer, const char32_t *text, size_t len, pixman_image_t *color) {
+    long x = 0;
+    for(size_t i = 0; i < len; i++) {
+        const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
+        if(glyph == NULL) continue;
+
+        // add the kerning
+        if(i > 0) {
+            long kern = 0;
+            fcft_kerning(server.config->font, text[i - 1], text[i], &kern, NULL);
+            x += kern;
+        }
+
+        // composite the image into the buffer
+        pixman_image_composite32(PIXMAN_OP_OVER, color, glyph->pix, buffer->image, 0, 0, 0, 0, x + glyph->x,
+                server.config->font->ascent - glyph->y, glyph->width, glyph->height);
+        // and advance the position for the next one
+        x += glyph->advance.x;
+    }
+
+    return x;
+}
+
 void
 text_node_set_text(struct text_node *node, char *text) {
     if(text == NULL) return;
 
-    size_t len = strlen(text);
+    size_t len = utf8_strlen(text);
 
     // we approximate the width of the text
     uint32_t width = len * (server.config->font->max_advance.x);
     uint32_t height = server.config->font->max_advance.y;
 
-    // todo: save an allocation if the current is bigger than this one; i dont care rn
     if(node->buffer != NULL) {
         pixman_buffer_destroy(node->buffer);
     }
@@ -179,15 +178,14 @@ text_node_set_text(struct text_node *node, char *text) {
 
     wlr_scene_buffer_set_buffer(node->scene_buffer, &node->buffer->base);
 
-    // if the len is 0 then we attach the empty buffer
+    // if the len is 0 then we attach the empty buffer and return
     if(len == 0) return;
 
-    // convert the string to utf32
-    // todo: optimize this so it just goes through the string once and just renders it char by char
-    char32_t unicode[len];
+    // we first convert the string to utf32
+    char32_t utf32[len];
     size_t i = 0, j = 0;
-    while(i < len) {
-        ssize_t move_forward = convert_utf8_to_utf32(&text[i], &unicode[j]);
+    while(j < len) {
+        ssize_t move_forward = convert_utf8_to_utf32(&text[i], &utf32[j]);
         // if its invalid utf8 then we quit
         if(move_forward == -1) return;
 
@@ -199,7 +197,7 @@ text_node_set_text(struct text_node *node, char *text) {
     mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
-    node->width = render_chars_to_pixman_buffer(unicode, j, node->buffer, foreground_color);
+    node->width = render_text(node->buffer, utf32, len, foreground_color);
     node->height = height;
 
     pixman_image_unref(foreground_color);

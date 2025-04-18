@@ -97,7 +97,7 @@ void
 server_handle_request_cursor_shape(struct wl_listener *listener, void *data) {
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
     struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(focused_client == event->seat_client) {
+    if(server.cursor_mode == MWC_CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
         const char *name = wlr_cursor_shape_v1_name(event->shape);
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, name);
     }
@@ -107,7 +107,7 @@ void
 server_handle_request_cursor(struct wl_listener *listener, void *data) {
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(focused_client == event->seat_client) {
+    if(server.cursor_mode == MWC_CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
         // once we've vetted the client, we can tell the cursor to use the
         // provided surface as the cursor image. it will set the hardware cursor
         // on the output that it's currently on and continue to do so as the
@@ -251,7 +251,6 @@ main(int argc, char *argv[]) {
 
     server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 4);
     server.new_layer_surface.notify = server_handle_new_layer_surface;
-    server.layer_shell->data = &server;
     wl_signal_add(&server.layer_shell->events.new_surface, &server.new_layer_surface);
 
     // creates a cursor, which is a wlroots utility for tracking the cursor image shown on screen.
@@ -362,10 +361,8 @@ main(int argc, char *argv[]) {
     wl_signal_add(&server.pointer_contrains_manager->events.new_constraint, &server.new_contraint);
 
     server.xdg_activation = wlr_xdg_activation_v1_create(server.wl_display);
-
     server.xdg_activation_request.notify = xdg_activation_handle_request;
     wl_signal_add(&server.xdg_activation->events.request_activate, &server.xdg_activation_request);
-
     server.xdg_activation_new_token.notify = xdg_activation_handle_new_token;
     wl_signal_add(&server.xdg_activation->events.new_token, &server.xdg_activation_new_token);
 

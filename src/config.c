@@ -1334,7 +1334,19 @@ config_reload() {
     config_destroy(server.config);
     server.config = c;
 
-    // handle the reloading
+    // send the decoration type to the clients
+    // node: kde server decorations do not have this ability (at least in wlroots) so these toplevels will not reload
+    wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
+            c->client_side_decorations ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
+                                       : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
+
+    struct wlr_xdg_toplevel_decoration_v1 *iter_xdg_deco;
+    wl_list_for_each(iter_xdg_deco, &server.xdg_decoration_manager->decorations, link) {
+        wlr_xdg_toplevel_decoration_v1_set_mode(iter_xdg_deco,
+                c->client_side_decorations ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                           : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    }
+
     // first we reconfigure and reposition the outputs and then workspaces and toplevels
     struct mwc_output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
@@ -1377,16 +1389,21 @@ config_reload() {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
+                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur, false);
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
+                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur, false);
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->floating_toplevels, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
+                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur, c->blur_xray);
+                // we manually call this for floating so they are also updated
+                toplevel_set_state(iter_toplevel, iter_toplevel->deco_box);
             }
 
             // master_count might have changed in the new config, so we update the layout
@@ -1405,10 +1422,6 @@ config_reload() {
     wl_list_for_each(pointer, &server.pointers, link) {
         pointer_configure(pointer);
     }
-
-    wlr_server_decoration_manager_set_default_mode(server.kde_decoration_manager,
-            c->client_side_decorations ? WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT
-                                       : WLR_SERVER_DECORATION_MANAGER_MODE_SERVER);
 
     // todo: make this more efficient
     wlr_xcursor_manager_destroy(server.cursor_mgr);

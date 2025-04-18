@@ -86,11 +86,13 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
             parent_tree = popup->scene_tree;
         } else {
             wlr_log(WLR_ERROR, "popup parent does not have a role! skipping");
+            wlr_xdg_popup_destroy(xdg_popup);
             return;
         }
 
         if(parent_tree == NULL) {
             wlr_log(WLR_ERROR, "popup parent not mapped! skipping");
+            wlr_xdg_popup_destroy(xdg_popup);
             return;
         }
 
@@ -105,6 +107,7 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
     wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }
 
+// todo: check if this can create inifite loop
 struct mwc_view *
 popup_get_root_parent(struct mwc_popup *popup) {
     struct wlr_scene_tree *tree = popup->scene_tree;
