@@ -25,6 +25,7 @@
 #include "mwc.h"
 #include "output.h"
 #include "pointer.h"
+#include "rules.h"
 #include "toplevel.h"
 #include "workspace.h"
 
@@ -86,9 +87,17 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
     }
 
     if(strcmp(predicate, "blur") == 0) {
-        struct layer_rule_blur *lr = calloc(1, sizeof(*lr));
-        lr->condition = condition;
-        wl_list_insert(&c->layer_rules.blur, &lr->link);
+        struct layer_rule *layer_rule = calloc(1, sizeof(*layer_rule));
+        layer_rule->condition = condition;
+        wl_list_insert(&c->layer_rules.blur, &layer_rule->link);
+    } else if(strcmp(predicate, "blur_xray") == 0) {
+        struct layer_rule *layer_rule = calloc(1, sizeof(*layer_rule));
+        layer_rule->condition = condition;
+        wl_list_insert(&c->layer_rules.blur_xray, &layer_rule->link);
+    } else if(strcmp(predicate, "blur_ignore_transparent") == 0) {
+        struct layer_rule *layer_rule = calloc(1, sizeof(*layer_rule));
+        layer_rule->condition = condition;
+        wl_list_insert(&c->layer_rules.blur_ignore_transparent, &layer_rule->link);
     } else {
         wlr_log(WLR_ERROR, "invalid layer rule %s", predicate);
         if(condition.has) {
@@ -131,7 +140,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
     }
 
     if(strcmp(predicate, "float") == 0) {
-        struct window_rule_float *window_rule = calloc(1, sizeof(*window_rule));
+        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
         window_rule->condition = condition;
         wl_list_insert(&c->window_rules.floating, &window_rule->link);
     } else if(strcmp(predicate, "size") == 0) {
@@ -153,8 +162,8 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
             window_rule->relative_height = true;
         }
 
-        window_rule->width = clamp(atoi(args[0]), 0, INT_MAX);
-        window_rule->height = clamp(atoi(args[1]), 0, INT_MAX);
+        window_rule->width = max(atoi(args[0]), 0);
+        window_rule->height = max(atoi(args[1]), 0);
 
         wl_list_insert(&c->window_rules.size, &window_rule->link);
     } else if(strcmp(predicate, "opacity") == 0) {
@@ -171,10 +180,25 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
 
         wl_list_insert(&c->window_rules.opacity, &window_rule->link);
     } else if(strcmp(predicate, "no_titlebar") == 0) {
-        struct window_rule_no_titlebar *window_rule = calloc(1, sizeof(*window_rule));
+        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
         window_rule->condition = condition;
 
         wl_list_insert(&c->window_rules.no_titlebar, &window_rule->link);
+    } else if(strcmp(predicate, "no_border") == 0) {
+        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
+        window_rule->condition = condition;
+
+        wl_list_insert(&c->window_rules.no_border, &window_rule->link);
+    } else if(strcmp(predicate, "no_shadow") == 0) {
+        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
+        window_rule->condition = condition;
+
+        wl_list_insert(&c->window_rules.no_shadow, &window_rule->link);
+    } else if(strcmp(predicate, "no_blur") == 0) {
+        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
+        window_rule->condition = condition;
+
+        wl_list_insert(&c->window_rules.no_blur, &window_rule->link);
     } else {
         wlr_log(WLR_ERROR, "invalid window_rule %s", predicate);
         goto invalid;
@@ -674,6 +698,10 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count < 1) goto invalid;
 
         c->blur = atoi(args[0]);
+    } else if(strcmp(keyword, "blur_xray") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        c->blur_xray = atoi(args[0]);
     } else if(strcmp(keyword, "blur_passes") == 0) {
         if(arg_count < 1) goto invalid;
 
@@ -1088,7 +1116,13 @@ config_load() {
     wl_list_init(&c->window_rules.size);
     wl_list_init(&c->window_rules.opacity);
     wl_list_init(&c->window_rules.no_titlebar);
+    wl_list_init(&c->window_rules.no_border);
+    wl_list_init(&c->window_rules.no_shadow);
+    wl_list_init(&c->window_rules.no_blur);
+
     wl_list_init(&c->layer_rules.blur);
+    wl_list_init(&c->layer_rules.blur_xray);
+    wl_list_init(&c->layer_rules.blur_ignore_transparent);
 
     // you aint gonna have lines longer than 1kB
     char line_buffer[1024] = {0};
@@ -1115,81 +1149,125 @@ void
 config_destroy(struct mwc_config *c) {
     free(c->dir);
 
-    struct output_config *o, *o_temp;
-    wl_list_for_each_safe(o, o_temp, &c->outputs, link) {
-        free(o->name);
-        free(o);
+    struct output_config *iter_output_config, *tmp_output_config;
+    wl_list_for_each_safe(iter_output_config, tmp_output_config, &c->outputs, link) {
+        free(iter_output_config->name);
+        free(iter_output_config);
     }
 
-    struct keybind *k, *k_temp;
-    wl_list_for_each_safe(k, k_temp, &c->keybinds, link) {
-        if(k->action == keybind_run) {
-            free(k->args);
+    struct keybind *iter_keybind, *tmp_keybind;
+    wl_list_for_each_safe(iter_keybind, tmp_keybind, &c->keybinds, link) {
+        if(iter_keybind->action == keybind_run) {
+            free(iter_keybind->args);
         }
-        free(k);
+        free(iter_keybind);
     }
-    wl_list_for_each_safe(k, k_temp, &c->pointer_keybinds, link) {
-        free(k);
-    }
-
-    struct window_rule_float *wrf, *wrf_temp;
-    wl_list_for_each_safe(wrf, wrf_temp, &c->window_rules.floating, link) {
-        if(wrf->condition.has_app_id_regex) {
-            regfree(&wrf->condition.app_id_regex);
-        }
-        if(wrf->condition.has_title_regex) {
-            regfree(&wrf->condition.title_regex);
-        }
-        free(wrf);
-    }
-    struct window_rule_size *wrs, *wrs_temp;
-    wl_list_for_each_safe(wrs, wrs_temp, &c->window_rules.size, link) {
-        if(wrs->condition.has_app_id_regex) {
-            regfree(&wrs->condition.app_id_regex);
-        }
-        if(wrs->condition.has_title_regex) {
-            regfree(&wrs->condition.title_regex);
-        }
-        free(wrs);
-    }
-    struct window_rule_opacity *wro, *wro_temp;
-    wl_list_for_each_safe(wro, wro_temp, &c->window_rules.opacity, link) {
-        if(wro->condition.has_app_id_regex) {
-            regfree(&wro->condition.app_id_regex);
-        }
-        if(wro->condition.has_title_regex) {
-            regfree(&wro->condition.title_regex);
-        }
-        free(wro);
-    }
-    struct window_rule_no_titlebar *wrnt, *wrnt_temp;
-    wl_list_for_each_safe(wrnt, wrnt_temp, &c->window_rules.no_titlebar, link) {
-        if(wrnt->condition.has_app_id_regex) {
-            regfree(&wrnt->condition.app_id_regex);
-        }
-        if(wrnt->condition.has_title_regex) {
-            regfree(&wrnt->condition.title_regex);
-        }
-        free(wrnt);
+    wl_list_for_each_safe(iter_keybind, tmp_keybind, &c->pointer_keybinds, link) {
+        free(iter_keybind);
     }
 
-    struct layer_rule_blur *lrb, *lrb_temp;
-    wl_list_for_each_safe(lrb, lrb_temp, &c->layer_rules.blur, link) {
-        if(lrb->condition.has) {
-            regfree(&lrb->condition.regex);
+    struct window_rule *iter_float, *tmp_float;
+    wl_list_for_each_safe(iter_float, tmp_float, &c->window_rules.floating, link) {
+        if(iter_float->condition.has_app_id_regex) {
+            regfree(&iter_float->condition.app_id_regex);
+        }
+        if(iter_float->condition.has_title_regex) {
+            regfree(&iter_float->condition.title_regex);
+        }
+        free(iter_float);
+    }
+
+    struct window_rule_size *iter_size, *tmp_size;
+    wl_list_for_each_safe(iter_size, tmp_size, &c->window_rules.size, link) {
+        if(iter_size->condition.has_app_id_regex) {
+            regfree(&iter_size->condition.app_id_regex);
+        }
+        if(iter_size->condition.has_title_regex) {
+            regfree(&iter_size->condition.title_regex);
+        }
+        free(iter_size);
+    }
+
+    struct window_rule_opacity *iter_opacity, *tmp_opacity;
+    wl_list_for_each_safe(iter_opacity, tmp_opacity, &c->window_rules.opacity, link) {
+        if(iter_opacity->condition.has_app_id_regex) {
+            regfree(&iter_opacity->condition.app_id_regex);
+        }
+        if(iter_opacity->condition.has_title_regex) {
+            regfree(&iter_opacity->condition.title_regex);
+        }
+        free(iter_opacity);
+    }
+
+    struct window_rule *iter_deco, *tmp_deco;
+    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_titlebar, link) {
+        if(iter_deco->condition.has_app_id_regex) {
+            regfree(&iter_deco->condition.app_id_regex);
+        }
+        if(iter_deco->condition.has_title_regex) {
+            regfree(&iter_deco->condition.title_regex);
+        }
+        free(iter_deco);
+    }
+    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_border, link) {
+        if(iter_deco->condition.has_app_id_regex) {
+            regfree(&iter_deco->condition.app_id_regex);
+        }
+        if(iter_deco->condition.has_title_regex) {
+            regfree(&iter_deco->condition.title_regex);
+        }
+        free(iter_deco);
+    }
+    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_shadow, link) {
+        if(iter_deco->condition.has_app_id_regex) {
+            regfree(&iter_deco->condition.app_id_regex);
+        }
+        if(iter_deco->condition.has_title_regex) {
+            regfree(&iter_deco->condition.title_regex);
+        }
+        free(iter_deco);
+    }
+    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_blur, link) {
+        if(iter_deco->condition.has_app_id_regex) {
+            regfree(&iter_deco->condition.app_id_regex);
+        }
+        if(iter_deco->condition.has_title_regex) {
+            regfree(&iter_deco->condition.title_regex);
+        }
+        free(iter_deco);
+    }
+
+    struct layer_rule *iter_layer_rule, *tmp_layer_rule;
+    wl_list_for_each_safe(iter_layer_rule, tmp_layer_rule, &c->layer_rules.blur, link) {
+        if(iter_layer_rule->condition.has) {
+            regfree(&iter_layer_rule->condition.regex);
         }
 
-        free(lrb);
+        free(iter_layer_rule);
+    }
+    wl_list_for_each_safe(iter_layer_rule, tmp_layer_rule, &c->layer_rules.blur_xray, link) {
+        if(iter_layer_rule->condition.has) {
+            regfree(&iter_layer_rule->condition.regex);
+        }
+
+        free(iter_layer_rule);
+    }
+    wl_list_for_each_safe(iter_layer_rule, tmp_layer_rule, &c->layer_rules.blur_ignore_transparent, link) {
+        if(iter_layer_rule->condition.has) {
+            regfree(&iter_layer_rule->condition.regex);
+        }
+
+        free(iter_layer_rule);
     }
 
     free(c->keymap_layouts);
     free(c->keymap_variants);
     free(c->keymap_options);
 
-    struct pointer_config *p, *p_temp;
-    wl_list_for_each_safe(p, p_temp, &c->pointers, link) {
-        free(p->name);
-        free(p);
+    struct pointer_config *iter_pointer_config, *tmp_pointer_config;
+    wl_list_for_each_safe(iter_pointer_config, tmp_pointer_config, &c->pointers, link) {
+        free(iter_pointer_config->name);
+        free(iter_pointer_config);
     }
 
     if(c->font != NULL) {
@@ -1270,6 +1348,13 @@ config_reload() {
         // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
         // todo: consider making this function not call layout_configure()
         layer_surfaces_configure(iter_output);
+        // recheck layer rules
+        struct mwc_layer_surface *iter_layer_surface;
+        for(size_t i = 0; i < 4; i++) {
+            wl_list_for_each(iter_layer_surface, &(&iter_output->layers.background)[i], link) {
+                layer_surface_check_rules(iter_layer_surface);
+            }
+        }
 
         struct mwc_workspace *iter_workspace;
         wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {

@@ -15,6 +15,9 @@ struct mwc_toplevel {
     struct wlr_xdg_toplevel *xdg_toplevel;
 
     struct mwc_workspace *workspace;
+
+    // if this toplevel should get these
+    bool has_titlebar, has_border, has_shadow, has_blur;
     struct decoration *decoration;
 
     struct wlr_scene_tree *scene_tree;
@@ -28,8 +31,6 @@ struct mwc_toplevel {
     bool should_choose_size;
     // this is set on map so the toplevel is setup for the popin effect animation
     bool needs_popin_adjustment;
-    // if this toplevel has titlebar (border)
-    bool has_titlebar, has_border;
     // toplevel (with decorations) size and position of the toplevel (with decorations) in the layout
     struct wlr_box content_box, deco_box;
 

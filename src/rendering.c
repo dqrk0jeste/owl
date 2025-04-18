@@ -12,6 +12,7 @@
 #include <wlr/util/log.h>
 
 #include "config.h"
+#include "layer_surface.h"
 #include "mwc.h"
 #include "text_node.h"
 #include "toplevel.h"
@@ -19,6 +20,29 @@
 #include "workspace.h"
 
 extern struct mwc_server server;
+
+struct iter_layer_apply_effects_args {
+    bool has_blur, blur_ignore_transparent, blur_xray;
+};
+
+static void
+iter_layer_apply_blur(struct wlr_scene_buffer *buffer, int sx, int sy, void *data) {
+    struct iter_layer_apply_effects_args *args = data;
+
+    wlr_scene_buffer_set_backdrop_blur(buffer, args->has_blur);
+    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, !args->blur_xray);
+    wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, args->blur_ignore_transparent);
+}
+
+static void
+layer_surface_apply_effects(struct mwc_layer_surface *layer_surface) {
+    struct iter_layer_apply_effects_args args = {
+            .has_blur = layer_surface->has_blur,
+            .blur_ignore_transparent = layer_surface->blur_ignore_transparent,
+            .blur_xray = layer_surface->blur_xray,
+    };
+    wlr_scene_node_for_each_buffer(&layer_surface->scene->tree->node, iter_layer_apply_blur, &args);
+}
 
 struct iter_scene_buffer_apply_effects_args {
     int32_t root_x;
@@ -31,10 +55,11 @@ struct iter_scene_buffer_apply_effects_args {
     double opacity;
     uint32_t border_radius;
     bool has_titlebar;
+    bool has_blur, blur_xray;
 };
 
 static void
-iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, void *data) {
+iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, void *data) {
     struct iter_scene_buffer_apply_effects_args *args = data;
 
     wlr_scene_buffer_set_opacity(buffer, args->opacity);
@@ -88,16 +113,11 @@ iter_scene_buffer_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly,
     // we dont blur subsurfaces
     if(wlr_subsurface_try_from_wlr_surface(surface) != NULL) return;
 
-    if(server.config->blur) {
-        wlr_scene_buffer_set_backdrop_blur(buffer, true);
-        wlr_scene_buffer_set_backdrop_blur_optimized(buffer, true);
-        wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, false);
-    } else {
-        wlr_scene_buffer_set_backdrop_blur(buffer, false);
-    }
+    wlr_scene_buffer_set_backdrop_blur(buffer, args->has_blur);
+    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, !args->blur_xray);
+    wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, false);
 }
 
-// todo: create one for layers
 static void
 toplevel_apply_effects(struct mwc_toplevel *toplevel) {
     double opacity;
@@ -107,8 +127,9 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
         opacity = 1.0;
     }
 
-    uint32_t border_radius =
-            toplevel->fullscreen ? 0 : max(server.config->border_radius - server.config->border_width, 0);
+    uint32_t border_radius = toplevel->fullscreen
+            ? 0
+            : max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0);
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
     struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
@@ -124,9 +145,11 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
             .opacity = opacity,
             .border_radius = border_radius,
             .has_titlebar = decoration_has_titlebar(toplevel->decoration),
+            .has_blur = toplevel->has_blur,
+            .blur_xray = server.config->blur_xray && toplevel->floating,
     };
 
-    wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, iter_scene_buffer_apply_effects, &args);
+    wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, iter_toplevel_apply_effects, &args);
 }
 
 static bool
@@ -144,32 +167,18 @@ output_draw(struct mwc_output *output) {
 
     if(output->active_workspace->fullscreen_toplevel != NULL) {
         // we only draw the fullscreen toplevel here
+        // todo: optimize this more
         toplevel_apply_effects(output->active_workspace->fullscreen_toplevel);
         return;
     }
 
-    // todo: fix this mess, but it should be here
-    // struct mwc_layer_surface *iter_layer;
-    // for(size_t i = 0; i < 4; i++) {
-    //     wl_list_for_each(iter_layer, &(&iter_output->layers.background)[i], link) {
-    //         struct layer_rule_blur *b;
-    //         bool found = false;
-    //         wl_list_for_each(b, &server.config->layer_rules.blur, link) {
-    //             if(!b->condition.has ||
-    //                     regexec(&b->condition.regex, iter_layer->wlr_layer_surface->namespace, 0, NULL, 0) == 0) {
-    //                 wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur,
-    //                         (void *)1);
-    //                 found = true;
-    //                 break;
-    //             }
-    //         }
-    //
-    //         if(!found) {
-    //             wlr_scene_node_for_each_buffer(&iter_layer->scene->tree->node, iter_scene_buffer_apply_blur, (void
-    //             *)0);
-    //         }
-    //     }
-    // }
+    // apply layer surface effects
+    struct mwc_layer_surface *iter_layer_surface;
+    for(size_t i = 0; i < 4; i++) {
+        wl_list_for_each(iter_layer_surface, &(&output->layers.background)[i], link) {
+            layer_surface_apply_effects(iter_layer_surface);
+        }
+    }
 
     if(server.grabbed_toplevel != NULL && toplevel_is_in_box(server.grabbed_toplevel, &output_box)) {
         toplevel_apply_effects(server.grabbed_toplevel);

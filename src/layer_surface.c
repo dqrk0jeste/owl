@@ -13,6 +13,7 @@
 #include "mwc.h"
 #include "output.h"
 #include "popup.h"
+#include "rules.h"
 #include "toplevel.h"
 #include "view.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
@@ -77,39 +78,20 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
         wlr_scene_optimized_blur_mark_dirty(output->blur);
     }
 }
-
-// todo: extract this logic
-void
-iter_scene_buffer_apply_blur(struct wlr_scene_buffer *buffer, int sx, int sy, void *data) {
-    wlr_scene_buffer_set_backdrop_blur(buffer, data);
-    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, data);
-    wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, data);
-}
-
 static void
 layer_surface_handle_map(struct wl_listener *listener, void *data) {
     struct mwc_layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
-    struct wlr_layer_surface_v1 *wlr_layer_surface = layer_surface->wlr_layer_surface;
 
-    struct mwc_output *output = wlr_layer_surface->output->data;
+    // setup rules for bluring and stuff
+    layer_surface_check_rules(layer_surface);
+
+    struct mwc_output *output = layer_surface->wlr_layer_surface->output->data;
 
     wlr_scene_node_raise_to_top(&layer_surface->scene->tree->node);
-    if(server.config->blur) {
-        struct layer_rule_blur *b;
-        wl_list_for_each(b, &server.config->layer_rules.blur, link) {
-            if(!b->condition.has || regexec(&b->condition.regex, wlr_layer_surface->namespace, 0, NULL, 0) == 0) {
-                wlr_scene_node_for_each_buffer(&layer_surface->scene->tree->node, iter_scene_buffer_apply_blur,
-                        (void *)1);
-            }
-        }
-    }
 
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
-
-    // todo: investigate this
     wlr_scene_layer_surface_v1_configure(layer_surface->scene, &output_box, &output->usable_area);
-
     layout_configure(output->active_workspace);
 
     focus_layer_surface(layer_surface);

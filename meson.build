@@ -53,11 +53,12 @@ src = [
   'src/pointer.c',
   'src/popup.c',
   'src/rendering.c',
+  'src/rules.c',
   'src/session_lock.c',
   'src/view.c',
+  'src/text_node.c',
   'src/toplevel.c',
   'src/workspace.c',
-  'src/text_node.c',
 ]
 
 inc = [

@@ -17,49 +17,6 @@
 
 #define BAKED_POINTS_COUNT 256
 
-struct window_rule_regex {
-    bool has_app_id_regex;
-    regex_t app_id_regex;
-    bool has_title_regex;
-    regex_t title_regex;
-};
-
-struct window_rule_float {
-    struct window_rule_regex condition;
-    struct wl_list link;
-};
-
-struct window_rule_size {
-    struct window_rule_regex condition;
-    struct wl_list link;
-    bool relative_width;
-    uint32_t width;
-    bool relative_height;
-    uint32_t height;
-};
-
-struct window_rule_opacity {
-    struct window_rule_regex condition;
-    struct wl_list link;
-    double inactive_value;
-    double active_value;
-};
-
-struct window_rule_no_titlebar {
-    struct window_rule_regex condition;
-    struct wl_list link;
-};
-
-struct layer_rule_regex {
-    bool has;
-    regex_t regex;
-};
-
-struct layer_rule_blur {
-    struct layer_rule_regex condition;
-    struct wl_list link;
-};
-
 struct output_config {
     char *name;
     struct wl_list link;
@@ -106,11 +63,13 @@ struct mwc_config {
         struct wl_list floating;
         struct wl_list size;
         struct wl_list opacity;
-        struct wl_list no_titlebar;
+        struct wl_list no_titlebar, no_border, no_shadow, no_blur;
     } window_rules;
 
     struct {
         struct wl_list blur;
+        struct wl_list blur_xray;
+        struct wl_list blur_ignore_transparent;
     } layer_rules;
 
     // keyboard stuff
@@ -195,6 +154,7 @@ struct mwc_config {
     } opacity;
     bool opacity_apply_when_fullscreen;
     bool blur;
+    bool blur_xray;
     struct blur_data blur_params;
 
     // animations stuff
