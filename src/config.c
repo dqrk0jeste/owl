@@ -31,6 +31,10 @@
 
 #define clamp(v, a, b) (max((a), min((v), (b))))
 
+// this is a helper for logging the config errors
+static uint32_t line_number;
+#define LOG_ERROR(msg, ...) wlr_log(WLR_ERROR, "config: line %u: " msg, line_number, ##__VA_ARGS__)
+
 // assumes valid hex
 static uint32_t
 hex_to_unsigned_decimal(char *hex, size_t len) {
@@ -78,7 +82,7 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
     } else {
         regex_t compiled;
         if(regcomp(&compiled, regex, REG_EXTENDED) != 0) {
-            wlr_log(WLR_ERROR, "%s is not a valid regex", regex);
+            LOG_ERROR("%s is not a valid regex", regex);
             regfree(&compiled);
             return false;
         }
@@ -99,7 +103,7 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
         layer_rule->condition = condition;
         wl_list_insert(&c->layer_rules.blur_ignore_transparent, &layer_rule->link);
     } else {
-        wlr_log(WLR_ERROR, "invalid layer rule %s", predicate);
+        LOG_ERROR("invalid layer rule %s", predicate);
         if(condition.has) {
             regfree(&condition.regex);
         }
@@ -118,7 +122,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
     } else {
         regex_t compiled;
         if(regcomp(&compiled, app_id_regex, REG_EXTENDED) != 0) {
-            wlr_log(WLR_ERROR, "%s is not a valid regex", app_id_regex);
+            LOG_ERROR("%s is not a valid regex", app_id_regex);
             regfree(&compiled);
             return false;
         }
@@ -131,7 +135,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
     } else {
         regex_t compiled;
         if(regcomp(&compiled, title_regex, REG_EXTENDED) != 0) {
-            wlr_log(WLR_ERROR, "%s is not a valid regex", title_regex);
+            LOG_ERROR("%s is not a valid regex", title_regex);
             regfree(&compiled);
             return false;
         }
@@ -145,7 +149,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         wl_list_insert(&c->window_rules.floating, &window_rule->link);
     } else if(strcmp(predicate, "size") == 0) {
         if(arg_count < 2) {
-            wlr_log(WLR_ERROR, "invalid args to window_rule %s", predicate);
+            LOG_ERROR("invalid args to window_rule `size`, expected 2 and got %zu", arg_count);
             goto invalid;
             return false;
         }
@@ -168,7 +172,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         wl_list_insert(&c->window_rules.size, &window_rule->link);
     } else if(strcmp(predicate, "opacity") == 0) {
         if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to window_rule %s", predicate);
+            LOG_ERROR("invalid args to window_rule `opacity`, expected 1 or 2 and got %zu", arg_count);
             goto invalid;
             return false;
         }
@@ -200,7 +204,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
 
         wl_list_insert(&c->window_rules.no_blur, &window_rule->link);
     } else {
-        wlr_log(WLR_ERROR, "invalid window_rule %s", predicate);
+        LOG_ERROR("invalid window_rule %s", predicate);
         goto invalid;
     }
 
@@ -341,7 +345,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         } else {
             key_sym = xkb_keysym_from_name(key, 0);
             if(key_sym == 0) {
-                wlr_log(WLR_ERROR, "key %s doesn't seem right", key);
+                LOG_ERROR("key %s doesn't seem right", key);
                 return false;
             }
         }
@@ -360,17 +364,16 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->action = keybind_stop_server;
     } else if(strcmp(action, "run") == 0) {
         if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to keybind `run`, expected 1 and got %zu", arg_count);
             free(k);
             return false;
         }
 
         k->action = keybind_run;
-        char *args_0_copy = strdup(args[0]);
-        k->args = args_0_copy;
+        k->args = strdup(args[0]);
     } else if(strcmp(action, "kill_active") == 0) {
         k->action = keybind_close_keyboard_focused_toplevel;
-    } else if(strcmp(action, "switch_floating_state") == 0 || strcmp(action, "toggle_floating") == 0) {
+    } else if(strcmp(action, "toggle_floating") == 0) {
         k->action = keybind_focused_toplevel_toggle_floating;
     } else if(strcmp(action, "resize") == 0) {
         k->action = keybind_resize_focused_toplevel;
@@ -380,7 +383,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->stop = keybind_stop_move_focused_toplevel;
     } else if(strcmp(action, "move_focus") == 0) {
         if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to `move_focus`, expected 1 and got %zu", arg_count);
             free(k);
             return false;
         }
@@ -395,7 +398,8 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         } else if(strcmp(args[0], "right") == 0) {
             direction = MWC_RIGHT;
         } else {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to `move_focus`, expected one of `up`, `down`, `left` or `right`, but got %s",
+                    args[0]);
             free(k);
             return false;
         }
@@ -404,7 +408,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->args = (void *)direction;
     } else if(strcmp(action, "swap") == 0) {
         if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to `swap`, expected 1 and got %zu", arg_count);
             free(k);
             return false;
         }
@@ -419,7 +423,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         } else if(strcmp(args[0], "right") == 0) {
             direction = MWC_RIGHT;
         } else {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to `swap`, expected one of `up`, `down`, `left` or `right`, but got %s", args[0]);
             free(k);
             return false;
         }
@@ -428,7 +432,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->args = (void *)direction;
     } else if(strcmp(action, "workspace") == 0) {
         if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to `workspace`, expected 1 and got %zu", arg_count);
             free(k);
             return false;
         }
@@ -438,7 +442,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->initialized = false;
     } else if(strcmp(action, "move_to_workspace") == 0) {
         if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to %s", action);
+            LOG_ERROR("invalid args to `move_to_workspace`, expected 1 and got %zu", arg_count);
             free(k);
             return false;
         }
@@ -453,7 +457,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
     } else if(strcmp(action, "toggle_fullscreen") == 0) {
         k->action = keybind_focused_toplevel_toggle_fullscreen;
     } else {
-        wlr_log(WLR_ERROR, "invalid keybind action %s", action);
+        LOG_ERROR("invalid keybind action `%s`", action);
         free(k);
         return false;
     }
@@ -490,11 +494,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
         c->pointer_sensitivity = clamp(atof(args[0]), -1.0, 1.0);
     } else if(strcmp(keyword, "pointer_acceleration") == 0) {
-        if(arg_count < 1) {
-            wlr_log(WLR_ERROR, "invalid args to %s", keyword);
-            config_free_args(args, arg_count);
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
         c->pointer_acceleration =
                 atoi(args[0]) ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
     } else if(strcmp(keyword, "pointer") == 0) {
@@ -834,10 +834,10 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
         c->font = fcft_from_name(1, (const char **)&args[0], NULL);
         if(c->font == NULL) {
-            wlr_log(WLR_ERROR, "error while loading a font '%s', title wont be drawn", args[0]);
+            LOG_ERROR("error while loading a font `%s`, titles wont be drawn", args[0]);
         }
     } else {
-        wlr_log(WLR_ERROR, "invalid keyword %s", keyword);
+        LOG_ERROR("invalid keyword `%s`", keyword);
         free(keyword);
         config_free_args(args, arg_count);
         return false;
@@ -848,7 +848,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     return true;
 
 invalid:
-    wlr_log(WLR_ERROR, "invalid args to %s", keyword);
+    LOG_ERROR("invalid args to `%s`", keyword);
     free(keyword);
     config_free_args(args, arg_count);
     return false;
@@ -893,9 +893,9 @@ get_config_path(char *dest, size_t size) {
     return false;
 }
 
-// assumes the line is newline teriminated, as it should be with fgets()
+// assumes the line is newline terminated, as it should be with fgets()
 static bool
-config_handle_line(char *line, size_t line_number, char **keyword, char ***args, size_t *args_count) {
+config_handle_line(char *line, char **keyword, char ***args, size_t *args_count) {
     char *p = line;
 
     // skip whitespace
@@ -903,9 +903,7 @@ config_handle_line(char *line, size_t line_number, char **keyword, char ***args,
         p++;
 
     // if its an empty line or it starts with '#' (comment) skip
-    if(*p == '\n' || *p == '#') {
-        return false;
-    }
+    if(*p == '\n' || *p == '#') return false;
 
     size_t len = 0, cap = STRING_INITIAL_LENGTH;
     char *kw = calloc(cap, sizeof(char));
@@ -935,11 +933,6 @@ config_handle_line(char *line, size_t line_number, char **keyword, char ***args,
     // skip whitespace
     while(*p == ' ' || *p == '\t')
         p++;
-
-    if(*p == '\n') {
-        wlr_log(WLR_ERROR, "config: line %zu: no args provided for %s", line_number, kw);
-        return false;
-    }
 
     while(*p != '\n') {
         if(ars_len >= ars_cap) {
@@ -986,7 +979,7 @@ config_handle_line(char *line, size_t line_number, char **keyword, char ***args,
         ars_len++;
 
         if(word) p++;
-        /* skip whitespace */
+        // skip whitespace
         while(*p == ' ' || *p == '\t')
             p++;
     }
@@ -999,9 +992,8 @@ config_handle_line(char *line, size_t line_number, char **keyword, char ***args,
 
 static void
 config_set_default_needed_params(struct mwc_config *c) {
-    // as we are initializing config with calloc, some fields that are necessary in order
-    // for mwc to not crash may be not specified in the config.
-    // we set their values to some default value.*/
+    // as we are initializing config with calloc, some fields that are necessary in order for mwc to not crash may be
+    // not specified in the config. we set their values to some default value
     if(c->keyboard_rate == 0) {
         c->keyboard_rate = 150;
         wlr_log(WLR_INFO, "keyboard_rate not specified. using default %ud", c->keyboard_rate);
@@ -1128,10 +1120,9 @@ config_load() {
     char line_buffer[1024] = {0};
     char *keyword, **args;
     size_t args_count;
-    size_t line_number = 1;
+    line_number = 1;
     while(fgets(line_buffer, 1024, config_file) != NULL) {
-        bool valid = config_handle_line(line_buffer, line_number, &keyword, &args, &args_count);
-        if(valid) {
+        if(config_handle_line(line_buffer, &keyword, &args, &args_count)) {
             config_handle_value(c, keyword, args, args_count);
         }
         line_number++;
