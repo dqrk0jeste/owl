@@ -1,22 +1,22 @@
 #include "ipc.h"
 
-#include "mwc.h"
-#include "array.h"
-#include "output.h"
-#include "workspace.h"
-#include "layer_surface.h"
-
-#include <stdio.h>
-#include <signal.h>
 #include <assert.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <stdbool.h>
 #include <wayland-util.h>
 #include <wlr/util/log.h>
+
+#include "array.h"
+#include "layer_surface.h"
+#include "mwc.h"
+#include "output.h"
+#include "workspace.h"
 
 extern struct mwc_server server;
 
@@ -30,18 +30,15 @@ ipc_create_message(enum ipc_event event, char *buffer, uint32_t length) {
     switch(event) {
         case IPC_ACTIVE_WORKSPACE: {
             snprintf(buffer, length, "active-workspace" SEPARATOR "%u" SEPARATOR "%s" SEPARATOR "\n",
-                     server.active_workspace->index, server.active_workspace->output->wlr_output->name);
+                    server.active_workspace->index, server.active_workspace->output->wlr_output->name);
             break;
         }
         case IPC_ACTIVE_TOPLEVEL: {
             if(server.focused_toplevel == NULL) {
-                snprintf(buffer, length,
-                         "active-toplevel" SEPARATOR "" SEPARATOR "" SEPARATOR "\n");
+                snprintf(buffer, length, "active-toplevel" SEPARATOR "" SEPARATOR "" SEPARATOR "\n");
             } else {
-                snprintf(buffer, length,
-                         "active-toplevel" SEPARATOR "%s" SEPARATOR "%s" SEPARATOR "\n",
-                         server.focused_toplevel->xdg_toplevel->app_id,
-                         server.focused_toplevel->xdg_toplevel->title);
+                snprintf(buffer, length, "active-toplevel" SEPARATOR "%s" SEPARATOR "%s" SEPARATOR "\n",
+                        server.focused_toplevel->xdg_toplevel->app_id, server.focused_toplevel->xdg_toplevel->title);
             }
             break;
         }

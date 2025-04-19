@@ -21,6 +21,7 @@
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
 
+#include "array.h"
 #include "config.h"
 #include "decoration.h"
 #include "dnd.h"
@@ -158,12 +159,12 @@ main(int argc, char *argv[]) {
         wlr_log_init(WLR_INFO, NULL);
     }
 
-    // todo: may want to remove this much logging before release
-    fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_DEBUG);
+    fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_INFO);
 
     server.config = config_load();
     if(server.config == NULL) {
         wlr_log(WLR_ERROR, "there was a problem loading the config, quiting");
+        fcft_fini();
         return 1;
     }
 
@@ -395,7 +396,7 @@ main(int argc, char *argv[]) {
     // sleep a bit so the ipc starts, 0.1 seconds is probably enough
     usleep(100000);
 
-    for(size_t i = 0; i < server.config->run_count; i++) {
+    for(size_t i = 0; i < array_len(server.config->run); i++) {
         run_cmd(server.config->run[i]);
     }
 

@@ -107,7 +107,6 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
     wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }
 
-// todo: check if this can create inifite loop
 struct mwc_view *
 popup_get_root_parent(struct mwc_popup *popup) {
     struct wlr_scene_tree *tree = popup->scene_tree;

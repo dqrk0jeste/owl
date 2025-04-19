@@ -163,8 +163,7 @@ struct mwc_config {
     struct fx_animation_curve *animation_curve;
 
     // run on startup
-    char *run[64];
-    size_t run_count;
+    char **run;
 
     // extracted
     uint32_t toplevel_minimum_width, toplevel_minimum_height;

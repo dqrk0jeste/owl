@@ -307,7 +307,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         return;
     }
 
-    // todo: extract this logic
     if(toplevel == workspace->fullscreen_toplevel) {
         workspace->fullscreen_toplevel = NULL;
         layers_under_fullscreen_set_enabled(workspace->output, true);
@@ -503,9 +502,9 @@ cursor_jump_focused_toplevel(void) {
     struct mwc_toplevel *toplevel = server.focused_toplevel;
     if(toplevel == NULL) return;
 
-    // todo: investigate this
-    wlr_cursor_warp(server.cursor, NULL, toplevel->scene_tree->node.x + toplevel->deco_box.width / 2.0,
-            toplevel->scene_tree->node.y + toplevel->deco_box.height / 2.0);
+    // jump to the middpoint of the toplevel
+    wlr_cursor_warp(server.cursor, NULL, toplevel->deco_box.x + toplevel->deco_box.width / 2.0,
+            toplevel->deco_box.y + toplevel->deco_box.height / 2.0);
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -596,6 +595,42 @@ unfocus_focused_toplevel(void) {
     decoration_set_active(toplevel->decoration, false);
 }
 
+static void
+toplevel_raise_children_above(struct mwc_toplevel *toplevel) {
+    struct mwc_toplevel *iter;
+    wl_list_for_each(iter, &toplevel->workspace->floating_toplevels, link) {
+        if(!iter->fullscreen && iter->xdg_toplevel->parent == toplevel->xdg_toplevel) {
+            // if its a child of this toplevel we raise it above this one, which will recursively raise all of its
+            // children above itself
+            wlr_scene_node_place_above(&iter->scene_tree->node, &toplevel->scene_tree->node);
+            toplevel_raise_children_above(iter);
+        }
+    }
+}
+
+static void
+toplevel_raise_to_top(struct mwc_toplevel *toplevel) {
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+
+    if(toplevel->fullscreen || !toplevel->floating) return;
+
+    // if floating we raise its parent (and parents parent etc)
+    struct wlr_xdg_toplevel *parent = toplevel->xdg_toplevel->parent;
+    struct mwc_toplevel *last_parent = toplevel;
+    while(parent != NULL) {
+        struct mwc_toplevel *this = parent->base->data;
+        if(!this->fullscreen && this->floating) {
+            wlr_scene_node_place_below(&this->scene_tree->node, &last_parent->scene_tree->node);
+        }
+
+        parent = parent->parent;
+        last_parent = this;
+    }
+
+    // and also raise its children above this one
+    toplevel_raise_children_above(toplevel);
+}
+
 void
 focus_toplevel(struct mwc_toplevel *toplevel) {
     if(server.lock != NULL || server.exclusive || server.grabbed_toplevel != NULL ||
@@ -624,7 +659,8 @@ focus_toplevel(struct mwc_toplevel *toplevel) {
     }
 
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+
+    toplevel_raise_to_top(toplevel);
 
     struct wlr_seat *seat = server.seat;
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);

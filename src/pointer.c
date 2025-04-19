@@ -264,8 +264,7 @@ cursor_stop_move_resize(void) {
             wl_list_remove(&toplevel->link);
             wl_list_insert(primary_output->active_workspace->floating_toplevels.next, &toplevel->link);
         }
-    } else if(server.cursor_mode ==
-            MWC_CURSOR_MOVE) {  // this is redundant since we cannot resize tiled toplevels (yet)
+    } else if(server.cursor_mode == MWC_CURSOR_MOVE) {
         layout_insert_toplevel_at(toplevel, server.cursor->x, server.cursor->y);
     }
 
@@ -414,7 +413,7 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
 
     // we get currently active modifiers and lookup pointer keybinds
     uint32_t modifiers =
-            server.last_used_keyboard ? wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard) : 0;
+            server.last_used_keyboard != NULL ? wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard) : 0;
 
     struct keybind *k;
     wl_list_for_each(k, &server.config->pointer_keybinds, link) {
@@ -437,10 +436,9 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);
 
     // we need to drop the toplevel if it was grabbed on released event
-    // todo: maybe we should check for button 272 here?
     // todo: maybe also move this above keybinds so they cannot interup client driven move resize?
-    if(event->state == WL_POINTER_BUTTON_STATE_RELEASED && server.cursor_mode != MWC_CURSOR_PASSTHROUGH &&
-            server.client_driven_move_resize) {
+    if(event->button == 272 && event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
+            server.cursor_mode != MWC_CURSOR_PASSTHROUGH && server.client_driven_move_resize) {
         cursor_stop_move_resize();
         return;
     }
@@ -452,12 +450,13 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     if(view == NULL) return;
 
     // todo: add server driven resize on border here
-    if(view->type == MWC_VIEW_TITLEBAR_CLOSE_BUTTON && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+    if(view->type == MWC_VIEW_TITLEBAR_CLOSE_BUTTON && event->button == 272 &&
+            event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
         if(toplevel != NULL) {
             wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
         }
-    } else if((view->type == MWC_VIEW_TITLEBAR_BASE || view->type == MWC_VIEW_TITLEBAR_TITLE) &&
+    } else if((view->type == MWC_VIEW_TITLEBAR_BASE || view->type == MWC_VIEW_TITLEBAR_TITLE) && event->button == 272 &&
             event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
         if(toplevel != NULL) {

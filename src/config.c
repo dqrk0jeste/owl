@@ -18,6 +18,7 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
+#include "array.h"
 #include "keybinds.h"
 #include "keyboard.h"
 #include "layer_surface.h"
@@ -33,7 +34,7 @@
 
 // this is a helper for logging the config errors
 static uint32_t line_number;
-#define LOG_ERROR(msg, ...) wlr_log(WLR_ERROR, "config: line %u: " msg, line_number, ##__VA_ARGS__)
+#define ERROR(msg, ...) wlr_log(WLR_ERROR, "config: line %u: " msg, line_number, ##__VA_ARGS__)
 
 // assumes valid hex
 static uint32_t
@@ -82,7 +83,7 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
     } else {
         regex_t compiled;
         if(regcomp(&compiled, regex, REG_EXTENDED) != 0) {
-            LOG_ERROR("%s is not a valid regex", regex);
+            ERROR("%s is not a valid regex", regex);
             regfree(&compiled);
             return false;
         }
@@ -103,7 +104,7 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
         layer_rule->condition = condition;
         wl_list_insert(&c->layer_rules.blur_ignore_transparent, &layer_rule->link);
     } else {
-        LOG_ERROR("invalid layer rule %s", predicate);
+        ERROR("invalid layer rule %s", predicate);
         if(condition.has) {
             regfree(&condition.regex);
         }
@@ -122,7 +123,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
     } else {
         regex_t compiled;
         if(regcomp(&compiled, app_id_regex, REG_EXTENDED) != 0) {
-            LOG_ERROR("%s is not a valid regex", app_id_regex);
+            ERROR("`%s` is not a valid regex", app_id_regex);
             regfree(&compiled);
             return false;
         }
@@ -135,7 +136,7 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
     } else {
         regex_t compiled;
         if(regcomp(&compiled, title_regex, REG_EXTENDED) != 0) {
-            LOG_ERROR("%s is not a valid regex", title_regex);
+            ERROR("`%s` is not a valid regex", title_regex);
             regfree(&compiled);
             return false;
         }
@@ -148,11 +149,8 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         window_rule->condition = condition;
         wl_list_insert(&c->window_rules.floating, &window_rule->link);
     } else if(strcmp(predicate, "size") == 0) {
-        if(arg_count < 2) {
-            LOG_ERROR("invalid args to window_rule `size`, expected 2 and got %zu", arg_count);
-            goto invalid;
-            return false;
-        }
+        if(arg_count < 2) goto invalid;
+
         struct window_rule_size *window_rule = calloc(1, sizeof(*window_rule));
         window_rule->condition = condition;
 
@@ -171,11 +169,8 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
 
         wl_list_insert(&c->window_rules.size, &window_rule->link);
     } else if(strcmp(predicate, "opacity") == 0) {
-        if(arg_count < 1) {
-            LOG_ERROR("invalid args to window_rule `opacity`, expected 1 or 2 and got %zu", arg_count);
-            goto invalid;
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
+
         struct window_rule_opacity *window_rule = calloc(1, sizeof(*window_rule));
         window_rule->condition = condition;
 
@@ -204,13 +199,15 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
 
         wl_list_insert(&c->window_rules.no_blur, &window_rule->link);
     } else {
-        LOG_ERROR("invalid window_rule %s", predicate);
-        goto invalid;
+        ERROR("invalid window_rule `%s`", predicate);
+        goto cleanup;
     }
 
     return true;
 
 invalid:
+    ERROR("invalid args to window_rule `%s`", predicate);
+cleanup:
     if(condition.has_app_id_regex) {
         regfree(&condition.app_id_regex);
     }
@@ -345,7 +342,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         } else {
             key_sym = xkb_keysym_from_name(key, 0);
             if(key_sym == 0) {
-                LOG_ERROR("key %s doesn't seem right", key);
+                ERROR("key `%s` doesn't seem right", key);
                 return false;
             }
         }
@@ -363,11 +360,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
     if(strcmp(action, "exit") == 0) {
         k->action = keybind_stop_server;
     } else if(strcmp(action, "run") == 0) {
-        if(arg_count < 1) {
-            LOG_ERROR("invalid args to keybind `run`, expected 1 and got %zu", arg_count);
-            free(k);
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
 
         k->action = keybind_run;
         k->args = strdup(args[0]);
@@ -382,11 +375,7 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->action = keybind_move_focused_toplevel;
         k->stop = keybind_stop_move_focused_toplevel;
     } else if(strcmp(action, "move_focus") == 0) {
-        if(arg_count < 1) {
-            LOG_ERROR("invalid args to `move_focus`, expected 1 and got %zu", arg_count);
-            free(k);
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
 
         enum mwc_direction direction;
         if(strcmp(args[0], "up") == 0) {
@@ -398,20 +387,13 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         } else if(strcmp(args[0], "right") == 0) {
             direction = MWC_RIGHT;
         } else {
-            LOG_ERROR("invalid args to `move_focus`, expected one of `up`, `down`, `left` or `right`, but got %s",
-                    args[0]);
-            free(k);
-            return false;
+            goto invalid;
         }
 
         k->action = keybind_move_focus;
         k->args = (void *)direction;
     } else if(strcmp(action, "swap") == 0) {
-        if(arg_count < 1) {
-            LOG_ERROR("invalid args to `swap`, expected 1 and got %zu", arg_count);
-            free(k);
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
 
         enum mwc_direction direction;
         if(strcmp(args[0], "up") == 0) {
@@ -423,31 +405,23 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         } else if(strcmp(args[0], "right") == 0) {
             direction = MWC_RIGHT;
         } else {
-            LOG_ERROR("invalid args to `swap`, expected one of `up`, `down`, `left` or `right`, but got %s", args[0]);
-            free(k);
-            return false;
+            goto invalid;
         }
 
         k->action = keybind_swap_focused_toplevel;
         k->args = (void *)direction;
     } else if(strcmp(action, "workspace") == 0) {
-        if(arg_count < 1) {
-            LOG_ERROR("invalid args to `workspace`, expected 1 and got %zu", arg_count);
-            free(k);
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
+
         k->action = keybind_change_workspace;
-        /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
+        // this is going to be overriden by the actual workspace that is needed for change_workspace()
         k->args = (void *)(uintptr_t)atoi(args[0]);
         k->initialized = false;
     } else if(strcmp(action, "move_to_workspace") == 0) {
-        if(arg_count < 1) {
-            LOG_ERROR("invalid args to `move_to_workspace`, expected 1 and got %zu", arg_count);
-            free(k);
-            return false;
-        }
+        if(arg_count < 1) goto invalid;
+
         k->action = keybind_move_focused_toplevel_to_workspace;
-        /* this is going to be overriden by the actual workspace that is needed for change_workspace() */
+        // this is going to be overriden by the actual workspace that is needed for change_workspace()
         k->args = (void *)(uintptr_t)atoi(args[0]);
         k->initialized = false;
     } else if(strcmp(action, "next_workspace") == 0) {
@@ -457,9 +431,8 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
     } else if(strcmp(action, "toggle_fullscreen") == 0) {
         k->action = keybind_focused_toplevel_toggle_fullscreen;
     } else {
-        LOG_ERROR("invalid keybind action `%s`", action);
-        free(k);
-        return false;
+        ERROR("invalid keybind action `%s`", action);
+        goto cleanup;
     }
 
     if(pointer) {
@@ -467,7 +440,14 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
     } else {
         wl_list_insert(&c->keybinds, &k->link);
     }
+
     return true;
+
+invalid:
+    ERROR("invalid args to keybind `%s`", action);
+cleanup:
+    free(k);
+    return false;
 }
 
 static void
@@ -612,12 +592,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     } else if(strcmp(keyword, "run") == 0) {
         if(arg_count < 1) goto invalid;
 
-        if(c->run_count > 64) {
-            wlr_log(WLR_ERROR, "do you really need 65 runs?");
-            return false;
-        }
-        c->run[c->run_count] = strdup(args[0]);
-        c->run_count++;
+        array_push(&c->run, strdup(args[0]));
     } else if(strcmp(keyword, "keybind") == 0) {
         if(arg_count < 3) goto invalid;
 
@@ -834,10 +809,10 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
 
         c->font = fcft_from_name(1, (const char **)&args[0], NULL);
         if(c->font == NULL) {
-            LOG_ERROR("error while loading a font `%s`, titles wont be drawn", args[0]);
+            ERROR("error while loading a font `%s`, titles wont be drawn", args[0]);
         }
     } else {
-        LOG_ERROR("invalid keyword `%s`", keyword);
+        ERROR("invalid keyword `%s`", keyword);
         free(keyword);
         config_free_args(args, arg_count);
         return false;
@@ -848,7 +823,7 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
     return true;
 
 invalid:
-    LOG_ERROR("invalid args to `%s`", keyword);
+    ERROR("invalid args to `%s`", keyword);
     free(keyword);
     config_free_args(args, arg_count);
     return false;
@@ -1116,6 +1091,8 @@ config_load() {
     wl_list_init(&c->layer_rules.blur_xray);
     wl_list_init(&c->layer_rules.blur_ignore_transparent);
 
+    array_init(&c->run);
+
     // you aint gonna have lines longer than 1kB
     char line_buffer[1024] = {0};
     char *keyword, **args;
@@ -1269,9 +1246,11 @@ config_destroy(struct mwc_config *c) {
 
     fx_animation_curve_destroy(c->animation_curve);
 
-    for(size_t i = 0; i < c->run_count; i++) {
+    for(size_t i = 0; i < array_len(c->run); i++) {
         free(c->run[i]);
     }
+
+    array_destroy(&c->run);
 
     free(c);
 }
@@ -1313,11 +1292,10 @@ config_reload() {
     }
 
     // since we dont touch workspaces when reloading we destroy the new one and just patch it with old one
-    // todo: this does not seem needed, so maybe just dont do it? keep for now
-    struct workspace_config *wc, *wc_temp;
-    wl_list_for_each_safe(wc, wc_temp, &c->workspaces, link) {
-        free(wc->output);
-        free(wc);
+    struct workspace_config *iter_workspace_config, *tmp_workspace_config;
+    wl_list_for_each_safe(iter_workspace_config, tmp_workspace_config, &c->workspaces, link) {
+        free(iter_workspace_config->output);
+        free(iter_workspace_config);
     }
     c->workspaces = server.config->workspaces;
 

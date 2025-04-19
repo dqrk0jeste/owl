@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <drm_fourcc.h>
 #include <fcft/fcft.h>
-#include <locale.h>
 #include <pixman.h>
 #include <stdbool.h>
 #include <stdint.h>

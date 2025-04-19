@@ -258,10 +258,6 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     layer_surface->wlr_layer_surface = wlr_layer_surface;
     wlr_layer_surface->data = layer_surface;
 
-    // todo: rewrite this
-    // layer_surface->something.type = MWC_LAYER_SURFACE;
-    // layer_surface->something.layer_surface = layer_surface;
-
     if(layer_surface->wlr_layer_surface->output == NULL) {
         // we give it currently active output
         layer_surface->wlr_layer_surface->output = server.active_workspace->output->wlr_output;

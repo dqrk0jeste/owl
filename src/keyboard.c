@@ -1,15 +1,15 @@
 #include "keyboard.h"
 
-#include "keybinds.h"
-#include "mwc.h"
-#include "config.h"
-
+#include <libinput.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
-#include <libinput.h>
 #include <xkbcommon/xkbcommon.h>
+
+#include "config.h"
+#include "keybinds.h"
+#include "mwc.h"
 
 extern struct mwc_server server;
 
@@ -78,13 +78,12 @@ keyboard_configure(struct mwc_keyboard *keyboard) {
     if(context == NULL) return false;
 
     struct xkb_rule_names rule_names = {
-        .layout = server.config->keymap_layouts,
-        .variant = server.config->keymap_variants,
-        .options = server.config->keymap_options,
+            .layout = server.config->keymap_layouts,
+            .variant = server.config->keymap_variants,
+            .options = server.config->keymap_options,
     };
 
-    struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &rule_names,
-                                                          XKB_KEYMAP_COMPILE_NO_FLAGS);
+    struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &rule_names, XKB_KEYMAP_COMPILE_NO_FLAGS);
     if(keymap == NULL) {
         wlr_log(WLR_ERROR, "could not apply the desired configuration to the keyboard");
         keymap = xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -104,8 +103,7 @@ keyboard_configure(struct mwc_keyboard *keyboard) {
 
     keyboard->empty = xkb_state_new(keymap);
 
-    wlr_keyboard_set_repeat_info(keyboard->wlr_keyboard, server.config->keyboard_rate,
-                                 server.config->keyboard_delay);
+    wlr_keyboard_set_repeat_info(keyboard->wlr_keyboard, server.config->keyboard_rate, server.config->keyboard_delay);
 
     return true;
 }
@@ -134,4 +132,3 @@ server_handle_new_keyboard(struct wlr_input_device *device) {
         server.last_used_keyboard = keyboard;
     }
 }
-
