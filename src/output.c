@@ -100,6 +100,7 @@ workspace_create_for_output(struct mwc_output *output, uint32_t index) {
 
     workspace->output = output;
     workspace->index = index;
+    workspace->master_ratio = server.config->master_ratio;
     workspace->original_output = strdup(output->wlr_output->name);
 
     // we attach the keybinds that the config specified
@@ -150,8 +151,7 @@ output_assign_workspaces(struct mwc_output *output) {
 
 static void
 output_handle_frame(struct wl_listener *listener, void *data) {
-    // this function is called every time an output is ready to display a frame, generally at the output's refresh
-    // rate
+    // this function is called every time an output is ready to display a frame
     struct mwc_output *output = wl_container_of(listener, output, frame);
 
     output_draw(output);

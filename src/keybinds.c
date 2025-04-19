@@ -436,6 +436,22 @@ keybind_focused_toplevel_toggle_fullscreen(void *data) {
     }
 }
 
+void
+keybind_increase_master_ratio(void *data) {
+    double delta = (uintptr_t)data / 100.0;
+    struct mwc_workspace *workspace = server.active_workspace;
+
+    workspace_set_master_ratio(workspace, workspace->master_ratio + delta);
+}
+
+void
+keybind_decrease_master_ratio(void *data) {
+    double delta = (uintptr_t)data / 100.0;
+    struct mwc_workspace *workspace = server.active_workspace;
+
+    workspace_set_master_ratio(workspace, workspace->master_ratio - delta);
+}
+
 bool
 server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state) {
     if(server.lock != NULL) return false;

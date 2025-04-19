@@ -19,6 +19,7 @@
 #include <wlr/util/log.h>
 
 #include "array.h"
+#include "helpers.h"
 #include "keybinds.h"
 #include "keyboard.h"
 #include "layer_surface.h"
@@ -29,8 +30,6 @@
 #include "rules.h"
 #include "toplevel.h"
 #include "workspace.h"
-
-#define clamp(v, a, b) (max((a), min((v), (b))))
 
 // this is a helper for logging the config errors
 static uint32_t line_number;
@@ -430,6 +429,16 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         k->action = keybind_prev_workspace;
     } else if(strcmp(action, "toggle_fullscreen") == 0) {
         k->action = keybind_focused_toplevel_toggle_fullscreen;
+    } else if(strcmp(action, "increase_master_ratio") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        k->action = keybind_increase_master_ratio;
+        k->args = (void *)(uintptr_t)(atof(args[0]) * 100);
+    } else if(strcmp(action, "decrease_master_ratio") == 0) {
+        if(arg_count < 1) goto invalid;
+
+        k->action = keybind_decrease_master_ratio;
+        k->args = (void *)(uintptr_t)(atof(args[0]) * 100);
     } else {
         ERROR("invalid keybind action `%s`", action);
         goto cleanup;
@@ -971,19 +980,19 @@ config_set_default_needed_params(struct mwc_config *c) {
     // not specified in the config. we set their values to some default value
     if(c->keyboard_rate == 0) {
         c->keyboard_rate = 150;
-        wlr_log(WLR_INFO, "keyboard_rate not specified. using default %ud", c->keyboard_rate);
+        wlr_log(WLR_INFO, "keyboard_rate not specified. using default %u", c->keyboard_rate);
     }
     if(c->keyboard_delay == 0) {
         c->keyboard_delay = 50;
-        wlr_log(WLR_INFO, "keyboard_delay not specified. using default %ud", c->keyboard_delay);
+        wlr_log(WLR_INFO, "keyboard_delay not specified. using default %u", c->keyboard_delay);
     }
     if(c->cursor_size == 0) {
         c->cursor_size = 24;
-        wlr_log(WLR_INFO, "cursor_size not specified. using default %ud", c->cursor_size);
+        wlr_log(WLR_INFO, "cursor_size not specified. using default %u", c->cursor_size);
     }
     if(c->master_count == 0) {
         c->master_count = 1;
-        wlr_log(WLR_INFO, "master_count not specified. using default %lf", c->master_ratio);
+        wlr_log(WLR_INFO, "master_count not specified. using default %u", c->master_count);
     }
     if(c->master_ratio == 0) {
         // here we evenly space toplevels if there is no master_ratio specified
@@ -992,7 +1001,7 @@ config_set_default_needed_params(struct mwc_config *c) {
     }
     if(c->animations && c->animation_duration == 0) {
         c->animation_duration = 500;
-        wlr_log(WLR_INFO, "animation_duration not specified. using default %ud", c->animation_duration);
+        wlr_log(WLR_INFO, "animation_duration not specified. using default %u", c->animation_duration);
     }
     if(c->animations && c->animation_curve == NULL) {
         c->animation_curve = fx_animation_curve_create((double[4]){0});

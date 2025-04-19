@@ -154,14 +154,12 @@ toplevel_handle_initial_commit(struct mwc_toplevel *toplevel) {
             toplevel->should_choose_size = true;
         }
     } else {
-        struct mwc_output *output = toplevel->workspace->output;
-
         uint32_t master_count = wl_list_length(&toplevel->workspace->masters);
         uint32_t slave_count = wl_list_length(&toplevel->workspace->slaves);
         if(master_count < server.config->master_count) {
-            layout_get_masters_container_size(output, master_count + 1, slave_count, &width, &height);
+            layout_get_masters_container_size(toplevel->workspace, master_count + 1, slave_count, &width, &height);
         } else {
-            layout_get_slaves_container_size(output, slave_count + 1, &width, &height);
+            layout_get_slaves_container_size(toplevel->workspace, slave_count + 1, &width, &height);
         }
         strip_decoration_of_size(&width, &height, toplevel->has_border, toplevel->has_titlebar);
     }

@@ -236,3 +236,10 @@ workspace_toplevels_set_enabled(struct mwc_workspace *workspace, bool enabled) {
         wlr_scene_node_set_enabled(&iter->scene_tree->node, enabled);
     }
 }
+
+void
+workspace_set_master_ratio(struct mwc_workspace *workspace, double master_ratio) {
+    workspace->master_ratio = clamp(master_ratio, 0.0, 1.0);
+
+    layout_configure(workspace);
+}

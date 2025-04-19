@@ -1,8 +1,8 @@
 #pragma once
 
-#include "keyboard.h"
-
 #include <wayland-server-core.h>
+
+#include "keyboard.h"
 
 typedef void (*keybind_action_func_t)(void *);
 
@@ -18,12 +18,7 @@ struct keybind {
 };
 
 bool
-server_handle_keybinds(struct mwc_keyboard *keyboard,
-        uint32_t keycode,
-        enum wl_keyboard_key_state state);
-
-bool
-server_handle_mouse_keybinds(uint32_t button, enum wl_pointer_button_state state);
+server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state);
 
 bool
 handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count);
@@ -73,3 +68,8 @@ keybind_focused_toplevel_toggle_floating(void *data);
 void
 keybind_focused_toplevel_toggle_fullscreen(void *data);
 
+void
+keybind_increase_master_ratio(void *data);
+
+void
+keybind_decrease_master_ratio(void *data);

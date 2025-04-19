@@ -19,6 +19,8 @@ struct mwc_workspace {
     // if that output is reenabled
     char *original_output;
 
+    double master_ratio;
+
     struct wl_list masters;
     struct wl_list slaves;
     struct wl_list floating_toplevels;
@@ -36,3 +38,6 @@ workspace_find_closest_floating_toplevel(struct mwc_workspace *workspace, enum m
 
 void
 workspace_toplevels_set_enabled(struct mwc_workspace *workspace, bool enabled);
+
+void
+workspace_set_master_ratio(struct mwc_workspace *workspace, double master_ratio);

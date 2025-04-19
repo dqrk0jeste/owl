@@ -12,13 +12,13 @@
 extern struct mwc_server server;
 
 void
-layout_get_masters_container_size(struct mwc_output *output, uint32_t master_count, uint32_t slave_count,
+layout_get_masters_container_size(struct mwc_workspace *workspace, uint32_t master_count, uint32_t slave_count,
         uint32_t *width, uint32_t *height) {
     uint32_t outer_gaps = server.config->outer_gaps;
     uint32_t inner_gaps = server.config->inner_gaps;
-    double master_ratio = server.config->master_ratio;
+    double master_ratio = workspace->master_ratio;
 
-    struct wlr_box output_box = output->usable_area;
+    struct wlr_box output_box = workspace->output->usable_area;
 
     uint32_t total_width = slave_count > 0 ? output_box.width * master_ratio : output_box.width;
 
@@ -34,12 +34,13 @@ layout_get_masters_container_size(struct mwc_output *output, uint32_t master_cou
 }
 
 void
-layout_get_slaves_container_size(struct mwc_output *output, uint32_t slave_count, uint32_t *width, uint32_t *height) {
+layout_get_slaves_container_size(struct mwc_workspace *workspace, uint32_t slave_count, uint32_t *width,
+        uint32_t *height) {
     uint32_t outer_gaps = server.config->outer_gaps;
     uint32_t inner_gaps = server.config->inner_gaps;
-    double master_ratio = server.config->master_ratio;
+    double master_ratio = workspace->master_ratio;
 
-    struct wlr_box output_box = output->usable_area;
+    struct wlr_box output_box = workspace->output->usable_area;
 
     uint32_t total_gaps = outer_gaps  // top outer gaps
             + (slave_count - 1) * 2 * inner_gaps  // inner gaps between slaves
@@ -84,7 +85,7 @@ layout_configure(struct mwc_workspace *workspace) {
     uint32_t master_count = wl_list_length(&workspace->masters);
 
     uint32_t width, height;
-    layout_get_masters_container_size(output, master_count, slave_count, &width, &height);
+    layout_get_masters_container_size(workspace, master_count, slave_count, &width, &height);
 
     struct wlr_box box = {.width = width, .height = height};
 
@@ -100,14 +101,14 @@ layout_configure(struct mwc_workspace *workspace) {
 
     if(slave_count == 0) return;
 
-    layout_get_slaves_container_size(workspace->output, slave_count, &width, &height);
+    layout_get_slaves_container_size(workspace, slave_count, &width, &height);
 
     box.width = width;
     box.height = height;
 
     i = 0;
     wl_list_for_each(toplevel, &workspace->slaves, link) {
-        box.x = output->usable_area.x + output->usable_area.width * server.config->master_ratio + inner_gaps;
+        box.x = output->usable_area.x + output->usable_area.width * workspace->master_ratio + inner_gaps;
         box.y = output->usable_area.y + outer_gaps + height * i + inner_gaps * 2 * i;
 
         toplevel_set_state(toplevel, box);

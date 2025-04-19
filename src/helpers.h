@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <wlr/util/box.h>
 
+#define clamp(v, a, b) (max((a), min((v), (b))))
+
 struct mwc_color {
     uint8_t r, g, b, a;
 };
