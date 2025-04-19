@@ -135,6 +135,11 @@ toplevel_recheck_window_rules(struct mwc_toplevel *toplevel);
 uint32_t
 toplevel_get_decoration_types(struct mwc_toplevel *toplevel);
 
+// raise this toplevel and its parents/children to the top of its scene graph
+// note: toplevel must be floating
+void
+toplevel_raise_to_top(struct mwc_toplevel *toplevel);
+
 void
 xdg_activation_handle_new_token(struct wl_listener *listener, void *data);
 

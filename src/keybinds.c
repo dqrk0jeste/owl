@@ -1,22 +1,21 @@
-#include <scenefx/types/wlr_scene.h>
-
 #include "keybinds.h"
 
-#include "config.h"
-#include "helpers.h"
-#include "mwc.h"
-#include "pointer.h"
-#include "toplevel.h"
-#include "workspace.h"
-#include "layout.h"
-
+#include <scenefx/types/wlr_scene.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <wayland-util.h>
 #include <wlr/backend/session.h>
-#include <wlr/xcursor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/xcursor.h>
+
+#include "config.h"
+#include "helpers.h"
+#include "layout.h"
+#include "mwc.h"
+#include "pointer.h"
+#include "toplevel.h"
+#include "workspace.h"
 
 extern struct mwc_server server;
 
@@ -158,9 +157,8 @@ keybind_move_focus(void *data) {
 
     // if no toplevel has keyboard focus then get the output the pointer is on and try from there
     if(toplevel == NULL) {
-        struct wlr_output *wlr_output = wlr_output_layout_output_at(server.output_layout,
-                                                                    server.cursor->x,
-                                                                    server.cursor->y);
+        struct wlr_output *wlr_output =
+                wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
         struct mwc_output *output = wlr_output->data;
         struct mwc_output *relative_output = output_get_relative(output, direction);
         if(relative_output != NULL) {
@@ -240,8 +238,7 @@ keybind_move_focus(void *data) {
     // only case left is that the toplevel is a slave
     switch(direction) {
         case MWC_LEFT: {
-            struct mwc_toplevel *last_master =
-                wl_container_of(workspace->masters.prev, last_master, link);
+            struct mwc_toplevel *last_master = wl_container_of(workspace->masters.prev, last_master, link);
             focus_toplevel(last_master);
             cursor_jump_focused_toplevel();
             return;
@@ -281,7 +278,6 @@ keybind_move_focus(void *data) {
     }
 }
 
-
 void
 keybind_swap_focused_toplevel(void *data) {
     uint64_t direction = (uint64_t)data;
@@ -293,8 +289,7 @@ keybind_swap_focused_toplevel(void *data) {
     struct mwc_output *relative_output = output_get_relative(workspace->output, direction);
 
     if(toplevel->floating || toplevel->fullscreen) {
-        if(relative_output != NULL
-                && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+        if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
             toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
         }
         return;
@@ -308,8 +303,7 @@ keybind_swap_focused_toplevel(void *data) {
                 if(next == &workspace->masters) {
                     next = workspace->slaves.prev;
                     if(next == &workspace->slaves) {
-                        if(relative_output != NULL
-                            && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+                        if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
                             toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
                         }
                         return;
@@ -322,8 +316,7 @@ keybind_swap_focused_toplevel(void *data) {
             case MWC_LEFT: {
                 next = toplevel->link.prev;
                 if(next == &workspace->masters) {
-                    if(relative_output != NULL
-                        && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+                    if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
                         toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
                     }
                     return;
@@ -333,10 +326,8 @@ keybind_swap_focused_toplevel(void *data) {
                 return;
             }
             default: {
-                struct mwc_output *relative_output =
-                    output_get_relative(workspace->output, direction);
-                if(relative_output != NULL
-                    && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+                struct mwc_output *relative_output = output_get_relative(workspace->output, direction);
+                if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
                     toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
                 }
                 return;
@@ -346,16 +337,13 @@ keybind_swap_focused_toplevel(void *data) {
 
     switch(direction) {
         case MWC_LEFT: {
-            struct mwc_toplevel *last_master =
-                wl_container_of(workspace->masters.prev, last_master, link);
+            struct mwc_toplevel *last_master = wl_container_of(workspace->masters.prev, last_master, link);
             layout_swap_toplevels(toplevel, last_master);
             return;
         }
         case MWC_RIGHT: {
-            struct mwc_output *relative_output =
-                output_get_relative(workspace->output, direction);
-            if(relative_output != NULL
-                && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+            struct mwc_output *relative_output = output_get_relative(workspace->output, direction);
+            if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
                 toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
             }
             return;
@@ -363,8 +351,7 @@ keybind_swap_focused_toplevel(void *data) {
         case MWC_UP: {
             next = toplevel->link.prev;
             if(next == &workspace->slaves) {
-                if(relative_output != NULL
-                    && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+                if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
                     toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
                 }
                 return;
@@ -376,8 +363,7 @@ keybind_swap_focused_toplevel(void *data) {
         case MWC_DOWN: {
             next = toplevel->link.next;
             if(next == &workspace->slaves) {
-                if(relative_output != NULL
-                    && relative_output->active_workspace->fullscreen_toplevel == NULL) {
+                if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
                     toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
                 }
                 return;
@@ -405,7 +391,6 @@ keybind_focused_toplevel_toggle_floating(void *data) {
         }
 
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
-        wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
         layout_configure(toplevel->workspace);
         return;
@@ -434,7 +419,7 @@ keybind_focused_toplevel_toggle_floating(void *data) {
     }
 
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+    toplevel_raise_to_top(toplevel);
 
     layout_configure(toplevel->workspace);
 }
@@ -452,8 +437,7 @@ keybind_focused_toplevel_toggle_fullscreen(void *data) {
 }
 
 bool
-server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode,
-                       enum wl_keyboard_key_state state) {
+server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state) {
     if(server.lock != NULL) return false;
 
     uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
@@ -473,15 +457,13 @@ server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode,
         wl_list_for_each(k, &server.config->keybinds, link) {
             if(!k->initialized) continue;
 
-            if(k->active && k->stop && syms[i] == k->key
-                && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+            if(k->active && k->stop && syms[i] == k->key && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
                 k->active = false;
                 k->stop(k->args);
                 return true;
             }
 
-            if(modifiers == k->modifiers && syms[i] == k->key
-                && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+            if(modifiers == k->modifiers && syms[i] == k->key && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
                 k->active = true;
                 k->action(k->args);
                 return true;
@@ -503,4 +485,3 @@ handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
     }
     return false;
 }
-

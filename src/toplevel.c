@@ -512,6 +512,42 @@ cursor_jump_focused_toplevel(void) {
     pointer_handle_focus(timespec_to_ms(&now), false);
 }
 
+static void
+toplevel_raise_children_above(struct mwc_toplevel *toplevel) {
+    struct mwc_toplevel *iter;
+    wl_list_for_each(iter, &toplevel->workspace->floating_toplevels, link) {
+        if(!iter->fullscreen && iter->xdg_toplevel->parent == toplevel->xdg_toplevel) {
+            // if its a child of this toplevel we raise it above this one, which will recursively raise all of its
+            // children above itself
+            wlr_scene_node_place_above(&iter->scene_tree->node, &toplevel->scene_tree->node);
+            toplevel_raise_children_above(iter);
+        }
+    }
+}
+
+void
+toplevel_raise_to_top(struct mwc_toplevel *toplevel) {
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+
+    if(toplevel->fullscreen || !toplevel->floating) return;
+
+    // if floating we raise its parent (and parents parent etc)
+    struct wlr_xdg_toplevel *parent = toplevel->xdg_toplevel->parent;
+    struct mwc_toplevel *last_parent = toplevel;
+    while(parent != NULL) {
+        struct mwc_toplevel *this = parent->base->data;
+        if(!this->fullscreen && this->floating) {
+            wlr_scene_node_place_below(&this->scene_tree->node, &last_parent->scene_tree->node);
+        }
+
+        parent = parent->parent;
+        last_parent = this;
+    }
+
+    // and also raise its children above this one
+    toplevel_raise_children_above(toplevel);
+}
+
 void
 toplevel_set_fullscreen(struct mwc_toplevel *toplevel) {
     if(!toplevel->xdg_toplevel->base->surface->mapped) return;
@@ -564,6 +600,8 @@ toplevel_unset_fullscreen(struct mwc_toplevel *toplevel) {
     if(toplevel->floating) {
         toplevel_set_state(toplevel, toplevel->prev_deco_box);
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
+        // we restack the children/parents
+        toplevel_raise_to_top(toplevel);
     } else {
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
     }
@@ -593,42 +631,6 @@ unfocus_focused_toplevel(void) {
     wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
 
     decoration_set_active(toplevel->decoration, false);
-}
-
-static void
-toplevel_raise_children_above(struct mwc_toplevel *toplevel) {
-    struct mwc_toplevel *iter;
-    wl_list_for_each(iter, &toplevel->workspace->floating_toplevels, link) {
-        if(!iter->fullscreen && iter->xdg_toplevel->parent == toplevel->xdg_toplevel) {
-            // if its a child of this toplevel we raise it above this one, which will recursively raise all of its
-            // children above itself
-            wlr_scene_node_place_above(&iter->scene_tree->node, &toplevel->scene_tree->node);
-            toplevel_raise_children_above(iter);
-        }
-    }
-}
-
-static void
-toplevel_raise_to_top(struct mwc_toplevel *toplevel) {
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-
-    if(toplevel->fullscreen || !toplevel->floating) return;
-
-    // if floating we raise its parent (and parents parent etc)
-    struct wlr_xdg_toplevel *parent = toplevel->xdg_toplevel->parent;
-    struct mwc_toplevel *last_parent = toplevel;
-    while(parent != NULL) {
-        struct mwc_toplevel *this = parent->base->data;
-        if(!this->fullscreen && this->floating) {
-            wlr_scene_node_place_below(&this->scene_tree->node, &last_parent->scene_tree->node);
-        }
-
-        parent = parent->parent;
-        last_parent = this;
-    }
-
-    // and also raise its children above this one
-    toplevel_raise_children_above(toplevel);
 }
 
 void
