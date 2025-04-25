@@ -70,6 +70,9 @@ struct toplevel {
     struct wl_listener set_title;
 };
 
+inline bool
+toplevel_is_tiled(struct toplevel *toplevel);
+
 // looks up window rules and returns true if found, with the size in `*width` and `*height`, else return false
 bool
 toplevel_get_floating_deco_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height);
@@ -99,10 +102,10 @@ void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
 
 void
-toplevel_start_move(struct toplevel *toplevel, bool client_driven);
+toplevel_start_move(struct toplevel *toplevel, bool by_keybind);
 
 void
-toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool client_driven);
+toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind);
 
 void
 cursor_jump_focused_toplevel(void);
@@ -141,6 +144,10 @@ toplevel_recheck_window_rules(struct toplevel *toplevel);
 // returns a bitmask of `enum decoration_type`
 uint32_t
 toplevel_get_decoration_types(struct toplevel *toplevel);
+
+// shorthand to check if the toplevel should have optimized blur or not
+bool
+toplevel_should_have_optimized_blur(struct toplevel *toplevel);
 
 // raise this toplevel and its parents/children to the top of its scene graph
 // note: toplevel must be floating

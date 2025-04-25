@@ -14,6 +14,7 @@
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 
+#include "array.h"
 #include "config.h"
 #include "dnd.h"
 #include "ipc.h"
@@ -111,7 +112,12 @@ grabbed_toplevel_resize(void) {
 
 static void
 master_ratio_resize(void) {
-    workspace_set_master_ratio(server.active_workspace, server.grab_y + (server.cursor->x - server.grab_x));
+    // todo: stop on active workspace change (by keybind or by cursor movement)
+    double moved_relative =
+            (double)(server.cursor->x - server.grab_x) / server.active_workspace->output->usable_area.width;
+
+    double master_ratio = clamp(server.initial_master_ratio + moved_relative, 0.0, 1.0);
+    workspace_set_master_ratio(server.active_workspace, master_ratio);
 }
 
 static void
@@ -188,37 +194,31 @@ pointer_configure(struct pointer *pointer) {
 
     struct libinput_device *device = wlr_libinput_get_device_handle(&pointer->wlr_pointer->base);
     libinput_device_ref(device);
+
     pointer->name = libinput_device_get_name(device);
 
-    enum libinput_config_accel_profile accel;
-    double sensitivity;
-    // we configure accelation and sensitivity of the pointer by
-    // first looking at specific pointer configurations
-    bool found = false;
-    struct pointer_config *p;
-    wl_list_for_each(p, &server.config->pointers, link) {
-        if(strcmp(p->name, pointer->name) == 0) {
-            accel = p->acceleration;
-            sensitivity = p->sensitivity;
-            found = true;
+    enum libinput_config_accel_profile accel = server.config->pointer_acceleration;
+    double sensitivity = server.config->pointer_sensitivity;
+
+    // we override accelation and sensitivity of the pointer if there is a specific configureation
+    for(struct pointer_config *iter = server.config->pointers; iter <= array_last(server.config->pointers); iter++) {
+        if(strcmp(iter->name, pointer->name) == 0) {
+            accel = iter->acceleration;
+            sensitivity = iter->sensitivity;
             break;
         }
     }
 
-    if(!found) {
-        accel = server.config->pointer_acceleration;
-        sensitivity = server.config->pointer_sensitivity;
-    }
-
     if(libinput_device_config_accel_is_available(device)) {
         if(libinput_device_config_accel_set_speed(device, sensitivity) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
-            wlr_log(WLR_ERROR, "applying sensitivity to device '%s' failed", pointer->name);
+            wlr_log(WLR_ERROR, "applying sensitivity to device `%s` failed", pointer->name);
         }
 
-        if(accel) {
+        if(accel != LIBINPUT_CONFIG_ACCEL_PROFILE_NONE) {
             struct libinput_config_accel *accel_config = libinput_config_accel_create(accel);
-            if(libinput_device_config_accel_apply(device, accel_config) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
-                wlr_log(WLR_ERROR, "applying acceleration profile to device '%s' failed", pointer->name);
+            if(accel_config == NULL ||
+                    libinput_device_config_accel_apply(device, accel_config) != LIBINPUT_CONFIG_STATUS_SUCCESS) {
+                wlr_log(WLR_ERROR, "applying acceleration profile to device `%s` failed", pointer->name);
             }
             libinput_config_accel_destroy(accel_config);
         }
@@ -253,37 +253,31 @@ pointer_configure(struct pointer *pointer) {
     return true;
 }
 
-// todo: patch this so it works with resizing of master ratio
 void
 cursor_stop_move_resize(void) {
-    if(server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
-    }
-    // ...
-    // layout_insert_toplevel_at() handler function may call toplevel_set_state() which doesnt animate
-    // state if the toplevel is the same as server.grabbed_toplevel, so we remove it first
-    struct toplevel *toplevel = server.grabbed_toplevel;
-    server.grabbed_toplevel = NULL;
+    if(server.mode == SERVER_MODE_MOVING || server.mode == SERVER_MODE_RESIZING) {
+        // `layout_insert_toplevel_at()` handler function may call `toplevel_set_state()` which doesnt animate state if
+        // the toplevel is the same as `server.grabbed_toplevel`, so we remove it first
+        struct toplevel *toplevel = server.grabbed_toplevel;
+        server.grabbed_toplevel = NULL;
 
-    if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
-        struct output *primary_output = toplevel_get_primary_output(toplevel);
+        if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
+            struct output *primary_output = toplevel_get_primary_output(toplevel);
 
-        // we set this outputs active workspace to toplevel
-        if(server.mode == SERVER_MODE_MOVING) {
+            // we set this outputs active workspace as toplevels workspace
             toplevel->workspace = primary_output->active_workspace;
             wl_list_insert(primary_output->active_workspace->floating.next, &toplevel->link);
-        } else if(server.mode == SERVER_MODE_RESIZING && toplevel->workspace->output != primary_output) {
-            toplevel->workspace = primary_output->active_workspace;
-            wl_list_remove(&toplevel->link);
-            wl_list_insert(primary_output->active_workspace->floating.next, &toplevel->link);
+        } else {
+            // here the only possible mode is moving, so we insert it into the layout
+            layout_insert_toplevel_at(toplevel, server.cursor->x, server.cursor->y);
         }
-    } else if(server.mode == SERVER_MODE_MOVING) {
-        layout_insert_toplevel_at(toplevel, server.cursor->x, server.cursor->y);
     }
 
-    // we reset the cursor mode to passthrough
+    // we reset the server mode to normal
     server.mode = SERVER_MODE_NORMAL;
 
-    // we clear the focus and then give it immediatelly so the client requests a new cursor image
+    // clear the focus and then give it immediatelly so the client requests a new cursor image, since the server might
+    // have been the one who initialized this action and who set the cursor image
     wlr_seat_pointer_clear_focus(server.seat);
     pointer_handle_focus(get_now_in_ms(), false);
 }
@@ -322,22 +316,17 @@ cursor_handle_motion(uint32_t time) {
         ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
     }
 
-    if(server.cursor_mode == CURSOR_MOVE) {
+    if(server.mode == SERVER_MODE_MOVING) {
         grabbed_toplevel_move();
-        return;
-    } else if(server.cursor_mode == CURSOR_RESIZE) {
+    } else if(server.mode == SERVER_MODE_RESIZING) {
         grabbed_toplevel_resize();
-        return;
-    } else if(server.cursor_mode == CURSOR_MASTER_RATIO_RESIZE) {
+    } else if(server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
         master_ratio_resize();
-        return;
-    }
-
-    if(server.drag_active) {
+    } else if(server.mode == SERVER_MODE_DRAGGING) {
         dnd_icons_move(server.cursor->x, server.cursor->y);
+    } else {
+        pointer_handle_focus(time, true);
     }
-
-    pointer_handle_focus(time, true);
 }
 
 struct view *
@@ -423,38 +412,39 @@ void
 server_handle_cursor_button(struct wl_listener *listener, void *data) {
     struct wlr_pointer_button_event *event = data;
 
+    // drop the toplevel if grabbed
+    if(event->button == 272 && event->state == WL_POINTER_BUTTON_STATE_RELEASED && server.grabbed_toplevel != NULL &&
+            server.move_resize_by_keybind) {
+        cursor_stop_move_resize();
+        return;
+    }
+
     // we get currently active modifiers and lookup pointer keybinds
     uint32_t modifiers =
             server.last_used_keyboard != NULL ? wlr_keyboard_get_modifiers(server.last_used_keyboard->wlr_keyboard) : 0;
 
-    struct keybind *k;
-    wl_list_for_each(k, &server.config->pointer_keybinds, link) {
-        if(!k->initialized)
+    for(struct keybind *iter = server.config->pointer_keybinds; iter <= array_last(server.config->pointer_keybinds);
+            iter++) {
+        if(!iter->initialized)
             continue;
 
-        if(k->active && k->stop && event->button == k->key && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-            k->active = false;
-            k->stop(k->args);
+        if(iter->active && iter->stop && event->button == iter->key &&
+                event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+            iter->active = false;
+            iter->stop(iter->args);
             return;
         }
 
-        if(modifiers == k->modifiers && event->button == k->key && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-            k->active = true;
-            k->action(k->args);
+        if(modifiers == iter->modifiers && event->button == iter->key &&
+                event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+            iter->active = true;
+            iter->action(iter->args);
             return;
         }
     }
 
-    // notify the client with pointer focus that a button press has occurred
+    // if still not handled notify the client with pointer focus that a button press has occurred
     wlr_seat_pointer_notify_button(server.seat, event->time_msec, event->button, event->state);
-
-    // we need to drop the toplevel if it was grabbed on released event
-    // todo: maybe also move this above keybinds so they cannot interup client driven move resize?
-    if(event->button == 272 && event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
-            server.cursor_mode != CURSOR_PASSTHROUGH && server.client_driven_move_resize) {
-        cursor_stop_move_resize();
-        return;
-    }
 
     struct wlr_surface *surface;
     double sx, sy;
@@ -474,8 +464,7 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
             event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         struct toplevel *toplevel = view_try_get_toplevel(view);
         if(toplevel != NULL) {
-            // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
-            toplevel_start_move(toplevel, true);
+            toplevel_start_move(toplevel, false);
         }
     }
 }

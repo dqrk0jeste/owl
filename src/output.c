@@ -200,6 +200,9 @@ output_evacuate_workspaces(struct output *output) {
     wl_list_for_each_safe(iter, tmp, &output->workspaces, link) {
         // we reparent those workspaces, but before that we disable all the toplevels on that workspace
         workspace_toplevels_set_enabled(iter, false);
+        if(iter->fullscreen != NULL) {
+            wlr_scene_node_set_enabled(&iter->fullscreen->scene_tree->node, false);
+        }
 
         iter->output = new;
         wl_list_remove(&iter->link);

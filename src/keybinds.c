@@ -61,69 +61,82 @@ keybind_prev_workspace(void *data) {
 void
 keybind_move_to_workspace(void *data) {
     struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL || toplevel == server.grabbed_toplevel) return;
+    if(toplevel == NULL || toplevel == server.grabbed_toplevel)
+        return;
 
     struct workspace *workspace = data;
     toplevel_move_to_workspace(toplevel, workspace);
 }
 
+static void
+start_master_ratio_resize(void) {
+    server.grabbed_toplevel = NULL;
+    server.mode = SERVER_MODE_RESIZING_MASTER_RATIO;
+
+    server.grab_x = server.cursor->x;
+    server.grab_y = server.cursor->y;
+
+    server.initial_master_ratio = server.active_workspace->master_ratio;
+
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server.output_layout, server.active_workspace->output->wlr_output, &output_box);
+
+    if(server.grab_x <= output_box.x + server.active_workspace->master_ratio * output_box.width) {
+        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "left_side");
+    } else {
+        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "right_side");
+    }
+}
+
 void
 keybind_start_resize(void *data) {
-    if(server.grabbed_toplevel != NULL) return;
+    if(server.grabbed_toplevel != NULL)
+        return;
 
     struct view *view = pointer_get_view_under_cursor();
     struct toplevel *toplevel = view == NULL ? NULL : view_try_get_toplevel(view);
+
     // if a floating toplevel is under the cursor then start the resize
-    if(toplevel != NULL && toplevel->floating && !toplevel->fullscreen) {
+    if(toplevel != NULL && toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         uint32_t edges = toplevel_get_closest_corner(server.cursor, toplevel);
+        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, wlr_xcursor_get_resize_name(edges));
 
-        char cursor_image[128] = {0};
-        if(edges & WLR_EDGE_TOP) {
-            strcat(cursor_image, "top_");
-        } else {
-            strcat(cursor_image, "bottom_");
-        }
-        if(edges & WLR_EDGE_LEFT) {
-            strcat(cursor_image, "left_");
-        } else {
-            strcat(cursor_image, "right_");
-        }
-        strcat(cursor_image, "corner");
-
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, cursor_image);
-
-        toplevel_start_resize(toplevel, edges, false);
-        return;
+        toplevel_start_resize(toplevel, edges, true);
+    } else {
+        // else we start the master ratio resize
+        start_master_ratio_resize();
     }
-
-    // else we start the master ratio resize
-    workspace_start_master_ratio_resize(toplevel->workspace);
 }
 
 void
 keybind_stop_resize(void *data) {
-    if(server.grabbed_toplevel == NULL) return;
+    if(server.grabbed_toplevel == NULL)
+        return;
 
     cursor_stop_move_resize();
 }
 
 void
 keybind_start_move(void *data) {
-    if(server.grabbed_toplevel != NULL) return;
+    if(server.grabbed_toplevel != NULL)
+        return;
 
     struct view *view = pointer_get_view_under_cursor();
-    if(view == NULL) return;
+    if(view == NULL)
+        return;
 
     struct toplevel *toplevel = view_try_get_toplevel(view);
-    if(toplevel == NULL || toplevel->fullscreen) return;
+    if(toplevel == NULL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
+        return;
 
     wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "hand1");
-    toplevel_start_move(toplevel, false);
+    toplevel_start_move(toplevel, true);
 }
 
 void
 keybind_stop_move(void *data) {
-    if(server.grabbed_toplevel == NULL) return;
+    if(server.grabbed_toplevel == NULL)
+        return;
 
     cursor_stop_move_resize();
 }
@@ -131,7 +144,8 @@ keybind_stop_move(void *data) {
 void
 keybind_close(void *data) {
     struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL) return;
+    if(toplevel == NULL)
+        return;
 
     wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
 }
@@ -142,7 +156,8 @@ keybind_move_focus(void *data) {
 
     struct toplevel *toplevel = server.focused_toplevel;
     // we need grabbed toplevel to keep focus
-    if(server.grabbed_toplevel != NULL && toplevel == server.grabbed_toplevel) return;
+    if(server.grabbed_toplevel != NULL && toplevel == server.grabbed_toplevel)
+        return;
 
     enum direction opposite_side;
     switch(direction) {
@@ -288,7 +303,8 @@ keybind_move(void *data) {
     uint64_t direction = (uint64_t)data;
 
     struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL || toplevel == server.grabbed_toplevel) return;
+    if(toplevel == NULL || toplevel == server.grabbed_toplevel)
+        return;
 
     struct workspace *workspace = toplevel->workspace;
     struct output *relative_output = output_get_relative(workspace->output, direction);
@@ -383,7 +399,8 @@ keybind_move(void *data) {
 void
 keybind_toggle_floating(void *data) {
     struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL || toplevel->fullscreen || toplevel == server.grabbed_toplevel) return;
+    if(toplevel == NULL || toplevel->fullscreen || toplevel == server.grabbed_toplevel)
+        return;
 
     if(toplevel->floating) {
         toplevel->floating = false;
@@ -432,7 +449,8 @@ keybind_toggle_floating(void *data) {
 void
 keybind_toggle_fullscreen(void *data) {
     struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL || toplevel == server.grabbed_toplevel) return;
+    if(toplevel == NULL || toplevel == server.grabbed_toplevel)
+        return;
 
     if(toplevel->fullscreen) {
         toplevel_unset_fullscreen(toplevel);
@@ -459,7 +477,8 @@ keybind_decrease_master_ratio(void *data) {
 
 bool
 server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state) {
-    if(server.lock != NULL) return false;
+    if(server.lock != NULL)
+        return false;
 
     uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
     // we use empty state so we can get raw, unmodified key.
@@ -476,7 +495,8 @@ server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyb
     struct keybind *k;
     for(size_t i = 0; i < count; i++) {
         wl_list_for_each(k, &server.config->keybinds, link) {
-            if(!k->initialized) continue;
+            if(!k->initialized)
+                continue;
 
             if(k->active && k->stop && syms[i] == k->key && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
                 k->active = false;

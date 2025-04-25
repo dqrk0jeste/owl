@@ -78,6 +78,9 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
         // disable all the toplevels on the current workspace on the output
         struct workspace *current_workspace = workspace->output->active_workspace;
         workspace_toplevels_set_enabled(current_workspace, false);
+        if(current_workspace->fullscreen != NULL) {
+            wlr_scene_node_set_enabled(&current_workspace->fullscreen->scene_tree->node, false);
+        }
 
         if(workspace->fullscreen != NULL) {
             // if there is a fullscreen toplevel we only enable that one
@@ -244,22 +247,4 @@ workspace_set_master_ratio(struct workspace *workspace, double master_ratio) {
     workspace->master_ratio = clamp(master_ratio, 0.0, 1.0);
 
     layout_configure(workspace);
-}
-
-void
-workspace_start_master_ratio_resize(struct workspace *workspace) {
-    server.grabbed_toplevel = NULL;
-    server.mode = SERVER_MODE_RESIZING_MASTER_RATIO;
-
-    server.grab_x = server.cursor->x;
-    server.grab_y = server.cursor->y;
-
-    struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
-
-    if(server.grab_x <= output_box.x + workspace->master_ratio * output_box.width) {
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "left_side");
-    } else {
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "right_side");
-    }
 }

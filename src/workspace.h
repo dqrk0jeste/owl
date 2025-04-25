@@ -48,11 +48,9 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
 struct toplevel *
 workspace_find_closest_floating_toplevel(struct workspace *workspace, enum direction side);
 
+// note: this does not include the fullscreen toplevel if there is one
 void
 workspace_toplevels_set_enabled(struct workspace *workspace, bool enabled);
 
 void
 workspace_set_master_ratio(struct workspace *workspace, double master_ratio);
-
-void
-workspace_start_master_ratio_resize(struct workspace *workspace);
