@@ -1,19 +1,18 @@
-#include <scenefx/types/wlr_scene.h>
-
 #include "dnd.h"
 
-#include "mwc.h"
-
 #include <assert.h>
+#include <scenefx/types/wlr_scene.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
-/* large portion of this was taken from labwc; huge thanks to consolatis */
+#include "mwc.h"
 
-extern struct mwc_server server;
+// large portion of this was taken from labwc; huge thanks to consolatis
+
+extern struct server server;
 
 void
 server_handle_request_drag(struct wl_listener *listener, void *data) {
@@ -46,4 +45,3 @@ void
 dnd_icons_move(uint32_t x, uint32_t y) {
     wlr_scene_node_set_position(&server.drag_icon_tree->node, x, y);
 }
-

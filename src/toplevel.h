@@ -10,22 +10,39 @@
 #include "mwc.h"
 #include "rendering.h"
 
-struct mwc_toplevel {
+enum toplevel_mode {
+    TOPLEVEL_MODE_NONE = 0,
+    TOPLEVEL_MODE_FLOATING,
+    TOPLEVEL_MODE_MASTER,
+    TOPLEVEL_MODE_SLAVE,
+    TOPLEVEL_MODE_FULLSCREEN,
+};
+
+struct toplevel {
     struct wl_list link;
+
     struct wlr_xdg_toplevel *xdg_toplevel;
+    struct wlr_scene_tree *scene_tree;
 
-    struct mwc_workspace *workspace;
+    struct workspace *workspace;
+    enum toplevel_mode mode;
 
-    // if this toplevel should get these
+    // these fields should not be used to check if these decorations are actually drawn right now, you should use
+    // `decoration_has_*()` function for those. these are telling if the toplevel should get these depending on the
+    // current configuration and window rules. e.g. toplevels never have any of the decorations when fullscreened, but
+    // that does not mean they should not have those when unfullscreened later
     bool has_titlebar, has_border, has_shadow, has_blur;
     struct decoration *decoration;
 
-    struct wlr_scene_tree *scene_tree;
-
-    bool floating;
-    bool fullscreen;
-    // if a floating toplevel becomes fullscreen, we keep its previous state here
-    struct wlr_box prev_deco_box;
+    // if a floating toplevel becomes fullscreen, we keep its previous state
+    enum toplevel_mode prev_mode;
+    union {
+        // when it was tiled we keep its index in the layout. this index should be used as a hint to where to place the
+        // toplevel after exiting fullscreen
+        uint32_t prev_index;
+        // if it was floating than we keep its previous position in the layout
+        struct wlr_box prev_deco_box;
+    };
 
     // set for floating when they should choose their size
     bool should_choose_size;
@@ -53,95 +70,82 @@ struct mwc_toplevel {
     struct wl_listener set_title;
 };
 
-#define X(t) ((t)->scene_tree->node.x)
-#define Y(t) ((t)->scene_tree->node.y)
-
-struct mwc_token {
-    struct wlr_xdg_activation_token_v1 *wlr_token;
-
-    struct wl_listener destroy;
-};
-
-// looks up window rules and returns true if found, with the size in `*width`
-// and `*height`, else return false
+// looks up window rules and returns true if found, with the size in `*width` and `*height`, else return false
 bool
-toplevel_get_floating_deco_size(struct mwc_toplevel *toplevel, uint32_t *width, uint32_t *height);
+toplevel_get_floating_deco_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height);
 
 // send the configure of 0, 0 and set things up for patching later using `toplevel_floating_patch_for_own_size()`
 void
-toplevel_floating_set_own_size(struct mwc_toplevel *toplevel);
+toplevel_floating_set_own_size(struct toplevel *toplevel);
 
 // sets the new state for this toplevels including decorations and sends the right configure event
 // this should be the only way we reposition and/or resize the clients
 void
-toplevel_set_state(struct mwc_toplevel *toplevel, struct wlr_box deco_box);
+toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box);
 
 // get the reported geometry; more ergonomic wrapper around the wlroots version of the function
 struct wlr_box
-toplevel_get_geometry(struct mwc_toplevel *toplevel);
+toplevel_get_geometry(struct toplevel *toplevel);
 
 // get currently displayed toplevel content box; caused by running animation
 struct wlr_box
-toplevel_get_current_display_content_box(struct mwc_toplevel *toplevel);
+toplevel_get_current_display_content_box(struct toplevel *toplevel);
 
 // get currently displayed toplevel box with decorations; caused by running animation
 struct wlr_box
-toplevel_get_current_display_deco_box(struct mwc_toplevel *toplevel);
+toplevel_get_current_display_deco_box(struct toplevel *toplevel);
 
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data);
 
 void
-toplevel_start_move(struct mwc_toplevel *toplevel, bool client_driven);
+toplevel_start_move(struct toplevel *toplevel, bool client_driven);
 
 void
-toplevel_start_resize(struct mwc_toplevel *toplevel, uint32_t edges, bool client_driven);
+toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool client_driven);
 
 void
 cursor_jump_focused_toplevel(void);
 
 void
-toplevel_set_fullscreen(struct mwc_toplevel *toplevel);
+toplevel_set_fullscreen(struct toplevel *toplevel);
 
 void
-toplevel_unset_fullscreen(struct mwc_toplevel *toplevel);
+toplevel_unset_fullscreen(struct toplevel *toplevel);
 
 void
 unfocus_focused_toplevel(void);
 
 // tries to give the keyboard focus to this toplevel
 void
-focus_toplevel(struct mwc_toplevel *toplevel);
+focus_toplevel(struct toplevel *toplevel);
 
-struct mwc_toplevel *
-toplevel_find_closest_floating_on_workspace(struct mwc_toplevel *toplevel, enum mwc_direction direction);
+struct toplevel *
+toplevel_find_closest_floating_on_workspace(struct toplevel *toplevel, enum direction direction);
 
 // get the output where the most of this toplevel is drawn on
-struct mwc_output *
-toplevel_get_primary_output(struct mwc_toplevel *toplevel);
+struct output *
+toplevel_get_primary_output(struct toplevel *toplevel);
 
 // get the corner closest to the cursor; FIXME: this should take the x, y coords instead
 uint32_t
-toplevel_get_closest_corner(struct wlr_cursor *cursor, struct mwc_toplevel *toplevel);
+toplevel_get_closest_corner(struct wlr_cursor *cursor, struct toplevel *toplevel);
 
 // recheck the window rules for this toplevel
 // note: this function will only update the flags, but you need to handle the updating of the actual presentation
 // seperatelly, e.g. by calling decoration_set_types()
 void
-toplevel_recheck_window_rules(struct mwc_toplevel *toplevel);
+toplevel_recheck_window_rules(struct toplevel *toplevel);
 
 // get the wanted decorations for this toplevel
 // returns a bitmask of `enum decoration_type`
 uint32_t
-toplevel_get_decoration_types(struct mwc_toplevel *toplevel);
+toplevel_get_decoration_types(struct toplevel *toplevel);
 
 // raise this toplevel and its parents/children to the top of its scene graph
 // note: toplevel must be floating
 void
-toplevel_raise_to_top(struct mwc_toplevel *toplevel);
-
-void
-xdg_activation_handle_new_token(struct wl_listener *listener, void *data);
+toplevel_raise_to_top(struct toplevel *toplevel);
 
 void
 xdg_activation_handle_request(struct wl_listener *listener, void *data);

@@ -26,12 +26,12 @@
 #include "view.h"
 #include "workspace.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 static void
 grabbed_toplevel_move(void) {
     // move the grabbed toplevel to the new position
-    struct mwc_toplevel *toplevel = server.grabbed_toplevel;
+    struct toplevel *toplevel = server.grabbed_toplevel;
 
     struct wlr_box box = server.grabbed_toplevel_initial_box;
     box.x += server.cursor->x - server.grab_x;
@@ -42,7 +42,7 @@ grabbed_toplevel_move(void) {
 
 static void
 grabbed_toplevel_resize(void) {
-    struct mwc_toplevel *toplevel = server.grabbed_toplevel;
+    struct toplevel *toplevel = server.grabbed_toplevel;
 
     struct wlr_box start_box = server.grabbed_toplevel_initial_box;
     struct wlr_box new_box = server.grabbed_toplevel_initial_box;
@@ -110,13 +110,19 @@ grabbed_toplevel_resize(void) {
 }
 
 static void
-constraint_move_to_hint(struct mwc_pointer_constraint *constraint) {
+master_ratio_resize(void) {
+    workspace_set_master_ratio(server.active_workspace, server.grab_y + (server.cursor->x - server.grab_x));
+}
+
+static void
+constraint_move_to_hint(struct pointer_constraint *constraint) {
     struct wlr_pointer_constraint_v1 *wlr_constraint = constraint->wlr_pointer_constraint;
 
     if(wlr_constraint->current.committed & WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT) {
         double sx = wlr_constraint->current.cursor_hint.x;
         double sy = wlr_constraint->current.cursor_hint.y;
-        wlr_cursor_warp(server.cursor, NULL, X(server.focused_toplevel) + sx, Y(server.focused_toplevel) + sy);
+        wlr_cursor_warp(server.cursor, NULL, server.focused_toplevel->scene_tree->node.x + sx,
+                server.focused_toplevel->scene_tree->node.y + sy);
 
         // make sure we are not sending unnecessary surface movements (took from labwc)
         wlr_seat_pointer_warp(server.seat, sx, sy);
@@ -124,8 +130,9 @@ constraint_move_to_hint(struct mwc_pointer_constraint *constraint) {
 }
 
 static void
-constraint_set_as_current(struct mwc_pointer_constraint *constraint) {
-    if(server.current_constraint == constraint) return;
+constraint_set_as_current(struct pointer_constraint *constraint) {
+    if(server.current_constraint == constraint)
+        return;
 
     if(server.current_constraint != NULL) {
         wlr_pointer_constraint_v1_send_deactivated(server.current_constraint->wlr_pointer_constraint);
@@ -138,7 +145,7 @@ constraint_set_as_current(struct mwc_pointer_constraint *constraint) {
 
 static void
 constraint_handle_destroy(struct wl_listener *listener, void *data) {
-    struct mwc_pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
+    struct pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
 
     wl_list_remove(&constraint->destroy.link);
     if(server.current_constraint == constraint) {
@@ -151,7 +158,8 @@ constraint_handle_destroy(struct wl_listener *listener, void *data) {
 
 static void
 constrain_apply_to_move(double *dx, double *dy) {
-    if(server.current_constraint == NULL) return;
+    if(server.current_constraint == NULL)
+        return;
 
     if(server.current_constraint->wlr_pointer_constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
         *dx = 0;
@@ -159,7 +167,8 @@ constrain_apply_to_move(double *dx, double *dy) {
         return;
     }
 
-    if(server.seat->pointer_state.focused_surface == NULL) return;
+    if(server.seat->pointer_state.focused_surface == NULL)
+        return;
 
     double current_x = server.seat->pointer_state.sx;
     double current_y = server.seat->pointer_state.sy;
@@ -173,8 +182,9 @@ constrain_apply_to_move(double *dx, double *dy) {
 }
 
 bool
-pointer_configure(struct mwc_pointer *pointer) {
-    if(!wlr_input_device_is_libinput(&pointer->wlr_pointer->base)) return false;
+pointer_configure(struct pointer *pointer) {
+    if(!wlr_input_device_is_libinput(&pointer->wlr_pointer->base))
+        return false;
 
     struct libinput_device *device = wlr_libinput_get_device_handle(&pointer->wlr_pointer->base);
     libinput_device_ref(device);
@@ -243,81 +253,83 @@ pointer_configure(struct mwc_pointer *pointer) {
     return true;
 }
 
+// todo: patch this so it works with resizing of master ratio
 void
 cursor_stop_move_resize(void) {
-    assert(server.cursor_mode != MWC_CURSOR_PASSTHROUGH);
-
+    if(server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
+    }
+    // ...
     // layout_insert_toplevel_at() handler function may call toplevel_set_state() which doesnt animate
     // state if the toplevel is the same as server.grabbed_toplevel, so we remove it first
-    struct mwc_toplevel *toplevel = server.grabbed_toplevel;
+    struct toplevel *toplevel = server.grabbed_toplevel;
     server.grabbed_toplevel = NULL;
 
-    if(toplevel->floating) {
-        struct mwc_output *primary_output = toplevel_get_primary_output(toplevel);
+    if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
+        struct output *primary_output = toplevel_get_primary_output(toplevel);
 
         // we set this outputs active workspace to toplevel
-        if(server.cursor_mode == MWC_CURSOR_MOVE) {
+        if(server.mode == SERVER_MODE_MOVING) {
             toplevel->workspace = primary_output->active_workspace;
-            wl_list_insert(primary_output->active_workspace->floating_toplevels.next, &toplevel->link);
-        } else if(server.cursor_mode == MWC_CURSOR_RESIZE && toplevel->workspace->output != primary_output) {
+            wl_list_insert(primary_output->active_workspace->floating.next, &toplevel->link);
+        } else if(server.mode == SERVER_MODE_RESIZING && toplevel->workspace->output != primary_output) {
             toplevel->workspace = primary_output->active_workspace;
             wl_list_remove(&toplevel->link);
-            wl_list_insert(primary_output->active_workspace->floating_toplevels.next, &toplevel->link);
+            wl_list_insert(primary_output->active_workspace->floating.next, &toplevel->link);
         }
-    } else if(server.cursor_mode == MWC_CURSOR_MOVE) {
+    } else if(server.mode == SERVER_MODE_MOVING) {
         layout_insert_toplevel_at(toplevel, server.cursor->x, server.cursor->y);
     }
 
     // we reset the cursor mode to passthrough
-    server.cursor_mode = MWC_CURSOR_PASSTHROUGH;
+    server.mode = SERVER_MODE_NORMAL;
 
     // we clear the focus and then give it immediatelly so the client requests a new cursor image
     wlr_seat_pointer_clear_focus(server.seat);
-
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-
-    pointer_handle_focus(timespec_to_ms(&now), false);
+    pointer_handle_focus(get_now_in_ms(), false);
 }
 
 void
 cursor_handle_motion(uint32_t time) {
     // get the output that the cursor is on currently
-    // struct wlr_output *wlr_output = wlr_output_layout_output_at(server.output_layout,
-    //                                                             server.cursor->x, server.cursor->y);
-    // struct mwc_output *output = wlr_output->data;
+    struct output *output = cursor_get_output();
+    if(output == NULL)
+        return;
 
     // todo: implement this in that another way, add a constraint thats not going to move a cursor if there is a
     // fullscreened toplevel on the new output
-    // set global active workspace and stop moving resizing if there is a fullscreened toplevel
-    // if(output->active_workspace != server.active_workspace) {
-    //     struct mwc_workspace *prev_workspace = server.active_workspace;
-    //
-    //     if(output->active_workspace->fullscreen_toplevel != NULL) {
-    //         if(server.cursor_mode == MWC_CURSOR_MOVE) {
-    //             if(!server.grabbed_toplevel->floating) {
-    //                 layout_insert_toplevel_at(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
-    //             } else {
-    //                 server.grabbed_toplevel->workspace = prev_workspace;
-    //                 wl_list_insert(&prev_workspace->floating_toplevels, &server.grabbed_toplevel->link);
-    //             }
-    //
-    //             server_reset_cursor_mode();
-    //             layout_configure(prev_workspace);
-    //         } else if(server.cursor_mode == MWC_CURSOR_RESIZE) {
-    //             server_reset_cursor_mode();
-    //         }
-    //     }
-    //
-    //     server.active_workspace = output->active_workspace;
-    //     ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-    // }
 
-    if(server.cursor_mode == MWC_CURSOR_MOVE) {
+    // set global active workspace and stop moving resizing if there is a fullscreened toplevel
+    if(output->active_workspace != server.active_workspace) {
+        // struct workspace *prev_workspace = server.active_workspace;
+
+        // if(output->active_workspace->fullscreen_toplevel != NULL) {
+        //     if(server.cursor_mode == CURSOR_MOVE) {
+        //         if(!server.grabbed_toplevel->floating) {
+        //             layout_insert_toplevel_at(server.grabbed_toplevel, server.cursor->x, server.cursor->y);
+        //         } else {
+        //             server.grabbed_toplevel->workspace = prev_workspace;
+        //             wl_list_insert(&prev_workspace->floating_toplevels, &server.grabbed_toplevel->link);
+        //         }
+        //
+        //         server_reset_cursor_mode();
+        //         layout_configure(prev_workspace);
+        //     } else if(server.cursor_mode == CURSOR_RESIZE) {
+        //         server_reset_cursor_mode();
+        //     }
+        // }
+
+        server.active_workspace = output->active_workspace;
+        ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
+    }
+
+    if(server.cursor_mode == CURSOR_MOVE) {
         grabbed_toplevel_move();
         return;
-    } else if(server.cursor_mode == MWC_CURSOR_RESIZE) {
+    } else if(server.cursor_mode == CURSOR_RESIZE) {
         grabbed_toplevel_resize();
+        return;
+    } else if(server.cursor_mode == CURSOR_MASTER_RATIO_RESIZE) {
+        master_ratio_resize();
         return;
     }
 
@@ -328,7 +340,7 @@ cursor_handle_motion(uint32_t time) {
     pointer_handle_focus(time, true);
 }
 
-struct mwc_view *
+struct view *
 pointer_get_view_under_cursor(void) {
     double sx, sy;
     struct wlr_surface *surface;
@@ -341,7 +353,7 @@ pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
     double sx, sy;
     struct wlr_seat *seat = server.seat;
     struct wlr_surface *surface = NULL;
-    struct mwc_view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
+    struct view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
     if(view == NULL) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
         // clear pointer focus so future button events and such are not sent to
@@ -350,10 +362,10 @@ pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
         return;
     }
 
-    if(view->type == MWC_VIEW_TITLEBAR_CLOSE_BUTTON) {
+    if(view->type == VIEW_TITLEBAR_CLOSE_BUTTON) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "pointer");
         wlr_seat_pointer_clear_focus(seat);
-    } else if(view->type == MWC_VIEW_TITLEBAR_BASE) {
+    } else if(view->type == VIEW_TITLEBAR_BASE) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
         wlr_seat_pointer_clear_focus(seat);
     }
@@ -417,7 +429,8 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
 
     struct keybind *k;
     wl_list_for_each(k, &server.config->pointer_keybinds, link) {
-        if(!k->initialized) continue;
+        if(!k->initialized)
+            continue;
 
         if(k->active && k->stop && event->button == k->key && event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
             k->active = false;
@@ -438,27 +451,28 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     // we need to drop the toplevel if it was grabbed on released event
     // todo: maybe also move this above keybinds so they cannot interup client driven move resize?
     if(event->button == 272 && event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
-            server.cursor_mode != MWC_CURSOR_PASSTHROUGH && server.client_driven_move_resize) {
+            server.cursor_mode != CURSOR_PASSTHROUGH && server.client_driven_move_resize) {
         cursor_stop_move_resize();
         return;
     }
 
     struct wlr_surface *surface;
     double sx, sy;
-    struct mwc_view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
+    struct view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
 
-    if(view == NULL) return;
+    if(view == NULL)
+        return;
 
     // todo: add server driven resize on border here
-    if(view->type == MWC_VIEW_TITLEBAR_CLOSE_BUTTON && event->button == 272 &&
+    if(view->type == VIEW_TITLEBAR_CLOSE_BUTTON && event->button == 272 &&
             event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
+        struct toplevel *toplevel = view_try_get_toplevel(view);
         if(toplevel != NULL) {
             wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
         }
-    } else if((view->type == MWC_VIEW_TITLEBAR_BASE || view->type == MWC_VIEW_TITLEBAR_TITLE) && event->button == 272 &&
+    } else if((view->type == VIEW_TITLEBAR_BASE || view->type == VIEW_TITLEBAR_TITLE) && event->button == 272 &&
             event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        struct mwc_toplevel *toplevel = view_try_get_toplevel(view);
+        struct toplevel *toplevel = view_try_get_toplevel(view);
         if(toplevel != NULL) {
             // we lie here, but its the same thing, the important thing is that its not driven by a shortcut
             toplevel_start_move(toplevel, true);
@@ -487,7 +501,7 @@ server_handle_relative_pointer_manager_destroy(struct wl_listener *listener, voi
 
 static void
 pointer_handle_destroy(struct wl_listener *listener, void *data) {
-    struct mwc_pointer *pointer = wl_container_of(listener, pointer, destroy);
+    struct pointer *pointer = wl_container_of(listener, pointer, destroy);
 
     wl_list_remove(&pointer->destroy.link);
     wl_list_remove(&pointer->link);
@@ -497,7 +511,7 @@ pointer_handle_destroy(struct wl_listener *listener, void *data) {
 
 void
 server_handle_new_pointer(struct wlr_input_device *device) {
-    struct mwc_pointer *pointer = calloc(1, sizeof(*pointer));
+    struct pointer *pointer = calloc(1, sizeof(*pointer));
     pointer->wlr_pointer = wlr_pointer_from_input_device(device);
     pointer->wlr_pointer->data = pointer;
 
@@ -521,13 +535,24 @@ server_handle_new_constraint(struct wl_listener *listener, void *data) {
     // if there is already a constraint on this surface we ignore it
     struct wlr_pointer_constraint_v1 *con;
     wl_list_for_each(con, &server.pointer_contrains_manager->constraints, link) {
-        if(con != wlr_constraint && con->surface == wlr_constraint->surface) return;
+        if(con != wlr_constraint && con->surface == wlr_constraint->surface)
+            return;
     }
 
-    struct mwc_pointer_constraint *constraint = calloc(1, sizeof(*constraint));
+    struct pointer_constraint *constraint = calloc(1, sizeof(*constraint));
     constraint->wlr_pointer_constraint = wlr_constraint;
     constraint->wlr_pointer_constraint->data = constraint;
 
     constraint->destroy.notify = constraint_handle_destroy;
     wl_signal_add(&wlr_constraint->events.destroy, &constraint->destroy);
+}
+
+struct output *
+cursor_get_output(void) {
+    struct wlr_output *wlr_output =
+            wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
+    if(wlr_output == NULL)
+        return NULL;
+
+    return wlr_output->data;
 }

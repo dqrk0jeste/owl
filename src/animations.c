@@ -1,15 +1,14 @@
-#include <bits/time.h>
-#include <scenefx/types/wlr_scene.h>
-
 #include "animations.h"
 
-#include "helpers.h"
-
+#include <bits/time.h>
+#include <scenefx/types/wlr_scene.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
+
+#include "helpers.h"
 
 static struct fx_animation_manager {
     struct wl_display *display;
@@ -23,52 +22,48 @@ fx_animation_manager_init(struct wl_display *display, struct wlr_scene *scene) {
 }
 
 struct fx_animation_curve {
-	double params[4];
+    double params[4];
 
-	double baked_points_x[FX_ANIMATIONS_BAKED_POINTS_COUNT], baked_points_y[FX_ANIMATIONS_BAKED_POINTS_COUNT];
+    double baked_points_x[FX_ANIMATIONS_BAKED_POINTS_COUNT], baked_points_y[FX_ANIMATIONS_BAKED_POINTS_COUNT];
 };
 
 struct fx_animation_curve *
 fx_animation_curve_create(double params[static 4]) {
-	struct fx_animation_curve *curve = calloc(1, sizeof(*curve));
+    struct fx_animation_curve *curve = calloc(1, sizeof(*curve));
 
-	memcpy(curve->params, params, 4 * sizeof(double));
+    memcpy(curve->params, params, 4 * sizeof(double));
 
-	for(size_t i = 0; i < FX_ANIMATIONS_BAKED_POINTS_COUNT; i++) {
-		double t = (double)i / (FX_ANIMATIONS_BAKED_POINTS_COUNT - 1);
+    for(size_t i = 0; i < FX_ANIMATIONS_BAKED_POINTS_COUNT; i++) {
+        double t = (double)i / (FX_ANIMATIONS_BAKED_POINTS_COUNT - 1);
 
-		curve->baked_points_x[i] =  3 * t * (1 - t) * (1 - t) * params[0]
-			+ 3 * t * t * (1 - t) * params[2]
-			+ t * t * t;
+        curve->baked_points_x[i] = 3 * t * (1 - t) * (1 - t) * params[0] + 3 * t * t * (1 - t) * params[2] + t * t * t;
 
-		curve->baked_points_y[i] = 3 * t * (1 - t) * (1 - t) * params[1]
-			+ 3 * t * t * (1 - t) * params[3]
-			+ t * t * t;
-	}
+        curve->baked_points_y[i] = 3 * t * (1 - t) * (1 - t) * params[1] + 3 * t * t * (1 - t) * params[3] + t * t * t;
+    }
 
-	return curve;
+    return curve;
 }
 
 void
 fx_animation_curve_destroy(struct fx_animation_curve *curve) {
-	free(curve);
+    free(curve);
 }
 
 static double
 find_animation_curve_at(struct fx_animation_curve *curve, double t) {
-	size_t down = 0;
-	size_t up = FX_ANIMATIONS_BAKED_POINTS_COUNT - 1;
+    size_t down = 0;
+    size_t up = FX_ANIMATIONS_BAKED_POINTS_COUNT - 1;
 
-	do {
-		size_t middle = (up + down) / 2;
-		if(curve->baked_points_x[middle] <= t) {
-			down = middle;
-		} else {
-			up = middle;
-		}
-	} while (up - down != 1);
+    do {
+        size_t middle = (up + down) / 2;
+        if(curve->baked_points_x[middle] <= t) {
+            down = middle;
+        } else {
+            up = middle;
+        }
+    } while(up - down != 1);
 
-	return curve->baked_points_y[up];
+    return curve->baked_points_y[up];
 }
 
 struct fx_transform_animation {
@@ -98,23 +93,19 @@ timer_animation_update(void *data) {
 
     bool done = progress >= 1.0;
 
-	if(done) {
-		animation->done = true;
-		animation->current = animation->end;
-	} else {
+    if(done) {
+        animation->done = true;
+        animation->current = animation->end;
+    } else {
         double factor = find_animation_curve_at(animation->curve, progress);
 
-        uint32_t width = animation->start.width
-            + (animation->end.width - animation->start.width) * factor;
-        uint32_t height = animation->start.height
-            + (animation->end.height - animation->start.height) * factor;
+        uint32_t width = animation->start.width + (animation->end.width - animation->start.width) * factor;
+        uint32_t height = animation->start.height + (animation->end.height - animation->start.height) * factor;
 
-        int32_t x = animation->start.x
-            + (animation->end.x - animation->start.x) * factor;
-        int32_t y = animation->start.y
-            + (animation->end.y - animation->start.y) * factor;
+        int32_t x = animation->start.x + (animation->end.x - animation->start.x) * factor;
+        int32_t y = animation->start.y + (animation->end.y - animation->start.y) * factor;
 
-        animation->current = (struct wlr_box){ x, y, width, height };
+        animation->current = (struct wlr_box){x, y, width, height};
     }
 
     animation->callback(animation->current, animation->done, animation->user_data);
@@ -145,15 +136,13 @@ get_fastest_output_refresh_ms(void) {
     return 1000000.0 / max;
 }
 
-
 struct fx_transform_animation *
 fx_transform_animation_create(struct wlr_box start, struct wlr_box end, uint32_t duration,
-                              struct fx_animation_curve *curve,
-                              fx_transform_animation_callback_func_t callback, void *user_data) {
-	struct fx_transform_animation *animation = calloc(1, sizeof(*animation));
+        struct fx_animation_curve *curve, fx_transform_animation_callback_func_t callback, void *user_data) {
+    struct fx_transform_animation *animation = calloc(1, sizeof(*animation));
 
-	animation->start = start;
-	animation->end = end;
+    animation->start = start;
+    animation->end = end;
 
     animation->duration = duration;
 
@@ -161,28 +150,28 @@ fx_transform_animation_create(struct wlr_box start, struct wlr_box end, uint32_t
     clock_gettime(CLOCK_MONOTONIC, &ts);
     animation->time_started = timespec_to_ms(&ts);
 
-	animation->curve = curve;
+    animation->curve = curve;
 
     animation->callback = callback;
     animation->user_data = user_data;
 
     animation->frame_duration = get_fastest_output_refresh_ms();
 
-	animation->current = start;
+    animation->current = start;
 
     callback(animation->current, animation->done, user_data);
 
-    animation->timer = wl_event_loop_add_timer(wl_display_get_event_loop(manager.display),
-                                               timer_animation_update, animation);
+    animation->timer =
+            wl_event_loop_add_timer(wl_display_get_event_loop(manager.display), timer_animation_update, animation);
     wl_event_source_timer_update(animation->timer, animation->frame_duration);
 
-	return animation;
+    return animation;
 }
 
 void
 fx_transform_animation_destroy(struct fx_transform_animation *animation) {
     wl_event_source_remove(animation->timer);
-	free(animation);
+    free(animation);
 }
 
 struct wlr_box
@@ -194,4 +183,3 @@ bool
 fx_transform_animation_is_done(struct fx_transform_animation *animation) {
     return animation->done;
 }
-

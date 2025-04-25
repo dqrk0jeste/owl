@@ -11,7 +11,7 @@ AlignTrailingComments: 'false'
 AllowAllArgumentsOnNextLine: 'false'
 AllowShortFunctionsOnASingleLine: 'false'
 AllowShortLoopsOnASingleLine: 'false'
-AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortIfStatementsOnASingleLine: 'false'
 AllowShortBlocksOnASingleLine: 'false'
 AlwaysBreakAfterDefinitionReturnType: All
 AlwaysBreakAfterReturnType: All

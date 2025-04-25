@@ -18,7 +18,7 @@
 #include "output.h"
 #include "workspace.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 void
 sigpipe_handler(int signum) {
@@ -81,11 +81,11 @@ ipc_handle_simple(char *request, int fd) {
     char *message = calloc(cap, sizeof(char));
     char *p = message;
     if(strcmp(request, "toplevels") == 0) {
-        struct mwc_output *output;
+        struct output *output;
         wl_list_for_each(output, &server.outputs, link) {
-            struct mwc_workspace *workspace;
+            struct workspace *workspace;
             wl_list_for_each(workspace, &output->workspaces, link) {
-                struct mwc_toplevel *toplevel;
+                struct toplevel *toplevel;
                 wl_list_for_each(toplevel, &workspace->floating_toplevels, link) {
                     char *q = toplevel->xdg_toplevel->app_id;
                     while(*q != 0) {
@@ -214,9 +214,9 @@ ipc_handle_simple(char *request, int fd) {
             }
         }
     } else if(strcmp(request, "layers") == 0) {
-        struct mwc_output *output;
+        struct output *output;
         wl_list_for_each(output, &server.outputs, link) {
-            struct mwc_layer_surface *layer;
+            struct layer_surface *layer;
             for(size_t i = 0; i < 4; i++) {
                 wl_list_for_each(layer, &(&output->layers.background)[i], link) {
                     char *q = layer->wlr_layer_surface->namespace;
@@ -245,7 +245,7 @@ ipc_handle_simple(char *request, int fd) {
             }
         }
     } else if(strcmp(request, "outputs") == 0) {
-        struct mwc_output *output;
+        struct output *output;
         wl_list_for_each(output, &server.outputs, link) {
             char *q = output->wlr_output->name;
             while(*q != 0) {

@@ -18,7 +18,7 @@
 #include "helpers.h"
 #include "mwc.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 static void
 pixman_buffer_handle_destroy(struct wlr_buffer *wlr_buffer) {
@@ -193,7 +193,7 @@ text_node_set_text(struct text_node *node, char *text) {
     }
 
     pixman_color_t color;
-    mwc_color_to_pixman_color(server.config->titlebar_title_color, &color);
+    color_to_pixman_color(server.config->titlebar_title_color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
     node->width = render_text(node->buffer, utf32, len, foreground_color);

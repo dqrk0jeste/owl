@@ -9,14 +9,14 @@
 #include "text_node.h"
 #include "toplevel.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 static void
 create_shadow(struct decoration *decoration) {
     assert(decoration->shadow == NULL);
 
     float wlr_color[4];
-    mwc_color_to_wlr_color(server.config->shadow_color, wlr_color);
+    color_to_wlr_color(server.config->shadow_color, wlr_color);
     decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, server.config->border_radius,
             server.config->shadow_blur, wlr_color);
 
@@ -75,7 +75,7 @@ create_border(struct decoration *decoration) {
     wlr_scene_rect_set_corner_radius(decoration->border, server.config->border_radius,
             server.config->border_radius_location);
 
-    view_create_for_node(&decoration->border->node, MWC_VIEW_BORDER, decoration->border);
+    view_create_for_node(&decoration->border->node, VIEW_BORDER, decoration->border);
 }
 
 static void
@@ -122,7 +122,7 @@ create_titlebar(struct decoration *decoration) {
             max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0),
             CORNER_LOCATION_TOP & server.config->border_radius_location);
 
-    view_create_for_node(&decoration->titlebar.base->node, MWC_VIEW_TITLEBAR_BASE, decoration->titlebar.base);
+    view_create_for_node(&decoration->titlebar.base->node, VIEW_TITLEBAR_BASE, decoration->titlebar.base);
 
     if(server.config->titlebar_include_close_button) {
         uint32_t size = server.config->titlebar_close_button_size;
@@ -132,14 +132,14 @@ create_titlebar(struct decoration *decoration) {
             wlr_scene_rect_set_corner_radius(decoration->titlebar.close_button, size / 2 + 1, CORNER_LOCATION_ALL);
         }
 
-        view_create_for_node(&decoration->titlebar.close_button->node, MWC_VIEW_TITLEBAR_CLOSE_BUTTON,
+        view_create_for_node(&decoration->titlebar.close_button->node, VIEW_TITLEBAR_CLOSE_BUTTON,
                 decoration->titlebar.close_button);
     }
 
     if(server.config->titlebar_include_title && server.config->font != NULL) {
         decoration->titlebar.title = text_node_create(decoration->titlebar.tree, NULL);
 
-        view_create_for_node(&decoration->titlebar.title->scene_buffer->node, MWC_VIEW_TITLEBAR_TITLE,
+        view_create_for_node(&decoration->titlebar.title->scene_buffer->node, VIEW_TITLEBAR_TITLE,
                 decoration->titlebar.title);
     }
 }
@@ -317,7 +317,7 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
     // and then configure them with the current size and state
     decoration_configure(decoration, decoration->width, decoration->height);
     decoration_set_active(decoration, decoration->active);
-    decoration_set_blur(decoration, decoration->blur, decoration->blur_xray);
+    decoration_set_blur(decoration, decoration->blur, decoration->blur_optimized);
 }
 
 void
@@ -331,20 +331,20 @@ decoration_set_active(struct decoration *decoration, bool active) {
     // we set things to their active/inactive colors
     if(decoration_has_border(decoration)) {
         float border_color[4];
-        mwc_color_to_wlr_color(active ? server.config->border_color.active : server.config->border_color.inactive,
+        color_to_wlr_color(active ? server.config->border_color.active : server.config->border_color.inactive,
                 border_color);
         wlr_scene_rect_set_color(decoration->border, border_color);
     }
 
     if(decoration_has_titlebar(decoration)) {
         float titlebar_color[4];
-        mwc_color_to_wlr_color(active ? server.config->titlebar_color.active : server.config->titlebar_color.inactive,
+        color_to_wlr_color(active ? server.config->titlebar_color.active : server.config->titlebar_color.inactive,
                 titlebar_color);
         wlr_scene_rect_set_color(decoration->titlebar.base, titlebar_color);
 
         if(decoration->titlebar.close_button != NULL) {
-            mwc_color_to_wlr_color(active ? server.config->titlebar_close_button_color.active
-                                          : server.config->titlebar_close_button_color.inactive,
+            color_to_wlr_color(active ? server.config->titlebar_close_button_color.active
+                                      : server.config->titlebar_close_button_color.inactive,
                     titlebar_color);
             wlr_scene_rect_set_color(decoration->titlebar.close_button, titlebar_color);
         }
@@ -389,20 +389,25 @@ decoration_titlebar_set_title(struct decoration *decoration, char *title) {
 
 struct wlr_box
 decoration_get_content_box(struct decoration *decoration, struct wlr_box box) {
-    if(decoration_is_enabled(decoration) && decoration_has_border(decoration)) {
+    if(!decoration_is_enabled(decoration))
+        return box;
+
+    if(decoration_has_border(decoration)) {
         box.x += server.config->border_width;
         box.y += server.config->border_width;
         box.width -= 2 * server.config->border_width;
         box.height -= 2 * server.config->border_width;
     }
 
-    if(decoration_is_enabled(decoration) && decoration_has_titlebar(decoration)) {
+    if(decoration_has_titlebar(decoration)) {
         box.y += server.config->titlebar_height;
         box.height -= server.config->titlebar_height;
     }
 
-    if(box.width <= 0) box.width = 1;
-    if(box.height <= 0) box.height = 1;
+    if(box.width <= 0)
+        box.width = 1;
+    if(box.height <= 0)
+        box.height = 1;
 
     return box;
 }
@@ -424,20 +429,21 @@ decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box)
     return box;
 }
 
+// todo: fix this for the new thing
 void
-decoration_set_blur(struct decoration *decoration, bool blur, bool xray) {
+decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized) {
     if(decoration_has_border(decoration)) {
         wlr_scene_rect_set_backdrop_blur(decoration->border, blur);
-        wlr_scene_rect_set_backdrop_blur_optimized(decoration->border, xray);
+        wlr_scene_rect_set_backdrop_blur_optimized(decoration->border, blur_optimized);
     }
 
     if(decoration_has_titlebar(decoration)) {
         wlr_scene_rect_set_backdrop_blur(decoration->titlebar.base, blur);
-        wlr_scene_rect_set_backdrop_blur_optimized(decoration->titlebar.base, xray);
+        wlr_scene_rect_set_backdrop_blur_optimized(decoration->titlebar.base, blur_optimized);
     }
 
     decoration->blur = blur;
-    decoration->blur_xray = xray;
+    decoration->blur_optimized = blur_optimized;
 }
 
 bool
@@ -460,7 +466,8 @@ decoration_has_titlebar(struct decoration *decoration) {
     return decoration->types & DECORATION_TITLEBAR;
 }
 
-extern struct mwc_server server;
+// todo: move this into toplevel.c
+extern struct server server;
 
 void
 server_handle_request_xdg_decoration(struct wl_listener *listener, void *data) {

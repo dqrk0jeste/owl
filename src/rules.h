@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <wayland-util.h>
 
+#include "config.h"
 #include "toplevel.h"
 
 struct window_rule_regex {
@@ -16,12 +17,10 @@ struct window_rule_regex {
 // basic window rule with no params; use for boolean actions
 struct window_rule {
     struct window_rule_regex condition;
-    struct wl_list link;
 };
 
 struct window_rule_size {
     struct window_rule_regex condition;
-    struct wl_list link;
     bool relative_width;
     uint32_t width;
     bool relative_height;
@@ -30,7 +29,6 @@ struct window_rule_size {
 
 struct window_rule_opacity {
     struct window_rule_regex condition;
-    struct wl_list link;
     double inactive_value;
     double active_value;
 };
@@ -42,17 +40,22 @@ struct layer_rule_regex {
 
 struct layer_rule {
     struct layer_rule_regex condition;
-    struct wl_list link;
+};
+
+struct layer_rule_blur {
+    struct layer_rule_regex condition;
+    enum blur_optimized optimized;
+    bool ignore_transparent;
 };
 
 bool
-toplevel_matches_window_rule(struct mwc_toplevel *toplevel, struct window_rule_regex *condition);
+toplevel_matches_window_rule(struct toplevel *toplevel, struct window_rule_regex *condition);
 
 bool
-layer_surface_matches_layer_rule(struct mwc_layer_surface *layer_surface, struct layer_rule_regex *condition);
+layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct layer_rule_regex *condition);
 
 void
-toplevel_recheck_window_rules(struct mwc_toplevel *toplevel);
+toplevel_recheck_window_rules(struct toplevel *toplevel);
 
 void
-layer_surface_check_rules(struct mwc_layer_surface *layer_surface);
+layer_surface_check_rules(struct layer_surface *layer_surface);

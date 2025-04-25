@@ -7,7 +7,7 @@
 
 #define clamp(v, a, b) (max((a), min((v), (b))))
 
-struct mwc_color {
+struct color {
     uint8_t r, g, b, a;
 };
 
@@ -17,11 +17,17 @@ run_cmd(char *cmd);
 int
 box_area(struct wlr_box *box);
 
-void
-mwc_color_to_wlr_color(struct mwc_color color, float dest[static 4]);
+struct wl_list *
+list_at(struct wl_list *list, size_t index);
 
 void
-mwc_color_to_pixman_color(struct mwc_color color, pixman_color_t *dest);
+color_to_wlr_color(struct color color, float dest[static 4]);
+
+void
+color_to_pixman_color(struct color color, pixman_color_t *dest);
 
 uint32_t
 timespec_to_ms(struct timespec *ts);
+
+uint32_t
+get_now_in_ms(void);

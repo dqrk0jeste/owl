@@ -52,7 +52,7 @@
 #include "wlr/util/log.h"
 
 // we initialize an instance of our global state
-struct mwc_server server;
+struct server server;
 
 // handles exits of child processes
 void
@@ -98,7 +98,7 @@ void
 server_handle_request_cursor_shape(struct wl_listener *listener, void *data) {
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
     struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(server.cursor_mode == MWC_CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
+    if(server.cursor_mode == CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
         const char *name = wlr_cursor_shape_v1_name(event->shape);
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, name);
     }
@@ -108,7 +108,7 @@ void
 server_handle_request_cursor(struct wl_listener *listener, void *data) {
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(server.cursor_mode == MWC_CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
+    if(server.cursor_mode == CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
         // once we've vetted the client, we can tell the cursor to use the
         // provided surface as the cursor image. it will set the hardware cursor
         // on the output that it's currently on and continue to do so as the
@@ -245,10 +245,10 @@ main(int argc, char *argv[]) {
 
     // set up xdg-shell version 6
     server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 6);
-    server.new_xdg_toplevel.notify = server_handle_new_toplevel;
-    wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel);
-    server.new_xdg_popup.notify = server_handle_new_popup;
-    wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_xdg_popup);
+    server.new_toplevel.notify = server_handle_new_toplevel;
+    wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_toplevel);
+    server.new_popup.notify = server_handle_new_popup;
+    wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_popup);
 
     server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 4);
     server.new_layer_surface.notify = server_handle_new_layer_surface;
@@ -262,16 +262,17 @@ main(int argc, char *argv[]) {
     // we also add xcursor theme env variables
     char cursor_size[8];
     snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
-    cursor_size[7] = 0;
     setenv("XCURSOR_SIZE", cursor_size, true);
 
     if(server.config->cursor_theme != NULL) {
         setenv("XCURSOR_THEME", server.config->cursor_theme, true);
+    } else {
+        setenv("XCURSOR_THEME", "", true);
     }
 
     wl_list_init(&server.pointers);
 
-    server.cursor_mode = MWC_CURSOR_PASSTHROUGH;
+    server.cursor_mode = CURSOR_PASSTHROUGH;
     server.cursor_motion.notify = server_handle_cursor_motion;
     wl_signal_add(&server.cursor->events.motion, &server.cursor_motion);
     server.cursor_motion_absolute.notify = server_handle_cursor_motion_absolute;
@@ -364,8 +365,6 @@ main(int argc, char *argv[]) {
     server.xdg_activation = wlr_xdg_activation_v1_create(server.wl_display);
     server.xdg_activation_request.notify = xdg_activation_handle_request;
     wl_signal_add(&server.xdg_activation->events.request_activate, &server.xdg_activation_request);
-    server.xdg_activation_new_token.notify = xdg_activation_handle_new_token;
-    wl_signal_add(&server.xdg_activation->events.new_token, &server.xdg_activation_new_token);
 
     fx_animation_manager_init(server.wl_display, server.scene);
 

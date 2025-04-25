@@ -6,38 +6,53 @@
 #include "output.h"
 #include "toplevel.h"
 
-struct mwc_animation;
-
-struct mwc_workspace {
+struct workspace {
     struct wl_list link;
 
-    struct mwc_output *output;
+    struct output *output;
     uint32_t index;
 
-    // when this workspace is reparented by another output, we keep the name
-    // of the original output that created this workspace so we can return it back later
-    // if that output is reenabled
+    // when this workspace is reparented by another output, we keep the name of the original output that created this
+    // workspace so we can return it back later if that output is reenabled
     char *original_output;
 
     double master_ratio;
 
     struct wl_list masters;
     struct wl_list slaves;
-    struct wl_list floating_toplevels;
-    struct mwc_toplevel *fullscreen_toplevel;
+    struct wl_list floating;
+    struct toplevel *fullscreen;
 };
 
-void
-change_workspace(struct mwc_workspace *workspace, bool keep_focus);
+bool
+has_floating(struct workspace *workspace);
+
+struct toplevel *
+next_floating(struct toplevel *toplevel);
+
+struct toplevel *
+prev_floating(struct toplevel *toplevel);
+
+struct toplevel *
+first_floating(struct workspace *workspace);
+
+struct toplevel *
+last_floating(struct workspace *workspace);
 
 void
-toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *workspace);
-
-struct mwc_toplevel *
-workspace_find_closest_floating_toplevel(struct mwc_workspace *workspace, enum mwc_direction side);
+change_workspace(struct workspace *workspace, bool keep_focus);
 
 void
-workspace_toplevels_set_enabled(struct mwc_workspace *workspace, bool enabled);
+toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspace);
+
+struct toplevel *
+workspace_find_closest_floating_toplevel(struct workspace *workspace, enum direction side);
 
 void
-workspace_set_master_ratio(struct mwc_workspace *workspace, double master_ratio);
+workspace_toplevels_set_enabled(struct workspace *workspace, bool enabled);
+
+void
+workspace_set_master_ratio(struct workspace *workspace, double master_ratio);
+
+void
+workspace_start_master_ratio_resize(struct workspace *workspace);

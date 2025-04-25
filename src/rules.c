@@ -4,10 +4,10 @@
 #include "layer_surface.h"
 #include "toplevel.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 bool
-toplevel_matches_window_rule(struct mwc_toplevel *toplevel, struct window_rule_regex *condition) {
+toplevel_matches_window_rule(struct toplevel *toplevel, struct window_rule_regex *condition) {
     char *app_id = toplevel->xdg_toplevel->app_id;
     char *title = toplevel->xdg_toplevel->title;
 
@@ -21,7 +21,7 @@ toplevel_matches_window_rule(struct mwc_toplevel *toplevel, struct window_rule_r
 }
 
 bool
-layer_surface_matches_layer_rule(struct mwc_layer_surface *layer_surface, struct layer_rule_regex *condition) {
+layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct layer_rule_regex *condition) {
     if(!condition->has) return true;
 
     char *namespace = layer_surface->wlr_layer_surface->namespace;
@@ -29,7 +29,7 @@ layer_surface_matches_layer_rule(struct mwc_layer_surface *layer_surface, struct
 }
 
 static void
-recheck_opacity_rules(struct mwc_toplevel *toplevel) {
+recheck_opacity_rules(struct toplevel *toplevel) {
     struct window_rule_opacity *iter;
     wl_list_for_each(iter, &server.config->window_rules.opacity, link) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
@@ -44,7 +44,7 @@ recheck_opacity_rules(struct mwc_toplevel *toplevel) {
 }
 
 static void
-recheck_no_titlebar_rules(struct mwc_toplevel *toplevel) {
+recheck_no_titlebar_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the titlebars globally
     if(!server.config->titlebars) {
         toplevel->has_titlebar = false;
@@ -63,7 +63,7 @@ recheck_no_titlebar_rules(struct mwc_toplevel *toplevel) {
 }
 
 static void
-recheck_no_border_rules(struct mwc_toplevel *toplevel) {
+recheck_no_border_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the titlebars globally
     if(!server.config->borders) {
         toplevel->has_border = false;
@@ -82,7 +82,7 @@ recheck_no_border_rules(struct mwc_toplevel *toplevel) {
 }
 
 static void
-recheck_no_blur_rules(struct mwc_toplevel *toplevel) {
+recheck_no_blur_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the titlebars globally
     if(!server.config->blur) {
         toplevel->has_blur = false;
@@ -101,7 +101,7 @@ recheck_no_blur_rules(struct mwc_toplevel *toplevel) {
 }
 
 static void
-recheck_no_shadow_rules(struct mwc_toplevel *toplevel) {
+recheck_no_shadow_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the borders globally
     if(!server.config->shadows) {
         toplevel->has_shadow = false;
@@ -122,7 +122,7 @@ recheck_no_shadow_rules(struct mwc_toplevel *toplevel) {
 }
 
 void
-toplevel_recheck_window_rules(struct mwc_toplevel *toplevel) {
+toplevel_recheck_window_rules(struct toplevel *toplevel) {
     recheck_opacity_rules(toplevel);
     recheck_no_titlebar_rules(toplevel);
     recheck_no_shadow_rules(toplevel);
@@ -131,7 +131,7 @@ toplevel_recheck_window_rules(struct mwc_toplevel *toplevel) {
 }
 
 static void
-check_blur_rules(struct mwc_layer_surface *layer_surface) {
+check_blur_rules(struct layer_surface *layer_surface) {
     struct layer_rule *iter;
     wl_list_for_each(iter, &server.config->layer_rules.blur, link) {
         if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
@@ -144,7 +144,7 @@ check_blur_rules(struct mwc_layer_surface *layer_surface) {
 }
 
 static void
-check_blur_xray_rules(struct mwc_layer_surface *layer_surface) {
+check_blur_xray_rules(struct layer_surface *layer_surface) {
     struct layer_rule *iter;
     wl_list_for_each(iter, &server.config->layer_rules.blur_xray, link) {
         if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
@@ -157,7 +157,7 @@ check_blur_xray_rules(struct mwc_layer_surface *layer_surface) {
 }
 
 static void
-check_blur_ignore_transparent_rules(struct mwc_layer_surface *layer_surface) {
+check_blur_ignore_transparent_rules(struct layer_surface *layer_surface) {
     struct layer_rule *iter;
     wl_list_for_each(iter, &server.config->layer_rules.blur_ignore_transparent, link) {
         if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
@@ -170,7 +170,7 @@ check_blur_ignore_transparent_rules(struct mwc_layer_surface *layer_surface) {
 }
 
 void
-layer_surface_check_rules(struct mwc_layer_surface *layer_surface) {
+layer_surface_check_rules(struct layer_surface *layer_surface) {
     // since all the rules affect blur we dont check any if blur is disabled globally
     if(!server.config->blur) {
         layer_surface->has_blur = false;

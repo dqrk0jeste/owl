@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <wlr/util/box.h>
 
-struct mwc_output;
+struct output;
 
 void
-output_draw(struct mwc_output *output);
+output_draw(struct output *output);

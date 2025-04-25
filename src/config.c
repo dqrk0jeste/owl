@@ -55,9 +55,10 @@ hex_to_unsigned_decimal(char *hex, size_t len) {
 }
 
 static bool
-try_parse_color(char *s, struct mwc_color *dest) {
+try_parse_color(char *s, struct color *dest) {
     size_t len = strlen(s);
-    if(len != 6 && len != 8) return false;
+    if(len != 6 && len != 8)
+        return false;
 
     if(len == 6) {
         dest->r = clamp(hex_to_unsigned_decimal(s + 0, 2), 0, 255);
@@ -75,7 +76,7 @@ try_parse_color(char *s, struct mwc_color *dest) {
 }
 
 static bool
-config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char **args, size_t arg_count) {
+config_add_layer_rule(struct config *c, char *regex, char *predicate, char **args, size_t arg_count) {
     struct layer_rule_regex condition;
     if(strcmp(regex, "_") == 0) {
         condition.has = false;
@@ -83,7 +84,6 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
         regex_t compiled;
         if(regcomp(&compiled, regex, REG_EXTENDED) != 0) {
             ERROR("%s is not a valid regex", regex);
-            regfree(&compiled);
             return false;
         }
         condition.regex = compiled;
@@ -91,17 +91,12 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
     }
 
     if(strcmp(predicate, "blur") == 0) {
-        struct layer_rule *layer_rule = calloc(1, sizeof(*layer_rule));
-        layer_rule->condition = condition;
-        wl_list_insert(&c->layer_rules.blur, &layer_rule->link);
-    } else if(strcmp(predicate, "blur_xray") == 0) {
-        struct layer_rule *layer_rule = calloc(1, sizeof(*layer_rule));
-        layer_rule->condition = condition;
-        wl_list_insert(&c->layer_rules.blur_xray, &layer_rule->link);
-    } else if(strcmp(predicate, "blur_ignore_transparent") == 0) {
-        struct layer_rule *layer_rule = calloc(1, sizeof(*layer_rule));
-        layer_rule->condition = condition;
-        wl_list_insert(&c->layer_rules.blur_ignore_transparent, &layer_rule->link);
+        array_push(&c->layer_rules.blur,
+                ((struct layer_rule_blur){
+                        .condition = condition,
+                        .optimized = arg_count > 0 && atoi(args[0]),
+                        .ignore_transparent = arg_count > 1 && atoi(args[1]),
+                }));
     } else {
         ERROR("invalid layer rule %s", predicate);
         if(condition.has) {
@@ -114,7 +109,7 @@ config_add_layer_rule(struct mwc_config *c, char *regex, char *predicate, char *
 }
 
 static bool
-config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_regex, char *predicate, char **args,
+config_add_window_rule(struct config *c, char *app_id_regex, char *title_regex, char *predicate, char **args,
         size_t arg_count) {
     struct window_rule_regex condition;
     if(strcmp(app_id_regex, "_") == 0) {
@@ -123,7 +118,6 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         regex_t compiled;
         if(regcomp(&compiled, app_id_regex, REG_EXTENDED) != 0) {
             ERROR("`%s` is not a valid regex", app_id_regex);
-            regfree(&compiled);
             return false;
         }
         condition.app_id_regex = compiled;
@@ -136,7 +130,6 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
         regex_t compiled;
         if(regcomp(&compiled, title_regex, REG_EXTENDED) != 0) {
             ERROR("`%s` is not a valid regex", title_regex);
-            regfree(&compiled);
             return false;
         }
         condition.title_regex = compiled;
@@ -144,59 +137,64 @@ config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_reg
     }
 
     if(strcmp(predicate, "float") == 0) {
-        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
-        wl_list_insert(&c->window_rules.floating, &window_rule->link);
+        array_push(&c->window_rules.floating,
+                ((struct window_rule){
+                        .condition = condition,
+                }));
     } else if(strcmp(predicate, "size") == 0) {
-        if(arg_count < 2) goto invalid;
+        if(arg_count < 2)
+            goto invalid;
 
-        struct window_rule_size *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
+        struct window_rule_size window_rule;
+        window_rule.condition = condition;
 
         // if it ends with '%' we treat it as a relative unit
         if(args[0][strlen(args[0]) - 1] == '%') {
             args[0][strlen(args[0]) - 1] = 0;
-            window_rule->relative_width = true;
+            window_rule.relative_width = true;
         }
         if(args[1][strlen(args[1]) - 1] == '%') {
             args[1][strlen(args[1]) - 1] = 0;
-            window_rule->relative_height = true;
+            window_rule.relative_height = true;
         }
 
-        window_rule->width = max(atoi(args[0]), 0);
-        window_rule->height = max(atoi(args[1]), 0);
+        window_rule.width = max(atoi(args[0]), 0);
+        window_rule.height = max(atoi(args[1]), 0);
 
-        wl_list_insert(&c->window_rules.size, &window_rule->link);
+        array_push(&c->window_rules.size, window_rule);
     } else if(strcmp(predicate, "opacity") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        struct window_rule_opacity *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
+        double active = clamp(atof(args[0]), 0.0, 1.0);
+        double inactive = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : active;
 
-        window_rule->active_value = clamp(atof(args[0]), 0.0, 1.0);
-        window_rule->inactive_value = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : window_rule->active_value;
-
-        wl_list_insert(&c->window_rules.opacity, &window_rule->link);
+        array_push(&c->window_rules.opacity,
+                ((struct window_rule_opacity){
+                        .condition = condition,
+                        .active_value = active,
+                        .inactive_value = inactive,
+                }));
     } else if(strcmp(predicate, "no_titlebar") == 0) {
-        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
-
-        wl_list_insert(&c->window_rules.no_titlebar, &window_rule->link);
+        array_push(&c->window_rules.no_titlebar,
+                ((struct window_rule){
+                        .condition = condition,
+                }));
     } else if(strcmp(predicate, "no_border") == 0) {
-        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
-
-        wl_list_insert(&c->window_rules.no_border, &window_rule->link);
+        array_push(&c->window_rules.no_border,
+                ((struct window_rule){
+                        .condition = condition,
+                }));
     } else if(strcmp(predicate, "no_shadow") == 0) {
-        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
-
-        wl_list_insert(&c->window_rules.no_shadow, &window_rule->link);
+        array_push(&c->window_rules.no_shadow,
+                ((struct window_rule){
+                        .condition = condition,
+                }));
     } else if(strcmp(predicate, "no_blur") == 0) {
-        struct window_rule *window_rule = calloc(1, sizeof(*window_rule));
-        window_rule->condition = condition;
-
-        wl_list_insert(&c->window_rules.no_blur, &window_rule->link);
+        array_push(&c->window_rules.no_blur,
+                ((struct window_rule){
+                        .condition = condition,
+                }));
     } else {
         ERROR("invalid window_rule `%s`", predicate);
         goto cleanup;
@@ -218,7 +216,7 @@ cleanup:
 
 static char *
 string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
-    /* append this while making sure there is enough space */
+    // append this while making sure there is enough space
     size_t a_len = strlen(a);
     size_t b_len = strlen(b);
     while(*cap < a_len + b_len + 2) {
@@ -245,7 +243,7 @@ string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
 }
 
 static void
-config_add_keymap(struct mwc_config *c, char *layout, char *variant) {
+config_add_keymap(struct config *c, char *layout, char *variant) {
     // everything here is ugly
     static size_t layout_cap, variant_cap;
     static size_t count;
@@ -265,7 +263,7 @@ config_add_keymap(struct mwc_config *c, char *layout, char *variant) {
 }
 
 static bool
-config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *action, char **args, size_t arg_count) {
+config_add_keybind(struct config *c, char *modifiers, char *key, char *action, char **args, size_t arg_count) {
     char *p = modifiers;
     uint32_t modifiers_flag = 0;
 
@@ -347,177 +345,188 @@ config_add_keybind(struct mwc_config *c, char *modifiers, char *key, char *actio
         }
     }
 
-    struct keybind *k = calloc(1, sizeof(*k));
-    *k = (struct keybind){
+    struct keybind keybind = (struct keybind){
             .modifiers = modifiers_flag,
             .key = key_sym,
     };
 
     // this is true for most, needs to be set to false if otherwise
-    k->initialized = true;
+    keybind.initialized = true;
 
     if(strcmp(action, "exit") == 0) {
-        k->action = keybind_stop_server;
+        keybind.action = keybind_stop_server;
     } else if(strcmp(action, "run") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        k->action = keybind_run;
-        k->args = strdup(args[0]);
-    } else if(strcmp(action, "kill_active") == 0) {
-        k->action = keybind_close_keyboard_focused_toplevel;
+        keybind.action = keybind_run;
+        keybind.args = strdup(args[0]);
+    } else if(strcmp(action, "close") == 0) {
+        keybind.action = keybind_close;
     } else if(strcmp(action, "toggle_floating") == 0) {
-        k->action = keybind_focused_toplevel_toggle_floating;
-    } else if(strcmp(action, "resize") == 0) {
-        k->action = keybind_resize_focused_toplevel;
-        k->stop = keybind_stop_resize_focused_toplevel;
-    } else if(strcmp(action, "move") == 0) {
-        k->action = keybind_move_focused_toplevel;
-        k->stop = keybind_stop_move_focused_toplevel;
+        keybind.action = keybind_toggle_floating;
+    } else if(strcmp(action, "start_resize") == 0) {
+        keybind.action = keybind_start_resize;
+        keybind.stop = keybind_stop_resize;
+    } else if(strcmp(action, "start_move") == 0) {
+        keybind.action = keybind_start_move;
+        keybind.stop = keybind_stop_move;
     } else if(strcmp(action, "move_focus") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        enum mwc_direction direction;
+        enum direction direction;
         if(strcmp(args[0], "up") == 0) {
-            direction = MWC_UP;
+            direction = DIRECTION_UP;
         } else if(strcmp(args[0], "left") == 0) {
-            direction = MWC_LEFT;
+            direction = DIRECTION_LEFT;
         } else if(strcmp(args[0], "down") == 0) {
-            direction = MWC_DOWN;
+            direction = DIRECTION_DOWN;
         } else if(strcmp(args[0], "right") == 0) {
-            direction = MWC_RIGHT;
+            direction = DIRECTION_RIGHT;
         } else {
             goto invalid;
         }
 
-        k->action = keybind_move_focus;
-        k->args = (void *)direction;
-    } else if(strcmp(action, "swap") == 0) {
-        if(arg_count < 1) goto invalid;
+        keybind.action = keybind_move_focus;
+        keybind.args = (void *)direction;
+    } else if(strcmp(action, "move") == 0) {
+        if(arg_count < 1)
+            goto invalid;
 
-        enum mwc_direction direction;
+        enum direction direction;
         if(strcmp(args[0], "up") == 0) {
-            direction = MWC_UP;
+            direction = DIRECTION_UP;
         } else if(strcmp(args[0], "left") == 0) {
-            direction = MWC_LEFT;
+            direction = DIRECTION_LEFT;
         } else if(strcmp(args[0], "down") == 0) {
-            direction = MWC_DOWN;
+            direction = DIRECTION_DOWN;
         } else if(strcmp(args[0], "right") == 0) {
-            direction = MWC_RIGHT;
+            direction = DIRECTION_RIGHT;
         } else {
             goto invalid;
         }
 
-        k->action = keybind_swap_focused_toplevel;
-        k->args = (void *)direction;
+        keybind.action = keybind_move;
+        keybind.args = (void *)direction;
     } else if(strcmp(action, "workspace") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        k->action = keybind_change_workspace;
+        keybind.action = keybind_change_workspace;
         // this is going to be overriden by the actual workspace that is needed for change_workspace()
-        k->args = (void *)(uintptr_t)atoi(args[0]);
-        k->initialized = false;
+        keybind.args = (void *)(uintptr_t)atoi(args[0]);
+        keybind.initialized = false;
     } else if(strcmp(action, "move_to_workspace") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        k->action = keybind_move_focused_toplevel_to_workspace;
+        keybind.action = keybind_move_to_workspace;
         // this is going to be overriden by the actual workspace that is needed for change_workspace()
-        k->args = (void *)(uintptr_t)atoi(args[0]);
-        k->initialized = false;
+        keybind.args = (void *)(uintptr_t)atoi(args[0]);
+        keybind.initialized = false;
     } else if(strcmp(action, "next_workspace") == 0) {
-        k->action = keybind_next_workspace;
+        keybind.action = keybind_next_workspace;
     } else if(strcmp(action, "prev_workspace") == 0) {
-        k->action = keybind_prev_workspace;
+        keybind.action = keybind_prev_workspace;
     } else if(strcmp(action, "toggle_fullscreen") == 0) {
-        k->action = keybind_focused_toplevel_toggle_fullscreen;
+        keybind.action = keybind_toggle_fullscreen;
     } else if(strcmp(action, "increase_master_ratio") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        k->action = keybind_increase_master_ratio;
-        k->args = (void *)(uintptr_t)(atof(args[0]) * 100);
+        keybind.action = keybind_increase_master_ratio;
+        keybind.args = (void *)(uintptr_t)(atof(args[0]) * 100);
     } else if(strcmp(action, "decrease_master_ratio") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
-        k->action = keybind_decrease_master_ratio;
-        k->args = (void *)(uintptr_t)(atof(args[0]) * 100);
+        keybind.action = keybind_decrease_master_ratio;
+        keybind.args = (void *)(uintptr_t)(atof(args[0]) * 100);
     } else {
         ERROR("invalid keybind action `%s`", action);
-        goto cleanup;
+        return false;
     }
 
     if(pointer) {
-        wl_list_insert(&c->pointer_keybinds, &k->link);
+        array_push(&c->pointer_keybinds, keybind);
     } else {
-        wl_list_insert(&c->keybinds, &k->link);
+        array_push(&c->keybinds, keybind);
     }
 
     return true;
 
 invalid:
     ERROR("invalid args to keybind `%s`", action);
-cleanup:
-    free(k);
     return false;
 }
 
 static void
 config_free_args(char **args, size_t arg_count) {
     for(size_t i = 0; i < arg_count; i++) {
-        if(args[i] != NULL) free(args[i]);
+        if(args[i] != NULL)
+            free(args[i]);
     }
 
     free(args);
 }
 
 static bool
-config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg_count) {
+config_handle_value(struct config *c, char *keyword, char **args, size_t arg_count) {
     if(strcmp(keyword, "keyboard_rate") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->keyboard_rate = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "keyboard_delay") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->keyboard_delay = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "pointer_sensitivity") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->pointer_sensitivity = clamp(atof(args[0]), -1.0, 1.0);
     } else if(strcmp(keyword, "pointer_acceleration") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
         c->pointer_acceleration =
                 atoi(args[0]) ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
     } else if(strcmp(keyword, "pointer") == 0) {
-        if(arg_count < 3) goto invalid;
+        if(arg_count < 3)
+            goto invalid;
 
-        enum libinput_config_accel_profile accel =
-                atoi(args[1]) ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT;
-
-        struct pointer_config *p = calloc(1, sizeof(*p));
-        *p = (struct pointer_config){
-                .name = strdup(args[0]),
-                .acceleration = accel,
-                .sensitivity = clamp(atof(args[2]), -1.0, 1.0),
-        };
-
-        wl_list_insert(&c->pointers, &p->link);
+        array_push(&c->pointers,
+                ((struct pointer_config){
+                        .name = strdup(args[0]),
+                        .acceleration = atoi(args[1]) ? LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
+                                                      : LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT,
+                        .sensitivity = clamp(atof(args[2]), -1.0, 1.0),
+                }));
     } else if(strcmp(keyword, "pointer_left_handed") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->pointer_left_handed = atoi(args[0]);
     } else if(strcmp(keyword, "trackpad_disable_while_typing") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->trackpad_disable_while_typing = atoi(args[0]);
     } else if(strcmp(keyword, "trackpad_natural_scroll") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->trackpad_natural_scroll = atoi(args[0]);
     } else if(strcmp(keyword, "trackpad_tap_to_click") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->trackpad_tap_to_click = atoi(args[0]);
     } else if(strcmp(keyword, "trackpad_scroll_method") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(strcmp(args[0], "no_scroll") == 0) {
             c->trackpad_scroll_method = LIBINPUT_CONFIG_SCROLL_NO_SCROLL;
@@ -531,39 +540,48 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             goto invalid;
         }
     } else if(strcmp(keyword, "borders") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->borders = atoi(args[0]);
     } else if(strcmp(keyword, "border_width") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->border_width = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "outer_gaps") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->outer_gaps = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "inner_gaps") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->inner_gaps = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "master_ratio") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->master_ratio = clamp(atof(args[0]), 0, 1);
     } else if(strcmp(keyword, "master_count") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->master_count = max(atoi(args[0]), 1);
     } else if(strcmp(keyword, "cursor_theme") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->cursor_theme = strdup(args[0]);
     } else if(strcmp(keyword, "cursor_size") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->cursor_size = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "border_color") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(!try_parse_color(args[0], &c->border_color.active)) {
             goto invalid;
@@ -572,88 +590,108 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
         if(arg_count == 1 || !try_parse_color(args[1], &c->border_color.inactive)) {
             c->border_color.inactive = c->border_color.active;
         }
-    } else if(strcmp(keyword, "output") == 0) {
-        if(arg_count < 6) goto invalid;
+    } else if(strcmp(keyword, "output_mode") == 0) {
+        if(arg_count < 4)
+            goto invalid;
 
-        struct output_config *m = calloc(1, sizeof(*m));
-        *m = (struct output_config){
-                .name = strdup(args[0]),
-                .x = atoi(args[1]),
-                .y = atoi(args[2]),
-                .width = atoi(args[3]),
-                .height = atoi(args[4]),
-                .refresh_rate = atoi(args[5]) * 1000,
-                // scale is optional, defaults to 1
-                .scale = arg_count > 6 ? atof(args[6]) : 1,
-        };
+        array_push(&c->output_modes,
+                ((struct output_mode_config){
+                        .name = strdup(args[0]),
+                        .width = atoi(args[1]),
+                        .height = atoi(args[2]),
+                        .refresh_rate = atoi(args[3]) * 1000,
+                        // scale is optional, defaults to 1
+                        .scale = arg_count > 4 ? atof(args[4]) : 1.0,
+                }));
+    } else if(strcmp(keyword, "output_position") == 0) {
+        if(arg_count < 2)
+            goto invalid;
 
-        wl_list_insert(&c->outputs, &m->link);
+        array_push(&c->output_positions,
+                ((struct output_position_config){
+                        .name = strdup(args[0]),
+                        .x = atoi(args[1]),
+                        .y = atoi(args[2]),
+                }));
     } else if(strcmp(keyword, "workspace") == 0) {
-        if(arg_count < 2) goto invalid;
+        if(arg_count < 2)
+            goto invalid;
 
-        struct workspace_config *w = calloc(1, sizeof(*w));
-        *w = (struct workspace_config){
-                .index = atoi(args[0]),
-                .output = strdup(args[1]),
-        };
-
-        wl_list_insert(&c->workspaces, &w->link);
+        array_push(&c->workspaces,
+                ((struct workspace_config){
+                        .index = atoi(args[0]),
+                        .output = strdup(args[1]),
+                }));
     } else if(strcmp(keyword, "run") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         array_push(&c->run, strdup(args[0]));
     } else if(strcmp(keyword, "keybind") == 0) {
-        if(arg_count < 3) goto invalid;
+        if(arg_count < 3)
+            goto invalid;
 
         config_add_keybind(c, args[0], args[1], args[2], &args[3], arg_count - 3);
     } else if(strcmp(keyword, "env") == 0) {
-        if(arg_count < 2) goto invalid;
+        if(arg_count < 2)
+            goto invalid;
 
         setenv(args[0], args[1], true);
     } else if(strcmp(keyword, "window_rule") == 0) {
-        if(arg_count < 3) goto invalid;
+        if(arg_count < 3)
+            goto invalid;
 
         config_add_window_rule(c, args[0], args[1], args[2], &args[3], arg_count - 3);
     } else if(strcmp(keyword, "animations") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->animations = atoi(args[0]);
     } else if(strcmp(keyword, "animation_duration") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->animation_duration = clamp(atoi(args[0]), 0, INT_MAX);
     } else if(strcmp(keyword, "animation_curve") == 0) {
-        if(arg_count < 4) goto invalid;
+        if(arg_count < 4)
+            goto invalid;
 
         c->animation_curve =
                 fx_animation_curve_create((double[4]){atof(args[0]), atof(args[1]), atof(args[2]), atof(args[3])});
     } else if(strcmp(keyword, "client_side_decorations") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->client_side_decorations = atoi(args[0]);
     } else if(strcmp(keyword, "opacity") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->opacity.active = clamp(atof(args[0]), 0.0, 1.0);
         c->opacity.inactive = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : c->opacity.active;
     } else if(strcmp(keyword, "opacity_apply_when_fullscreen") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->opacity_apply_when_fullscreen = atoi(args[0]);
     } else if(strcmp(keyword, "keymap") == 0) {
-        if(arg_count < 2) goto invalid;
+        if(arg_count < 2)
+            goto invalid;
         // handle appending to this string
         config_add_keymap(c, args[0], args[1]);
     } else if(strcmp(keyword, "keymap_options") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->keymap_options = strdup(args[0]);
     } else if(strcmp(keyword, "border_radius") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->border_radius = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "border_radius_location") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(strcmp(args[0], "all") == 0) {
             c->border_radius_location = CORNER_LOCATION_ALL;
@@ -679,74 +717,99 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             }
         }
     } else if(strcmp(keyword, "blur") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur = atoi(args[0]);
-    } else if(strcmp(keyword, "blur_xray") == 0) {
-        if(arg_count < 1) goto invalid;
+    } else if(strcmp(keyword, "blur_optimized") == 0) {
+        if(arg_count < 1)
+            goto invalid;
 
-        c->blur_xray = atoi(args[0]);
+        if(strcmp(args[0], "always") == 0) {
+            c->blur_optimized = BLUR_OPTIMIZED_ALWAYS;
+        } else if(strcmp(args[0], "tiled_only") == 0) {
+            c->blur_optimized = BLUR_OPTIMIZED_TILED_ONLY;
+        } else if(strcmp(args[0], "never") == 0) {
+            c->blur_optimized = BLUR_OPTIMIZED_NEVER;
+        } else {
+            goto invalid;
+        }
     } else if(strcmp(keyword, "blur_passes") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur_params.num_passes = clamp(atoi(args[0]), 1, INT_MAX);
     } else if(strcmp(keyword, "blur_radius") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur_params.radius = clamp(atoi(args[0]), 0, INT_MAX);
     } else if(strcmp(keyword, "blur_noise") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur_params.noise = max(atof(args[0]), 0.0);
     } else if(strcmp(keyword, "blur_brightness") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur_params.brightness = max(atof(args[0]), 0.0);
     } else if(strcmp(keyword, "blur_contrast") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur_params.contrast = max(atof(args[0]), 0.0);
     } else if(strcmp(keyword, "blur_saturation") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->blur_params.saturation = max(atof(args[0]), 0.0);
     } else if(strcmp(keyword, "shadows") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->shadows = atoi(args[0]);
     } else if(strcmp(keyword, "shadow_size") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->shadow_size = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "shadow_blur") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->shadow_blur = max(atof(args[0]), 0.0);
     } else if(strcmp(keyword, "shadow_position") == 0) {
-        if(arg_count < 2) goto invalid;
+        if(arg_count < 2)
+            goto invalid;
 
         c->shadow_position.x = atoi(args[0]);
         c->shadow_position.y = atoi(args[1]);
     } else if(strcmp(keyword, "shadow_color") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(!try_parse_color(args[0], &c->shadow_color)) {
             goto invalid;
         }
     } else if(strcmp(keyword, "layer_rule") == 0) {
-        if(arg_count < 2) goto invalid;
+        if(arg_count < 2)
+            goto invalid;
 
         config_add_layer_rule(c, args[0], args[1], &args[2], arg_count - 2);
     } else if(strcmp(keyword, "titlebars") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebars = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_height") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_height = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "titlebar_color") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(!try_parse_color(args[0], &c->titlebar_color.active)) {
             goto invalid;
@@ -756,15 +819,18 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             c->titlebar_color.inactive = c->titlebar_color.active;
         }
     } else if(strcmp(keyword, "titlebar_include_close_button") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_include_close_button = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_close_button_size") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_close_button_size = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_close_button_position") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(strcmp(args[0], "left") == 0) {
             c->titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_LEFT;
@@ -772,12 +838,14 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             c->titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT;
         }
     } else if(strcmp(keyword, "titlebar_close_button_padding") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_close_button_padding.left = atoi(args[0]);
         c->titlebar_close_button_padding.right = arg_count > 1 ? atoi(args[1]) : c->titlebar_close_button_padding.left;
     } else if(strcmp(keyword, "titlebar_close_button_shape") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(strcmp(args[0], "square") == 0) {
             c->titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_SQUARE;
@@ -785,7 +853,8 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             c->titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE;
         }
     } else if(strcmp(keyword, "titlebar_close_button_color") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(!try_parse_color(args[0], &c->titlebar_close_button_color.active)) {
             goto invalid;
@@ -795,26 +864,31 @@ config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg
             c->titlebar_close_button_color.inactive = c->titlebar_close_button_color.active;
         }
     } else if(strcmp(keyword, "titlebar_include_title") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_include_title = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_center_title") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_center_title = atoi(args[0]);
     } else if(strcmp(keyword, "titlebar_title_padding") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->titlebar_title_padding.left = atoi(args[0]);
         c->titlebar_title_padding.right = arg_count > 1 ? atoi(args[1]) : c->titlebar_title_padding.left;
     } else if(strcmp(keyword, "titlebar_title_color") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         if(!try_parse_color(args[0], &c->titlebar_title_color)) {
             goto invalid;
         }
     } else if(strcmp(keyword, "titlebar_title_font") == 0) {
-        if(arg_count < 1) goto invalid;
+        if(arg_count < 1)
+            goto invalid;
 
         c->font = fcft_from_name(1, (const char **)&args[0], NULL);
         if(c->font == NULL) {
@@ -840,13 +914,13 @@ invalid:
 
 static void
 get_default_config_path(char *dest, size_t size) {
-    char *default_config_path = getenv("MWC_DEFAULT_CONFIG_PATH");
+    char *default_config_path = getenv("DEFAULT_CONFIG_PATH");
 
     if(default_config_path == NULL) {
         default_config_path = "/usr/share/mwc/default.conf";
-        wlr_log(WLR_INFO, "no env MWC_DEFAULT_CONFIG_PATH set, using the default %s", default_config_path);
+        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, using the default %s", default_config_path);
     } else {
-        wlr_log(WLR_INFO, "env MWC_DEFAULT_CONFIG_PATH set to %s, using it", default_config_path);
+        wlr_log(WLR_INFO, "env DEFAULT_CONFIG_PATH set to %s, using it", default_config_path);
     }
 
     strncpy(dest, default_config_path, size);
@@ -855,7 +929,7 @@ get_default_config_path(char *dest, size_t size) {
 
 static bool
 get_config_path(char *dest, size_t size) {
-    char *env_conf = getenv("MWC_CONFIG_PATH");
+    char *env_conf = getenv("CONFIG_PATH");
     if(env_conf != NULL) {
         strncpy(dest, env_conf, size);
         dest[size - 1] = 0;
@@ -887,7 +961,8 @@ config_handle_line(char *line, char **keyword, char ***args, size_t *args_count)
         p++;
 
     // if its an empty line or it starts with '#' (comment) skip
-    if(*p == '\n' || *p == '#') return false;
+    if(*p == '\n' || *p == '#')
+        return false;
 
     size_t len = 0, cap = STRING_INITIAL_LENGTH;
     char *kw = calloc(cap, sizeof(char));
@@ -962,7 +1037,8 @@ config_handle_line(char *line, char **keyword, char ***args, size_t *args_count)
         *q = 0;
         ars_len++;
 
-        if(word) p++;
+        if(word)
+            p++;
         // skip whitespace
         while(*p == ' ' || *p == '\t')
             p++;
@@ -975,7 +1051,7 @@ config_handle_line(char *line, char **keyword, char ***args, size_t *args_count)
 }
 
 static void
-config_set_default_needed_params(struct mwc_config *c) {
+config_set_default_needed_params(struct config *c) {
     // as we are initializing config with calloc, some fields that are necessary in order for mwc to not crash may be
     // not specified in the config. we set their values to some default value
     if(c->keyboard_rate == 0) {
@@ -1043,11 +1119,11 @@ config_set_default_needed_params(struct mwc_config *c) {
     c->toplevel_minimum_height = max(c->toplevel_minimum_height, 10);
 }
 
-extern struct mwc_server server;
+extern struct server server;
 
-struct mwc_config *
+struct config *
 config_load() {
-    struct mwc_config *c = calloc(1, sizeof(*c));
+    struct config *c = calloc(1, sizeof(*c));
 
     FILE *config_file;
     char path[1024];
@@ -1083,22 +1159,22 @@ config_load() {
         return NULL;
     }
 
-    wl_list_init(&c->keybinds);
-    wl_list_init(&c->pointer_keybinds);
-    wl_list_init(&c->outputs);
-    wl_list_init(&c->workspaces);
-    wl_list_init(&c->pointers);
-    wl_list_init(&c->window_rules.floating);
-    wl_list_init(&c->window_rules.size);
-    wl_list_init(&c->window_rules.opacity);
-    wl_list_init(&c->window_rules.no_titlebar);
-    wl_list_init(&c->window_rules.no_border);
-    wl_list_init(&c->window_rules.no_shadow);
-    wl_list_init(&c->window_rules.no_blur);
+    // initialize all of the arrays
+    array_init(&c->keybinds);
+    array_init(&c->pointer_keybinds);
+    array_init(&c->output_modes);
+    array_init(&c->output_positions);
+    array_init(&c->workspaces);
+    array_init(&c->pointers);
+    array_init(&c->window_rules.floating);
+    array_init(&c->window_rules.size);
+    array_init(&c->window_rules.opacity);
+    array_init(&c->window_rules.no_titlebar);
+    array_init(&c->window_rules.no_border);
+    array_init(&c->window_rules.no_shadow);
+    array_init(&c->window_rules.no_blur);
 
-    wl_list_init(&c->layer_rules.blur);
-    wl_list_init(&c->layer_rules.blur_xray);
-    wl_list_init(&c->layer_rules.blur_ignore_transparent);
+    array_init(&c->layer_rules.blur);
 
     array_init(&c->run);
 
@@ -1107,6 +1183,7 @@ config_load() {
     char *keyword, **args;
     size_t args_count;
     line_number = 1;
+    // clean this up
     while(fgets(line_buffer, 1024, config_file) != NULL) {
         if(config_handle_line(line_buffer, &keyword, &args, &args_count)) {
             config_handle_value(c, keyword, args, args_count);
@@ -1120,132 +1197,126 @@ config_load() {
     return c;
 }
 
-// workspaces are the only thing that are never freed, as we do not allow
-// destroying them for the lifetime of the compositor
+// workspaces are the only thing that are never freed, as we do not allow destroying them for the lifetime of the
+// compositor
 void
-config_destroy(struct mwc_config *c) {
+config_destroy(struct config *c) {
     free(c->dir);
 
-    struct output_config *iter_output_config, *tmp_output_config;
-    wl_list_for_each_safe(iter_output_config, tmp_output_config, &c->outputs, link) {
-        free(iter_output_config->name);
-        free(iter_output_config);
+    for(struct output_mode_config *iter = c->output_modes; iter <= array_last(c->output_modes); iter++) {
+        free(iter->name);
     }
+    array_destroy(c->output_modes);
 
-    struct keybind *iter_keybind, *tmp_keybind;
-    wl_list_for_each_safe(iter_keybind, tmp_keybind, &c->keybinds, link) {
-        if(iter_keybind->action == keybind_run) {
-            free(iter_keybind->args);
-        }
-        free(iter_keybind);
+    for(struct output_position_config *iter = c->output_positions; iter <= array_last(c->output_positions); iter++) {
+        free(iter->name);
     }
-    wl_list_for_each_safe(iter_keybind, tmp_keybind, &c->pointer_keybinds, link) {
-        free(iter_keybind);
-    }
+    array_destroy(c->output_positions);
 
-    struct window_rule *iter_float, *tmp_float;
-    wl_list_for_each_safe(iter_float, tmp_float, &c->window_rules.floating, link) {
-        if(iter_float->condition.has_app_id_regex) {
-            regfree(&iter_float->condition.app_id_regex);
-        }
-        if(iter_float->condition.has_title_regex) {
-            regfree(&iter_float->condition.title_regex);
-        }
-        free(iter_float);
+    for(struct workspace_config *iter = c->workspaces; iter <= array_last(c->workspaces); iter++) {
+        free(iter->output);
     }
+    array_destroy(c->workspaces);
 
-    struct window_rule_size *iter_size, *tmp_size;
-    wl_list_for_each_safe(iter_size, tmp_size, &c->window_rules.size, link) {
-        if(iter_size->condition.has_app_id_regex) {
-            regfree(&iter_size->condition.app_id_regex);
+    for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
+        if(iter->action == keybind_run) {
+            free(iter->args);
         }
-        if(iter_size->condition.has_title_regex) {
-            regfree(&iter_size->condition.title_regex);
-        }
-        free(iter_size);
     }
+    array_destroy(c->keybinds);
 
-    struct window_rule_opacity *iter_opacity, *tmp_opacity;
-    wl_list_for_each_safe(iter_opacity, tmp_opacity, &c->window_rules.opacity, link) {
-        if(iter_opacity->condition.has_app_id_regex) {
-            regfree(&iter_opacity->condition.app_id_regex);
-        }
-        if(iter_opacity->condition.has_title_regex) {
-            regfree(&iter_opacity->condition.title_regex);
-        }
-        free(iter_opacity);
-    }
+    // here we dont allocate anything more than just a struct
+    array_destroy(c->pointer_keybinds);
 
-    struct window_rule *iter_deco, *tmp_deco;
-    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_titlebar, link) {
-        if(iter_deco->condition.has_app_id_regex) {
-            regfree(&iter_deco->condition.app_id_regex);
+    // destroy window rules
+    for(struct window_rule *iter = c->window_rules.floating; iter <= array_last(c->window_rules.floating); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
         }
-        if(iter_deco->condition.has_title_regex) {
-            regfree(&iter_deco->condition.title_regex);
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
         }
-        free(iter_deco);
     }
-    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_border, link) {
-        if(iter_deco->condition.has_app_id_regex) {
-            regfree(&iter_deco->condition.app_id_regex);
-        }
-        if(iter_deco->condition.has_title_regex) {
-            regfree(&iter_deco->condition.title_regex);
-        }
-        free(iter_deco);
-    }
-    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_shadow, link) {
-        if(iter_deco->condition.has_app_id_regex) {
-            regfree(&iter_deco->condition.app_id_regex);
-        }
-        if(iter_deco->condition.has_title_regex) {
-            regfree(&iter_deco->condition.title_regex);
-        }
-        free(iter_deco);
-    }
-    wl_list_for_each_safe(iter_deco, tmp_deco, &c->window_rules.no_blur, link) {
-        if(iter_deco->condition.has_app_id_regex) {
-            regfree(&iter_deco->condition.app_id_regex);
-        }
-        if(iter_deco->condition.has_title_regex) {
-            regfree(&iter_deco->condition.title_regex);
-        }
-        free(iter_deco);
-    }
+    array_destroy(c->window_rules.floating);
 
-    struct layer_rule *iter_layer_rule, *tmp_layer_rule;
-    wl_list_for_each_safe(iter_layer_rule, tmp_layer_rule, &c->layer_rules.blur, link) {
-        if(iter_layer_rule->condition.has) {
-            regfree(&iter_layer_rule->condition.regex);
+    for(struct window_rule_size *iter = c->window_rules.size; iter <= array_last(c->window_rules.size); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
         }
-
-        free(iter_layer_rule);
-    }
-    wl_list_for_each_safe(iter_layer_rule, tmp_layer_rule, &c->layer_rules.blur_xray, link) {
-        if(iter_layer_rule->condition.has) {
-            regfree(&iter_layer_rule->condition.regex);
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
         }
-
-        free(iter_layer_rule);
     }
-    wl_list_for_each_safe(iter_layer_rule, tmp_layer_rule, &c->layer_rules.blur_ignore_transparent, link) {
-        if(iter_layer_rule->condition.has) {
-            regfree(&iter_layer_rule->condition.regex);
+    array_destroy(c->window_rules.size);
+
+    for(struct window_rule_opacity *iter = c->window_rules.opacity; iter <= array_last(c->window_rules.opacity);
+            iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
         }
-
-        free(iter_layer_rule);
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
     }
+    array_destroy(c->window_rules.opacity);
+
+    for(struct window_rule *iter = c->window_rules.no_titlebar; iter <= array_last(c->window_rules.no_titlebar);
+            iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
+        }
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
+    }
+    array_destroy(c->window_rules.no_titlebar);
+
+    for(struct window_rule *iter = c->window_rules.no_border; iter <= array_last(c->window_rules.no_border); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
+        }
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
+    }
+    array_destroy(c->window_rules.no_border);
+
+    for(struct window_rule *iter = c->window_rules.no_shadow; iter <= array_last(c->window_rules.no_shadow); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
+        }
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
+    }
+    array_destroy(c->window_rules.no_shadow);
+
+    for(struct window_rule *iter = c->window_rules.no_blur; iter <= array_last(c->window_rules.no_blur); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
+        }
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
+    }
+    array_destroy(c->window_rules.no_blur);
+
+    // destroy layer rules
+    for(struct layer_rule_blur *iter = c->layer_rules.blur; iter <= array_last(c->layer_rules.blur); iter++) {
+        if(iter->condition.has) {
+            regfree(&iter->condition.regex);
+        }
+    }
+    array_destroy(c->layer_rules.blur);
 
     free(c->keymap_layouts);
     free(c->keymap_variants);
     free(c->keymap_options);
 
-    struct pointer_config *iter_pointer_config, *tmp_pointer_config;
-    wl_list_for_each_safe(iter_pointer_config, tmp_pointer_config, &c->pointers, link) {
-        free(iter_pointer_config->name);
-        free(iter_pointer_config);
+    for(struct pointer_config *iter = c->pointers; iter <= array_last(c->pointers); iter++) {
+        free(iter->name);
     }
+    array_destroy(c->pointers);
 
     if(c->font != NULL) {
         fcft_destroy(c->font);
@@ -1255,17 +1326,16 @@ config_destroy(struct mwc_config *c) {
 
     fx_animation_curve_destroy(c->animation_curve);
 
-    for(size_t i = 0; i < array_len(c->run); i++) {
-        free(c->run[i]);
+    for(char **iter = c->run; iter <= array_last(c->run); iter++) {
+        free(*iter);
     }
-
-    array_destroy(&c->run);
+    array_destroy(c->run);
 
     free(c);
 }
 
 static void
-layout_reorganize(struct mwc_workspace *workspace) {
+layout_reorganize(struct workspace *workspace) {
     uint32_t master_count = wl_list_length(&workspace->masters);
 
     if(master_count > server.config->master_count) {
@@ -1293,20 +1363,12 @@ layout_reorganize(struct mwc_workspace *workspace) {
 
 void
 config_reload() {
-    struct mwc_config *c = config_load();
+    struct config *c = config_load();
     if(c == NULL) {
         // if we couldnt load the config then skip the reload
         wlr_log(WLR_ERROR, "could not reload the config, keeping the old one");
         return;
     }
-
-    // since we dont touch workspaces when reloading we destroy the new one and just patch it with old one
-    struct workspace_config *iter_workspace_config, *tmp_workspace_config;
-    wl_list_for_each_safe(iter_workspace_config, tmp_workspace_config, &c->workspaces, link) {
-        free(iter_workspace_config->output);
-        free(iter_workspace_config);
-    }
-    c->workspaces = server.config->workspaces;
 
     // we destroy the old config and set the new one
     config_destroy(server.config);
@@ -1325,8 +1387,11 @@ config_reload() {
                                            : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
     }
 
-    // first we reconfigure and reposition the outputs and then workspaces and toplevels
-    struct mwc_output *iter_output;
+    // set the new blur parametars
+    wlr_scene_set_blur_data(server.scene, c->blur_params);
+
+    // we reconfigure and reposition the outputs
+    struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
         struct output_config *output_config = output_find_config_by_name(iter_output->wlr_output->name);
 
@@ -1336,17 +1401,16 @@ config_reload() {
         output_configure_blur(iter_output);
 
         // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
-        // todo: consider making this function not call layout_configure()
         layer_surfaces_configure(iter_output);
         // recheck layer rules
-        struct mwc_layer_surface *iter_layer_surface;
+        struct layer_surface *iter_layer_surface;
         for(size_t i = 0; i < 4; i++) {
             wl_list_for_each(iter_layer_surface, &(&iter_output->layers.background)[i], link) {
                 layer_surface_check_rules(iter_layer_surface);
             }
         }
 
-        struct mwc_workspace *iter_workspace;
+        struct workspace *iter_workspace;
         wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
             // we rewire the keybinds
             struct keybind *iter_keybind;
@@ -1355,14 +1419,14 @@ config_reload() {
                         (uintptr_t)iter_keybind->args == iter_workspace->index) {
                     iter_keybind->args = iter_workspace;
                     iter_keybind->initialized = true;
-                } else if(iter_keybind->action == keybind_move_focused_toplevel_to_workspace &&
+                } else if(iter_keybind->action == keybind_move_to_workspace &&
                         (uintptr_t)iter_keybind->args == iter_workspace->index) {
                     iter_keybind->args = iter_workspace;
                     iter_keybind->initialized = true;
                 }
             }
 
-            struct mwc_toplevel *iter_toplevel;
+            struct toplevel *iter_toplevel;
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
@@ -1391,27 +1455,27 @@ config_reload() {
         }
     }
 
-    struct mwc_keyboard *keyboard;
+    struct keyboard *keyboard;
     wl_list_for_each(keyboard, &server.keyboards, link) {
         keyboard_configure(keyboard);
     }
 
-    struct mwc_pointer *pointer;
+    struct pointer *pointer;
     wl_list_for_each(pointer, &server.pointers, link) {
         pointer_configure(pointer);
     }
 
-    // todo: make this more efficient
     wlr_xcursor_manager_destroy(server.cursor_mgr);
-
     server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
-    char cursor_size[8];
-    snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
 
-    cursor_size[7] = 0;
     if(server.config->cursor_theme != NULL) {
         setenv("XCURSOR_THEME", server.config->cursor_theme, true);
+    } else {
+        setenv("XCURSOR_THEME", "", true);
     }
+
+    char cursor_size[8];
+    snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
     setenv("XCURSOR_SIZE", cursor_size, true);
 }
 
@@ -1428,7 +1492,8 @@ void *
 config_watch(void *arg) {
     char *dir = arg;
 
-    if(dir == NULL) return NULL;
+    if(dir == NULL)
+        return NULL;
 
     int inotify_fd = inotify_init();
     if(inotify_fd < 0) {

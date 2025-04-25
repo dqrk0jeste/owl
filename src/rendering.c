@@ -19,7 +19,7 @@
 #include "view.h"
 #include "workspace.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 struct iter_layer_apply_effects_args {
     bool has_blur, blur_ignore_transparent, blur_xray;
@@ -30,12 +30,12 @@ iter_layer_apply_blur(struct wlr_scene_buffer *buffer, int sx, int sy, void *dat
     struct iter_layer_apply_effects_args *args = data;
 
     wlr_scene_buffer_set_backdrop_blur(buffer, args->has_blur);
-    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, !args->blur_xray);
+    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, args->blur_xray);
     wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, args->blur_ignore_transparent);
 }
 
 static void
-layer_surface_apply_effects(struct mwc_layer_surface *layer_surface) {
+layer_surface_apply_effects(struct layer_surface *layer_surface) {
     struct iter_layer_apply_effects_args args = {
             .has_blur = layer_surface->has_blur,
             .blur_ignore_transparent = layer_surface->blur_ignore_transparent,
@@ -45,17 +45,15 @@ layer_surface_apply_effects(struct mwc_layer_surface *layer_surface) {
 }
 
 struct iter_toplevel_apply_effects_args {
-    int32_t root_x;
-    int32_t root_y;
+    int32_t root_x, root_y;
     struct wlr_box geometry;
-    uint32_t width;
-    uint32_t height;
-    double width_scale;
-    double height_scale;
+    uint32_t width, height;
+    double width_scale, height_scale;
     double opacity;
     uint32_t border_radius;
     bool has_titlebar;
     bool has_blur, blur_xray;
+    bool animating;
 };
 
 static void
@@ -69,8 +67,8 @@ iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, voi
 
     struct wlr_surface *surface = scene_surface->surface;
 
-    // stretch the buffer if needed
-    if(args->width_scale >= 1 || args->height_scale >= 1) {
+    // stretch the buffer if needed. note: we also set the size to the desired size when not animating
+    if(!args->animating || args->width_scale > 1 || args->height_scale > 1) {
         uint32_t surface_width = surface->current.width;
         uint32_t surface_height = surface->current.height;
 
@@ -119,7 +117,7 @@ iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, voi
 }
 
 static void
-toplevel_apply_effects(struct mwc_toplevel *toplevel) {
+toplevel_apply_effects(struct toplevel *toplevel) {
     double opacity;
     if(!toplevel->fullscreen || server.config->opacity_apply_when_fullscreen) {
         opacity = toplevel == server.focused_toplevel ? toplevel->active_opacity : toplevel->inactive_opacity;
@@ -147,12 +145,13 @@ toplevel_apply_effects(struct mwc_toplevel *toplevel) {
             .has_titlebar = decoration_has_titlebar(toplevel->decoration),
             .has_blur = toplevel->has_blur,
             .blur_xray = server.config->blur_xray && toplevel->floating,
+            .animating = toplevel->animation != NULL,
     };
     wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, iter_toplevel_apply_effects, &args);
 }
 
 static bool
-toplevel_is_in_box(struct mwc_toplevel *toplevel, struct wlr_box *box) {
+toplevel_is_in_box(struct toplevel *toplevel, struct wlr_box *box) {
     struct wlr_box deco_box = toplevel_get_current_display_deco_box(toplevel);
 
     struct wlr_box dest;
@@ -160,7 +159,7 @@ toplevel_is_in_box(struct mwc_toplevel *toplevel, struct wlr_box *box) {
 }
 
 void
-output_draw(struct mwc_output *output) {
+output_draw(struct output *output) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
@@ -172,7 +171,7 @@ output_draw(struct mwc_output *output) {
     }
 
     // apply layer surface effects
-    struct mwc_layer_surface *iter_layer_surface;
+    struct layer_surface *iter_layer_surface;
     for(size_t i = 0; i < 4; i++) {
         wl_list_for_each(iter_layer_surface, &(&output->layers.background)[i], link) {
             layer_surface_apply_effects(iter_layer_surface);
@@ -183,9 +182,9 @@ output_draw(struct mwc_output *output) {
         toplevel_apply_effects(server.grabbed_toplevel);
     }
 
-    struct mwc_output *iter_output;
+    struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
-        struct mwc_toplevel *iter_toplevel;
+        struct toplevel *iter_toplevel;
         wl_list_for_each(iter_toplevel, &iter_output->active_workspace->masters, link) {
             if(toplevel_is_in_box(iter_toplevel, &output_box)) {
                 toplevel_apply_effects(iter_toplevel);

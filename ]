@@ -194,8 +194,8 @@ focus_layer_surface(struct layer_surface *layer_surface) {
         cursor_stop_move_resize();
     }
 
-    // note: even tho focused_layer_surface can also be set, we dont have anything special to do to make it unfocused.
-    // invoking the keyboard enter function will stop it from getting the new events
+    // note: even tho focused_layer_surface can also be set, we dont have anything
+    // special to do to make it unfocused. invoking the keyboard enter function will stop it from getting the events
 
     // unfocus the focused toplevel;
     if(server.focused_toplevel != NULL) {
@@ -204,12 +204,8 @@ focus_layer_surface(struct layer_surface *layer_surface) {
         unfocus_focused_toplevel();
     }
 
-    enum zwlr_layer_shell_v1_layer layer = layer_surface->wlr_layer_surface->current.layer;
-
     server.focused_layer_surface = layer_surface;
-    // we set it to exclusive focus only if its in the top or overlay layer
-    server.exclusive = layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP &&
-            keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
+    server.exclusive = keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
     if(keyboard != NULL) {
@@ -267,27 +263,6 @@ layers_under_fullscreen_set_enabled(struct output *output, bool enable) {
     wl_list_for_each(l, &output->layers.top, link) {
         wlr_scene_node_set_enabled(&l->scene->tree->node, enable);
     }
-}
-
-struct layer_surface *
-find_layer_with_exclusive_focus(void) {
-    struct output *iter_output;
-    wl_list_for_each(iter_output, &server.outputs, link) {
-        struct layer_surface *iter_layer_surface;
-        wl_list_for_each(iter_layer_surface, &iter_output->layers.overlay, link) {
-            if(iter_layer_surface->wlr_layer_surface->current.keyboard_interactive ==
-                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
-                return iter_layer_surface;
-        }
-
-        wl_list_for_each(iter_layer_surface, &iter_output->layers.top, link) {
-            if(iter_layer_surface->wlr_layer_surface->current.keyboard_interactive ==
-                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
-                return iter_layer_surface;
-        }
-    }
-
-    return NULL;
 }
 
 void

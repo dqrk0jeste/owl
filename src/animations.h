@@ -1,11 +1,11 @@
 #pragma once
 
-#include "wlr/util/box.h"
 #include <scenefx/types/wlr_scene.h>
-
 #include <stdint.h>
 #include <wayland-util.h>
 #include <wlr/types/wlr_xdg_shell.h>
+
+#include "wlr/util/box.h"
 
 #ifndef FX_ANIMATIONS_BAKED_POINTS_COUNT
 #define FX_ANIMATIONS_BAKED_POINTS_COUNT 256
@@ -38,4 +38,3 @@ fx_transform_animation_get_current(struct fx_transform_animation *animation);
 
 bool
 fx_transform_animation_is_done(struct fx_transform_animation *animation);
-

@@ -18,7 +18,7 @@ struct keybind {
 };
 
 bool
-server_handle_keybinds(struct mwc_keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state);
+server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state);
 
 bool
 handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count);
@@ -39,34 +39,34 @@ void
 keybind_prev_workspace(void *data);
 
 void
-keybind_move_focused_toplevel_to_workspace(void *data);
+keybind_move_to_workspace(void *data);
 
 void
-keybind_resize_focused_toplevel(void *data);
+keybind_start_resize(void *data);
 
 void
-keybind_stop_resize_focused_toplevel(void *data);
+keybind_stop_resize(void *data);
 
 void
-keybind_move_focused_toplevel(void *data);
+keybind_start_move(void *data);
 
 void
-keybind_stop_move_focused_toplevel(void *data);
+keybind_stop_move(void *data);
 
 void
-keybind_close_keyboard_focused_toplevel(void *data);
+keybind_close(void *data);
 
 void
 keybind_move_focus(void *data);
 
 void
-keybind_swap_focused_toplevel(void *data);
+keybind_move(void *data);
 
 void
-keybind_focused_toplevel_toggle_floating(void *data);
+keybind_toggle_floating(void *data);
 
 void
-keybind_focused_toplevel_toggle_fullscreen(void *data);
+keybind_toggle_fullscreen(void *data);
 
 void
 keybind_increase_master_ratio(void *data);

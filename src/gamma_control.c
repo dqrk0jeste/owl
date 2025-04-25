@@ -4,7 +4,7 @@
 
 #include "mwc.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 void
 gamma_control_set_gamma(struct wl_listener *listener, void *data) {
@@ -14,7 +14,7 @@ gamma_control_set_gamma(struct wl_listener *listener, void *data) {
     wlr_output_state_init(&state);
 
     struct wlr_gamma_control_v1 *gamma_control =
-        wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, event->output);
+            wlr_gamma_control_manager_v1_get_control(server.gamma_control_manager, event->output);
 
     if(!wlr_gamma_control_v1_apply(gamma_control, &state)) {
         wlr_output_state_finish(&state);

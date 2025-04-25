@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdbool.h>
-
 #include <wayland-server.h>
 
 void
@@ -18,4 +17,3 @@ dnd_icons_show(bool show);
 
 void
 dnd_icons_move(uint32_t x, uint32_t y);
-

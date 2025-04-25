@@ -1,14 +1,12 @@
 #pragma once
 
 #include <scenefx/types/wlr_scene.h>
-
 #include <wlr/types/wlr_output.h>
 
-#include "workspace.h"
-#include "config.h"
 #include "mwc.h"
+#include "workspace.h"
 
-struct mwc_output {
+struct output {
     struct wl_list link;
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
@@ -24,7 +22,7 @@ struct mwc_output {
 
     struct wlr_scene_optimized_blur *blur;
 
-    struct mwc_workspace *active_workspace;
+    struct workspace *active_workspace;
 
     struct wlr_scene_rect *session_lock_rect;
 
@@ -38,30 +36,27 @@ server_handle_new_output(struct wl_listener *listener, void *data);
 
 // based on the current state and the current config creates, updates or destroys blur
 void
-output_configure_blur(struct mwc_output *output);
+output_configure_blur(struct output *output);
 
 void
-output_place_in_layout(struct mwc_output *output, struct output_config *config);
+output_place_in_layout(struct output *output);
 
 bool
-output_configure(struct wlr_output *output, struct output_config *config);
+output_configure(struct wlr_output *output);
 
 // returns `output_config *` if there is a configuration specified for output `name`,
 // or `NULL` if there is no configuration specified
 struct output_config *
 output_find_config_by_name(char *name);
 
-struct mwc_output *
-output_get_relative(struct mwc_output *output, enum mwc_direction direction);
+struct output *
+output_get_relative(struct output *output, enum direction direction);
 
 void
-cursor_jump_output(struct mwc_output *output);
+cursor_jump_output(struct output *output);
 
 void
-focus_output(struct mwc_output *output,
-        enum mwc_direction side);
-
+focus_output(struct output *output, enum direction side);
 
 struct wlr_box
-output_create_centered_box(struct mwc_output *output, uint32_t width, uint32_t height);
-
+output_create_centered_box(struct output *output, uint32_t width, uint32_t height);

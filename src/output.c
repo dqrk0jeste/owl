@@ -12,6 +12,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
+#include "array.h"
 #include "config.h"
 #include "ipc.h"
 #include "keybinds.h"
@@ -21,18 +22,19 @@
 #include "toplevel.h"
 #include "workspace.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 static void
-output_transfer_existing_workspaces(struct mwc_output *output) {
+output_transfer_existing_workspaces(struct output *output) {
     // if this output is reconnected then its workspaces are on some other monitor,
     // we try to find it. we iterate through all the workspaces and compare its `original_output`
     // field with this outputs name
-    struct mwc_output *iter_output;
-    struct mwc_workspace *iter_workspace, *tmp;
+    struct output *iter_output;
+    struct workspace *iter_workspace, *tmp;
     wl_list_for_each(iter_output, &server.outputs, link) {
         // we skip this one if in the list
-        if(iter_output == output) continue;
+        if(iter_output == output)
+            continue;
 
         wl_list_for_each_safe(iter_workspace, tmp, &iter_output->workspaces, link) {
             if(strcmp(iter_workspace->original_output, output->wlr_output->name) == 0) {
@@ -41,7 +43,7 @@ output_transfer_existing_workspaces(struct mwc_output *output) {
                 // workspaces that are left should be either owned by this output or evacuated from some
                 // other output, but, anyhow, changing to this workspace must be valid if(iter_workspace
                 // == iter_output->active_workspace) {
-                //     struct mwc_workspace *owned_workspace = output_find_owned_workspace(iter_output);
+                //     struct workspace *owned_workspace = output_find_owned_workspace(iter_output);
                 //     // it should have had its own workspace
                 //     assert(owned_workspace != NULL);
                 //     change_workspace(owned_workspace, false);
@@ -60,14 +62,14 @@ output_transfer_existing_workspaces(struct mwc_output *output) {
         // after we have moved all the workspaces from this output we need to patch its active workspace
         if(iter_output->active_workspace->output != iter_output) {
             assert(!wl_list_empty(&iter_output->workspaces));
-            struct mwc_workspace *first = wl_container_of(iter_output->workspaces.next, first, link);
+            struct workspace *first = wl_container_of(iter_output->workspaces.next, first, link);
             change_workspace(first, false);
         }
     }
 }
 
 static void
-output_create_blur(struct mwc_output *output) {
+output_create_blur(struct output *output) {
     assert(output->blur == NULL);
 
     output->blur = wlr_scene_optimized_blur_create(&server.scene->tree, 0, 0);
@@ -75,14 +77,14 @@ output_create_blur(struct mwc_output *output) {
 }
 
 static void
-output_destroy_blur(struct mwc_output *output) {
+output_destroy_blur(struct output *output) {
     assert(output->blur != NULL);
     wlr_scene_node_destroy(&output->blur->node);
     output->blur = NULL;
 }
 
 static void
-output_update_blur(struct mwc_output *output) {
+output_update_blur(struct output *output) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
@@ -91,10 +93,10 @@ output_update_blur(struct mwc_output *output) {
 }
 
 static void
-workspace_create_for_output(struct mwc_output *output, uint32_t index) {
-    struct mwc_workspace *workspace = calloc(1, sizeof(*workspace));
+workspace_create_for_output(struct output *output, uint32_t index) {
+    struct workspace *workspace = calloc(1, sizeof(*workspace));
 
-    wl_list_init(&workspace->floating_toplevels);
+    wl_list_init(&workspace->floating);
     wl_list_init(&workspace->masters);
     wl_list_init(&workspace->slaves);
 
@@ -104,16 +106,15 @@ workspace_create_for_output(struct mwc_output *output, uint32_t index) {
     workspace->original_output = strdup(output->wlr_output->name);
 
     // we attach the keybinds that the config specified
-    struct keybind *k;
-    wl_list_for_each(k, &server.config->keybinds, link) {
-        // we didnt have information about what workspace this is going to be,
-        // so we only kept an index. now we replace it with the actual workspace pointer
-        if(k->action == keybind_change_workspace && (uintptr_t)k->args == workspace->index) {
-            k->args = workspace;
-            k->initialized = true;
-        } else if(k->action == keybind_move_focused_toplevel_to_workspace && (uintptr_t)k->args == workspace->index) {
-            k->args = workspace;
-            k->initialized = true;
+    for(struct keybind *iter = server.config->keybinds; iter <= array_last(server.config->keybinds); iter++) {
+        // we didnt have information about what workspace this is going to be, so we only kept an index. now we replace
+        // it with the actual workspace pointer
+        if(iter->action == keybind_change_workspace && (uintptr_t)iter->args == workspace->index) {
+            iter->args = workspace;
+            iter->initialized = true;
+        } else if(iter->action == keybind_move_to_workspace && (uintptr_t)iter->args == workspace->index) {
+            iter->args = workspace;
+            iter->initialized = true;
         }
     }
 
@@ -121,30 +122,30 @@ workspace_create_for_output(struct mwc_output *output, uint32_t index) {
 }
 
 static void
-output_assign_workspaces(struct mwc_output *output) {
+output_assign_workspaces(struct output *output) {
     wl_list_init(&output->workspaces);
 
-    // we check if this output already has some workspaces created; this happens when
-    // this output gets reattached, since we never destroy workspaces, but instead just
-    // transfer them to some other output and now want them back
+    // we check if this output already has some workspaces created; this happens when this output gets reattached, since
+    // we never destroy workspaces, but instead just transfer them to some other output and now want them back
     output_transfer_existing_workspaces(output);
 
-    if(!wl_list_empty(&output->workspaces)) return;
+    if(!wl_list_empty(&output->workspaces))
+        return;
 
-    // if the list is still empty then there the mentioned scenario did not happen,
-    // so we try and create workspaces from the config
-    struct workspace_config *c;
-    // we go in reverse to first add workspaces that were on top of config
-    wl_list_for_each_reverse(c, &server.config->workspaces, link) {
-        if(strcmp(c->output, output->wlr_output->name) == 0) {
-            workspace_create_for_output(output, c->index);
+    // if the list is still empty then there the mentioned scenario did not happen, so we try and create workspaces from
+    // the config
+    for(struct workspace_config *iter = server.config->workspaces; iter <= array_last(server.config->workspaces);
+            iter++) {
+        if(strcmp(iter->output, output->wlr_output->name) == 0) {
+            workspace_create_for_output(output, iter->index);
         }
     }
 
-    if(!wl_list_empty(&output->workspaces)) return;
+    if(!wl_list_empty(&output->workspaces))
+        return;
 
-    // if its still empty then there were no configured workspaces for this output,
-    // so we just create the default one indexed with zero
+    // if its still empty then there were no configured workspaces for this output, so we just create the default one
+    // indexed with zero
     wlr_log(WLR_ERROR, "no workspace config specified for output %s; using the default one", output->wlr_output->name);
     workspace_create_for_output(output, 0);
 }
@@ -152,15 +153,13 @@ output_assign_workspaces(struct mwc_output *output) {
 static void
 output_handle_frame(struct wl_listener *listener, void *data) {
     // this function is called every time an output is ready to display a frame
-    struct mwc_output *output = wl_container_of(listener, output, frame);
+    struct output *output = wl_container_of(listener, output, frame);
 
     output_draw(output);
-
     wlr_scene_output_commit(output->scene_output, NULL);
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-
     wlr_scene_output_send_frame_done(output->scene_output, &now);
 }
 
@@ -170,7 +169,7 @@ output_handle_request_state(struct wl_listener *listener, void *data) {
     // this function is called when the backend requests a new state for
     // the output. for example, wayland and X11 backends request a new mode
     // when the output window is resized
-    struct mwc_output *output = wl_container_of(listener, output, request_state);
+    struct output *output = wl_container_of(listener, output, request_state);
     struct wlr_output_event_request_state *event = data;
 
     wlr_output_commit_state(output->wlr_output, event->state);
@@ -179,32 +178,33 @@ output_handle_request_state(struct wl_listener *listener, void *data) {
 // if an output is destroyed we want to evacuate all of its workspaces to some
 // other output. we assume you always have at least one output enabled!
 static void
-output_evacuate_workspaces(struct mwc_output *output) {
+output_evacuate_workspaces(struct output *output) {
     struct wl_list *next = output->link.next;
     if(next == &server.outputs) {
         next = output->link.prev;
     }
 
     if(next == &server.outputs) {
-        // this means there is no outputs left. we are crashing here, i am not putting the energy into this case
+        // this means there is no outputs left. we are crashing here, as i am not putting the energy into this case
         return;
     }
 
-    struct mwc_output *new = wl_container_of(next, new, link);
+    struct output *new = wl_container_of(next, new, link);
     // if the currently focused toplevel is on this output then we need to move focus of that one
+    // todo: check for layer surfaces here
     if(server.focused_toplevel != NULL && server.focused_toplevel->workspace->output == output) {
-        focus_output(new, MWC_LEFT);
+        focus_output(new, DIRECTION_LEFT);
     }
 
-    struct mwc_workspace *iter, *tmp;
+    struct workspace *iter, *tmp;
     wl_list_for_each_safe(iter, tmp, &output->workspaces, link) {
         // we reparent those workspaces, but before that we disable all the toplevels on that workspace
         workspace_toplevels_set_enabled(iter, false);
 
         iter->output = new;
         wl_list_remove(&iter->link);
-
         wl_list_insert(&new->workspaces, &iter->link);
+
         layout_configure(iter);
     }
 }
@@ -212,26 +212,26 @@ output_evacuate_workspaces(struct mwc_output *output) {
 // todo: handle this cleaner, we may also add listeners for the output destroy on layer surfaces
 static void
 output_handle_destroy(struct wl_listener *listener, void *data) {
-    struct mwc_output *output = wl_container_of(listener, output, destroy);
+    struct output *output = wl_container_of(listener, output, destroy);
 
     // we want to transfer all the workspaces to a new output;
 
-    // todo: if this was the only output then idk what to do honestly, maybe have a temporary
-    // stash thats going to hold them until some output is attached again?
+    // todo: if this was the only output then idk what to do honestly, maybe have a temporary stash thats going to hold
+    // them until some output is attached again?
     // todo: try to make this cleaner, and remove this server.running maybe
     // todo: extract this into a function and also disable the things in the scene
     if(server.running) {
         output_evacuate_workspaces(output);
+        if(output->session_lock_rect != NULL) {
+            wlr_scene_node_destroy(&output->session_lock_rect->node);
+        }
+
+        if(output->blur != NULL) {
+            output_destroy_blur(output);
+        }
+
     } else {
         // todo: maybe destroy the workspaces? this way we could also handle the case of no output
-    }
-
-    if(output->session_lock_rect != NULL) {
-        wlr_scene_node_destroy(&output->session_lock_rect->node);
-    }
-
-    if(output->blur != NULL) {
-        output_destroy_blur(output);
     }
 
     wl_list_remove(&output->frame.link);
@@ -269,11 +269,25 @@ output_apply_preffered_mode(struct wlr_output *wlr_output) {
     return true;
 }
 
-// configures this output satisfying `config`, backes up to the default configuration
-// if `NULL` is passed or the `config` cannot be applied
+static struct output_mode_config *
+output_find_mode_config_by_name(char *name) {
+    for(struct output_mode_config *iter = server.config->output_modes; iter <= array_last(server.config->output_modes);
+            iter++) {
+        if(strcmp(iter->name, name) == 0) {
+            return iter;
+        }
+    }
+
+    return NULL;
+}
+
+// modesets this output using the provided mode from the config file. if there is none, or it cant be applied backs up
+// to the preffered mode
 bool
-output_configure(struct wlr_output *wlr_output, struct output_config *config) {
+output_modeset(struct wlr_output *wlr_output) {
     wlr_log(WLR_INFO, "configuring output %s", wlr_output->name);
+
+    struct output_mode_config *config = output_find_mode_config_by_name(wlr_output->name);
 
     if(config == NULL) {
         wlr_log(WLR_INFO, "output %s not specified in the config; trying the preffered mode.", wlr_output->name);
@@ -283,7 +297,7 @@ output_configure(struct wlr_output *wlr_output, struct output_config *config) {
     // we try to find the closest supported mode for this output, that means:
     //     - same resolution
     //     - closest refresh rate
-    // if there is none we take the prefered mode for the output */
+    // if there is none we take the prefered mode for the output
     struct wlr_output_mode *best_match = NULL;
     uint32_t best_match_diff = UINT32_MAX;
 
@@ -325,7 +339,7 @@ output_configure(struct wlr_output *wlr_output, struct output_config *config) {
 }
 
 void
-output_configure_blur(struct mwc_output *output) {
+output_configure_blur(struct output *output) {
     if(server.config->blur) {
         if(output->blur == NULL) {
             output_create_blur(output);
@@ -339,8 +353,21 @@ output_configure_blur(struct mwc_output *output) {
     }
 }
 
+static struct output_position_config *
+output_find_position_config_by_name(char *name) {
+    for(struct output_position_config *iter = server.config->output_positions;
+            iter <= array_last(server.config->output_positions); iter++) {
+        if(strcmp(iter->name, name) == 0) {
+            return iter;
+        }
+    }
+
+    return NULL;
+}
+
 void
-output_place_in_layout(struct mwc_output *output, struct output_config *config) {
+output_place_in_layout(struct output *output) {
+    struct output_position_config *config = output_find_position_config_by_name(output->wlr_output->name);
     struct wlr_output_layout_output *layout = config == NULL
             ? wlr_output_layout_add_auto(server.output_layout, output->wlr_output)
             : wlr_output_layout_add(server.output_layout, output->wlr_output, config->x, config->y);
@@ -352,28 +379,14 @@ output_place_in_layout(struct mwc_output *output, struct output_config *config) 
     output->usable_area = output_box;
 }
 
-struct output_config *
-output_find_config_by_name(char *name) {
-    struct output_config *config;
-    wl_list_for_each(config, &server.config->outputs, link) {
-        if(strcmp(config->name, name) == 0) {
-            return config;
-        }
-    }
-
-    return NULL;
-}
-
 void
 server_handle_new_output(struct wl_listener *listener, void *data) {
     struct wlr_output *wlr_output = data;
 
     wlr_output_init_render(wlr_output, server.allocator, server.renderer);
 
-    struct output_config *config = output_find_config_by_name(wlr_output->name);
-    // we try to configure the output. if it fails we quit
-    // as there is no point in having an output with no image on it
-    if(!output_configure(wlr_output, config)) {
+    // we try to configure the output. if it fails we quit as there is no point in having an output with no image on it
+    if(!output_modeset(wlr_output)) {
         wlr_log(WLR_ERROR, "couldn't set up output %s, skipping", wlr_output->name);
         return;
     }
@@ -381,7 +394,7 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
     wlr_log(WLR_INFO, "successfully set up output %s", wlr_output->name);
 
     // allocates and configures our state for this output
-    struct mwc_output *output = calloc(1, sizeof(*output));
+    struct output *output = calloc(1, sizeof(*output));
     output->wlr_output = wlr_output;
     // we keep a reference to our state in this free data field
     wlr_output->data = output;
@@ -407,14 +420,14 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 
     // then we handle the scene part
     output->scene_output = wlr_scene_output_create(server.scene, output->wlr_output);
-    output_place_in_layout(output, config);
+    output_place_in_layout(output);
     output_configure_blur(output);
 
     // and create the workspaces to this output
     output_assign_workspaces(output);
 
     // we take the first workspace for the active one for this output
-    struct mwc_workspace *first = wl_container_of(output->workspaces.next, first, link);
+    struct workspace *first = wl_container_of(output->workspaces.next, first, link);
     output->active_workspace = first;
 
     // and for the globally active if there isnt one
@@ -424,29 +437,30 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 }
 
 void
-cursor_jump_output(struct mwc_output *output) {
+cursor_jump_output(struct output *output) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
     wlr_cursor_warp(server.cursor, NULL, output_box.x + output_box.width / 2.0, output_box.y + output_box.height / 2.0);
 }
 
-// todo: should we handle layer surfaces before toplevels?
+// todo: should we handle layer surfaces before toplevels? no! if they are exclusive than they already have focus, if on
+// demand idc
 void
-focus_output(struct mwc_output *output, enum mwc_direction side) {
+focus_output(struct output *output, enum direction side) {
     if(server.lock != NULL) {
         if(!wl_list_empty(&server.lock->surfaces)) {
-            struct mwc_lock_surface *l = wl_container_of(server.lock->surfaces.next, l, link);
+            struct lock_surface *l = wl_container_of(server.lock->surfaces.next, l, link);
             focus_lock_surface(l);
         }
         return;
     }
 
-    struct mwc_toplevel *focus_next = NULL;
-    struct mwc_workspace *workspace = output->active_workspace;
+    struct toplevel *focus_next = NULL;
+    struct workspace *workspace = output->active_workspace;
 
-    if(workspace->fullscreen_toplevel != NULL) {
-        focus_next = workspace->fullscreen_toplevel;
+    if(workspace->fullscreen != NULL) {
+        focus_next = workspace->fullscreen;
     } else if(server.focused_toplevel == NULL || !server.focused_toplevel->floating) {
         bool is_master = server.focused_toplevel != NULL ? toplevel_is_master(server.focused_toplevel) : true;
         focus_next = layout_find_closest_toplevel(output->active_workspace, is_master, side);
@@ -475,8 +489,8 @@ focus_output(struct mwc_output *output, enum mwc_direction side) {
 }
 
 // todo: may replace this function with the wlroots alternative, as this one is quite hacky
-struct mwc_output *
-output_get_relative(struct mwc_output *output, enum mwc_direction direction) {
+struct output *
+output_get_relative(struct output *output, enum direction direction) {
     struct wlr_box original_output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &original_output_box);
 
@@ -486,26 +500,26 @@ output_get_relative(struct mwc_output *output, enum mwc_direction direction) {
     uint32_t original_output_midpoint_x = original_output_box.x + original_output_box.width / 2;
     uint32_t original_output_midpoint_y = original_output_box.y + original_output_box.height / 2;
 
-    struct mwc_output *o;
+    struct output *o;
     wl_list_for_each(o, &server.outputs, link) {
         struct wlr_box output_box;
         wlr_output_layout_get_box(server.output_layout, o->wlr_output, &output_box);
         output_box.width *= o->wlr_output->scale;
         output_box.height *= o->wlr_output->scale;
 
-        if(direction == MWC_LEFT && original_output_box.x == output_box.x + output_box.width &&
+        if(direction == DIRECTION_LEFT && original_output_box.x == output_box.x + output_box.width &&
                 original_output_midpoint_y > output_box.y &&
                 original_output_midpoint_y < output_box.y + output_box.height) {
             return o;
-        } else if(direction == MWC_RIGHT && original_output_box.x + original_output_box.width == output_box.x &&
+        } else if(direction == DIRECTION_RIGHT && original_output_box.x + original_output_box.width == output_box.x &&
                 original_output_midpoint_y > output_box.y &&
                 original_output_midpoint_y < output_box.y + output_box.height) {
             return o;
-        } else if(direction == MWC_UP && original_output_box.y == output_box.y + output_box.height &&
+        } else if(direction == DIRECTION_UP && original_output_box.y == output_box.y + output_box.height &&
                 original_output_midpoint_x > output_box.x &&
                 original_output_midpoint_x < output_box.x + output_box.width) {
             return o;
-        } else if(direction == MWC_DOWN && original_output_box.y + original_output_box.height == output_box.y &&
+        } else if(direction == DIRECTION_DOWN && original_output_box.y + original_output_box.height == output_box.y &&
                 original_output_midpoint_x > output_box.x &&
                 original_output_midpoint_x < output_box.x + output_box.width) {
             return o;
@@ -516,7 +530,7 @@ output_get_relative(struct mwc_output *output, enum mwc_direction direction) {
 }
 
 struct wlr_box
-output_create_centered_box(struct mwc_output *output, uint32_t width, uint32_t height) {
+output_create_centered_box(struct output *output, uint32_t width, uint32_t height) {
     return (struct wlr_box){
             .x = output->usable_area.x + (output->usable_area.width - width) / 2,
             .y = output->usable_area.y + (output->usable_area.height - height) / 2,

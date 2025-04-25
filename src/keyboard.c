@@ -11,13 +11,13 @@
 #include "keybinds.h"
 #include "mwc.h"
 
-extern struct mwc_server server;
+extern struct server server;
 
 // todo: button remapping
 static void
 keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
     // this event is raised when a modifier key, such as shift or alt, is pressed
-    struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
+    struct keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
 
     server.last_used_keyboard = keyboard;
     // a seat can only have one keyboard, but this is a limitation of the
@@ -31,7 +31,7 @@ keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
 
 static void
 keyboard_handle_key(struct wl_listener *listener, void *data) {
-    struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, key);
+    struct keyboard *keyboard = wl_container_of(listener, keyboard, key);
     struct wlr_keyboard_key_event *event = data;
 
     server.last_used_keyboard = keyboard;
@@ -57,7 +57,7 @@ keyboard_handle_key(struct wl_listener *listener, void *data) {
 
 static void
 keyboard_handle_destroy(struct wl_listener *listener, void *data) {
-    struct mwc_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
+    struct keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
 
     if(server.last_used_keyboard == keyboard) {
         server.last_used_keyboard = NULL;
@@ -73,7 +73,7 @@ keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 }
 
 bool
-keyboard_configure(struct mwc_keyboard *keyboard) {
+keyboard_configure(struct keyboard *keyboard) {
     struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     if(context == NULL) return false;
 
@@ -112,7 +112,7 @@ void
 server_handle_new_keyboard(struct wlr_input_device *device) {
     struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
 
-    struct mwc_keyboard *keyboard = calloc(1, sizeof(*keyboard));
+    struct keyboard *keyboard = calloc(1, sizeof(*keyboard));
     keyboard->wlr_keyboard = wlr_keyboard;
 
     keyboard_configure(keyboard);

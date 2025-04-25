@@ -6,70 +6,71 @@
 #include <scenefx/types/fx/corner_location.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <wayland-server-core.h>
 #include <wayland-server-protocol.h>
 
 #include "animations.h"
 #include "decoration.h"
 #include "helpers.h"
+#include "keybinds.h"
 #include "mwc.h"
 
-#define BAKED_POINTS_COUNT 256
-
-struct output_config {
+struct output_mode_config {
     char *name;
-    struct wl_list link;
-    uint32_t width;
-    uint32_t height;
+    uint32_t width, height;
     uint32_t refresh_rate;
-    uint32_t x;
-    uint32_t y;
     double scale;
+};
+
+struct output_position_config {
+    char *name;
+    int32_t x, y;
 };
 
 struct workspace_config {
     char *output;
     uint32_t index;
-    struct wl_list link;
 };
 
 struct pointer_config {
     char *name;
     double sensitivity;
     enum libinput_config_accel_profile acceleration;
-    struct wl_list link;
 };
 
-/* we usually can tell if an option is specified or not by comparing them to 0 (or NULL),
- * but sometimes 0 can also mean something else. for such options we add another bool value
- * to tell if they are specified or not. */
+enum blur_optimized {
+    BLUR_OPTIMIZED_ALWAYS = 0,
+    BLUR_OPTIMIZED_TILED_ONLY,
+    BLUR_OPTIMIZED_NEVER,
+};
+
+// we usually can tell if an option is specified or not by comparing them to 0 (or NULL), but sometimes 0 can also mean
+// something else. for such options we add another bool value to tell if they are specified or not. not used anymore,
+// but left if needed in the future
 #define WITH_SPECIFIED(type) \
     struct {                 \
         type value;          \
         bool specified;      \
     }
 
-struct mwc_config {
+struct config {
     // NULL if default config
     char *dir;
 
-    // todo: make some of these hash maps or arrays for faster lookups
-    struct wl_list outputs;
-    struct wl_list keybinds;  // especially this one, because its currently looping through a whole linked list
-    struct wl_list pointer_keybinds;
-    struct wl_list workspaces;
+    struct output_mode_config *output_modes;
+    struct output_position_config *output_positions;
+    struct keybind *keybinds;  // array
+    struct keybind *pointer_keybinds;  // array
+    struct workspace_config *workspaces;  // array
     struct {
-        struct wl_list floating;
-        struct wl_list size;
-        struct wl_list opacity;
-        struct wl_list no_titlebar, no_border, no_shadow, no_blur;
+        struct window_rule *floating;  // array
+        struct window_rule_size *size;  // array
+        struct window_rule_opacity *opacity;  // array
+        struct window_rule *no_titlebar, *no_border, *no_shadow, *no_blur;  // array
     } window_rules;
 
     struct {
-        struct wl_list blur;
-        struct wl_list blur_xray;
-        struct wl_list blur_ignore_transparent;
+        struct layer_rule_blur *blur;  // array
     } layer_rules;
 
     // keyboard stuff
@@ -82,7 +83,7 @@ struct mwc_config {
     // pointer stuff
     double pointer_sensitivity;
     enum libinput_config_accel_profile pointer_acceleration;
-    struct wl_list pointers;
+    struct pointer_config *pointers;  // array
     bool pointer_left_handed;
 
     // trackpad stuff
@@ -110,7 +111,7 @@ struct mwc_config {
     uint32_t border_radius;
     enum corner_location border_radius_location;
     struct {
-        struct mwc_color active, inactive;
+        struct color active, inactive;
     } border_color;
 
     bool shadows;
@@ -118,13 +119,13 @@ struct mwc_config {
     struct {
         int32_t x, y;
     } shadow_position;
-    struct mwc_color shadow_color;
+    struct color shadow_color;
     double shadow_blur;
 
     bool titlebars;
     uint32_t titlebar_height;
     struct {
-        struct mwc_color active, inactive;
+        struct color active, inactive;
     } titlebar_color;
 
     bool titlebar_include_close_button;
@@ -135,7 +136,7 @@ struct mwc_config {
     enum titlebar_close_button_shape titlebar_close_button_shape;
     enum titlebar_close_button_position titlebar_close_button_position;
     struct {
-        struct mwc_color active, inactive;
+        struct color active, inactive;
     } titlebar_close_button_color;
 
     bool titlebar_include_title;
@@ -143,7 +144,7 @@ struct mwc_config {
     struct {
         uint32_t left, right;
     } titlebar_title_padding;
-    struct mwc_color titlebar_title_color;
+    struct color titlebar_title_color;
 
     // will be generated from the name specified by `titlebar_title_font`, may be NULL
     struct fcft_font *font;
@@ -154,7 +155,7 @@ struct mwc_config {
     } opacity;
     bool opacity_apply_when_fullscreen;
     bool blur;
-    bool blur_xray;
+    enum blur_optimized blur_optimized;
     struct blur_data blur_params;
 
     // animations stuff
@@ -163,20 +164,20 @@ struct mwc_config {
     struct fx_animation_curve *animation_curve;
 
     // run on startup
-    char **run;
+    char **run;  // array
 
     // extracted
     uint32_t toplevel_minimum_width, toplevel_minimum_height;
 };
 
-struct mwc_config *
+struct config *
 config_load();
 
 void
 config_reload();
 
 void
-config_destroy(struct mwc_config *c);
+config_destroy(struct config *c);
 
 void *
 config_watch(void *data);
