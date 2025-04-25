@@ -1393,11 +1393,8 @@ config_reload() {
     // we reconfigure and reposition the outputs
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
-        struct output_config *output_config = output_find_config_by_name(iter_output->wlr_output->name);
-
-        output_configure(iter_output->wlr_output, output_config);
-        output_place_in_layout(iter_output, output_config);
-
+        output_modeset(iter_output->wlr_output);
+        output_place_in_layout(iter_output);
         output_configure_blur(iter_output);
 
         // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
@@ -1413,16 +1410,13 @@ config_reload() {
         struct workspace *iter_workspace;
         wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
             // we rewire the keybinds
-            struct keybind *iter_keybind;
-            wl_list_for_each(iter_keybind, &server.config->keybinds, link) {
-                if(iter_keybind->action == keybind_change_workspace &&
-                        (uintptr_t)iter_keybind->args == iter_workspace->index) {
-                    iter_keybind->args = iter_workspace;
-                    iter_keybind->initialized = true;
-                } else if(iter_keybind->action == keybind_move_to_workspace &&
-                        (uintptr_t)iter_keybind->args == iter_workspace->index) {
-                    iter_keybind->args = iter_workspace;
-                    iter_keybind->initialized = true;
+            for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
+                if(iter->action == keybind_change_workspace && (uintptr_t)iter->args == iter_workspace->index) {
+                    iter->args = iter_workspace;
+                    iter->initialized = true;
+                } else if(iter->action == keybind_move_to_workspace && (uintptr_t)iter->args == iter_workspace->index) {
+                    iter->args = iter_workspace;
+                    iter->initialized = true;
                 }
             }
 
@@ -1431,21 +1425,28 @@ config_reload() {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
-                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur, false);
+                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur,
+                        toplevel_should_have_optimized_blur(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
-                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur, false);
+                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur,
+                        toplevel_should_have_optimized_blur(iter_toplevel));
             }
-            wl_list_for_each(iter_toplevel, &iter_workspace->floating_toplevels, link) {
+            wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
                 toplevel_recheck_window_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
-                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur, c->blur_xray);
-                // we manually call this for floating so they are also updated
+                decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur,
+                        toplevel_should_have_optimized_blur(iter_toplevel));
+                // we manually call this for floating so they are updated
                 toplevel_set_state(iter_toplevel, iter_toplevel->deco_box);
+            }
+
+            if(iter_workspace->fullscreen != NULL) {
+                toplevel_set_state(iter_workspace->fullscreen, iter_workspace->fullscreen->deco_box);
             }
 
             // master_count might have changed in the new config, so we update the layout
@@ -1453,6 +1454,10 @@ config_reload() {
             // and than send the configures to all the tiled toplevels
             layout_configure(iter_workspace);
         }
+    }
+
+    if(server.grabbed_toplevel != NULL) {
+        toplevel_set_state(server.grabbed_toplevel, server.grabbed_toplevel->deco_box);
     }
 
     struct keyboard *keyboard;

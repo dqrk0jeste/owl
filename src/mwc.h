@@ -14,18 +14,6 @@
 #include "pointer.h"
 #include "session_lock.h"
 
-#define max(a, b) ((a) > (b) ? (a) : (b))
-#define min(a, b) ((a) < (b) ? (a) : (b))
-
-#define STRING_INITIAL_LENGTH 64
-
-enum direction {
-    DIRECTION_UP = 0,
-    DIRECTION_RIGHT,
-    DIRECTION_DOWN,
-    DIRECTION_LEFT,
-};
-
 enum server_mode {
     SERVER_MODE_NORMAL = 0,
     SERVER_MODE_DRAGGING,

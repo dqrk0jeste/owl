@@ -3,6 +3,7 @@
 #include <scenefx/types/wlr_scene.h>
 #include <wlr/types/wlr_output.h>
 
+#include "helpers.h"
 #include "mwc.h"
 #include "workspace.h"
 
@@ -41,13 +42,10 @@ output_configure_blur(struct output *output);
 void
 output_place_in_layout(struct output *output);
 
+// modesets this output using the provided mode from the config file. if there is none, or it cant be applied backs up
+// to the preffered mode. if it fails returns `false`
 bool
-output_configure(struct wlr_output *output);
-
-// returns `output_config *` if there is a configuration specified for output `name`,
-// or `NULL` if there is no configuration specified
-struct output_config *
-output_find_config_by_name(char *name);
+output_modeset(struct wlr_output *output);
 
 struct output *
 output_get_relative(struct output *output, enum direction direction);
@@ -56,7 +54,7 @@ void
 cursor_jump_output(struct output *output);
 
 void
-focus_output(struct output *output, enum direction side);
+focus_output(struct output *output);
 
 struct wlr_box
 output_create_centered_box(struct output *output, uint32_t width, uint32_t height);

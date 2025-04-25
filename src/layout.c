@@ -207,7 +207,7 @@ layout_configure(struct workspace *workspace) {
 }
 
 void
-layout_swap_toplevels(struct toplevel *t1, struct toplevel *t2) {
+layout_swap(struct toplevel *t1, struct toplevel *t2) {
     // swap them
     struct wl_list *before_t1 = t1->link.prev;
     wl_list_remove(&t1->link);

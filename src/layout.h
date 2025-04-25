@@ -56,7 +56,7 @@ layout_configure(struct workspace *workspace);
 
 // this function assumes they are in the same workspace and that t2 comes after t1 if in the same list
 void
-layout_swap_toplevels(struct toplevel *t1, struct toplevel *t2);
+layout_swap(struct toplevel *t1, struct toplevel *t2);
 
 // struct toplevel *
 // layout_find_closest_toplevel(struct workspace *workspace, bool master, enum direction side);

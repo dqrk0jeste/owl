@@ -100,14 +100,38 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
     focus_layer_surface(layer_surface);
 }
 
+static bool
+try_focus_exclusive_layer_surface(void) {
+    struct output *iter_output;
+    wl_list_for_each(iter_output, &server.outputs, link) {
+        struct layer_surface *iter_layer_surface;
+        wl_list_for_each(iter_layer_surface, &iter_output->layers.overlay, link) {
+            if(iter_layer_surface->wlr_layer_surface->current.keyboard_interactive ==
+                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE) {
+                focus_layer_surface(iter_layer_surface);
+                return true;
+            }
+        }
+        wl_list_for_each(iter_layer_surface, &iter_output->layers.top, link) {
+            if(iter_layer_surface->wlr_layer_surface->current.keyboard_interactive ==
+                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE) {
+                focus_layer_surface(iter_layer_surface);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static void
 layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, unmap);
 
     wl_list_remove(&layer_surface->link);
-
     struct output *output = layer_surface->wlr_layer_surface->output->data;
 
+    // hack when the output has been destroyed, idk why is works, will have to inverstigate when i am back at setup
     if(output == NULL) {
         if(layer_surface == server.focused_layer_surface) {
             server.focused_layer_surface = NULL;
@@ -118,34 +142,16 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     }
 
     if(layer_surface == server.focused_layer_surface) {
-        // focusing next will set it
+        // focusing next will set it if needed
         server.exclusive = false;
 
-        bool focused = false;
-        struct layer_surface *l;
-        wl_list_for_each(l, &output->layers.overlay, link) {
-            if(l->wlr_layer_surface->current.keyboard_interactive) {
-                focus_layer_surface(l);
-                focused = true;
-            }
-        }
-        wl_list_for_each(l, &output->layers.top, link) {
-            if(l->wlr_layer_surface->current.keyboard_interactive) {
-                focus_layer_surface(l);
-                focused = true;
-            }
-        }
-
-        if(!focused) {
-            // dont focus things that are not on the screen
+        if(!try_focus_exclusive_layer_surface()) {
             if(server.prev_focused != NULL && server.prev_focused->workspace == server.active_workspace) {
                 focus_toplevel(server.prev_focused);
-            } else if(!wl_list_empty(&server.active_workspace->masters)) {
-                struct toplevel *first = wl_container_of(server.active_workspace->masters.next, first, link);
-                focus_toplevel(first);
-            } else if(!wl_list_empty(&server.active_workspace->floating_toplevels)) {
-                struct toplevel *first = wl_container_of(server.active_workspace->floating_toplevels.next, first, link);
-                focus_toplevel(first);
+            } else if(has_floating(server.active_workspace)) {
+                focus_toplevel(first_floating(server.active_workspace));
+            } else if(has_masters(server.active_workspace)) {
+                focus_toplevel(first_master(server.active_workspace));
             }
         }
     }
@@ -194,8 +200,8 @@ focus_layer_surface(struct layer_surface *layer_surface) {
         cursor_stop_move_resize();
     }
 
-    // note: even tho focused_layer_surface can also be set, we dont have anything special to do to make it unfocused.
-    // invoking the keyboard enter function will stop it from getting the new events
+    // note: even tho focused_layer_surface can also be set, we dont have anything special to do to make it
+    // unfocused. invoking the keyboard enter function will stop it from getting the new events
 
     // unfocus the focused toplevel;
     if(server.focused_toplevel != NULL) {
@@ -267,27 +273,6 @@ layers_under_fullscreen_set_enabled(struct output *output, bool enable) {
     wl_list_for_each(l, &output->layers.top, link) {
         wlr_scene_node_set_enabled(&l->scene->tree->node, enable);
     }
-}
-
-struct layer_surface *
-find_layer_with_exclusive_focus(void) {
-    struct output *iter_output;
-    wl_list_for_each(iter_output, &server.outputs, link) {
-        struct layer_surface *iter_layer_surface;
-        wl_list_for_each(iter_layer_surface, &iter_output->layers.overlay, link) {
-            if(iter_layer_surface->wlr_layer_surface->current.keyboard_interactive ==
-                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
-                return iter_layer_surface;
-        }
-
-        wl_list_for_each(iter_layer_surface, &iter_output->layers.top, link) {
-            if(iter_layer_surface->wlr_layer_surface->current.keyboard_interactive ==
-                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
-                return iter_layer_surface;
-        }
-    }
-
-    return NULL;
 }
 
 void

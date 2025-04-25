@@ -28,6 +28,34 @@ list_at(struct wl_list *list, size_t index) {
     return iter;
 }
 
+ssize_t
+list_index_of(struct wl_list *list, struct wl_list *elem) {
+    ssize_t i = 0;
+    struct wl_list *iter = list->next;
+    while(iter != list) {
+        if(iter == elem)
+            return i;
+        iter = iter->next;
+        i++;
+    }
+
+    return -1;
+}
+
+enum direction
+opposite(enum direction direction) {
+    switch(direction) {
+        case DIRECTION_UP:
+            return DIRECTION_DOWN;
+        case DIRECTION_RIGHT:
+            return DIRECTION_LEFT;
+        case DIRECTION_DOWN:
+            return DIRECTION_UP;
+        case DIRECTION_LEFT:
+            return DIRECTION_RIGHT;
+    }
+}
+
 void
 color_to_wlr_color(struct color color, float dest[static 4]) {
     dest[0] = color.r / 255.0;

@@ -9,6 +9,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/xcursor.h>
 
+#include "array.h"
 #include "config.h"
 #include "helpers.h"
 #include "layout.h"
@@ -150,154 +151,94 @@ keybind_close(void *data) {
     wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
 }
 
+static void
+try_focus_relative_output(struct output *output, enum direction direction) {
+    struct output *relative_output = output_get_relative(output, direction);
+    if(relative_output != NULL) {
+        focus_output(relative_output);
+    }
+}
+
 void
 keybind_move_focus(void *data) {
-    uintptr_t direction = (uintptr_t)data;
-
     struct toplevel *toplevel = server.focused_toplevel;
     // we need grabbed toplevel to keep focus
     if(server.grabbed_toplevel != NULL && toplevel == server.grabbed_toplevel)
         return;
 
-    enum direction opposite_side;
-    switch(direction) {
-        case UP:
-            opposite_side = DOWN;
-            break;
-        case DOWN:
-            opposite_side = UP;
-            break;
-        case LEFT:
-            opposite_side = RIGHT;
-            break;
-        case RIGHT:
-            opposite_side = LEFT;
-            break;
-    }
+    enum direction direction = (uintptr_t)data;
 
-    // if no toplevel has keyboard focus then get the output the pointer is on and try from there
+    // if no toplevel has keyboard focus then get the active output and try from there
     if(toplevel == NULL) {
-        struct wlr_output *wlr_output =
-                wlr_output_layout_output_at(server.output_layout, server.cursor->x, server.cursor->y);
-        struct output *output = wlr_output->data;
-        struct output *relative_output = output_get_relative(output, direction);
-        if(relative_output != NULL) {
-            focus_output(relative_output, opposite_side);
-        }
+        try_focus_relative_output(server.active_workspace->output, direction);
         return;
     }
 
     // get the toplevels output
     struct workspace *workspace = toplevel->workspace;
     struct output *output = toplevel->workspace->output;
-    struct output *relative_output = output_get_relative(toplevel->workspace->output, direction);
 
-    if(toplevel->fullscreen) {
-        struct output *relative_output = output_get_relative(output, direction);
-        if(relative_output != NULL) {
-            focus_output(relative_output, opposite_side);
-        }
-        return;
-    }
-
-    if(toplevel->floating) {
+    if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
+        // if fullscreen then just get the appropriate output to focus
+        try_focus_relative_output(output, direction);
+    } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         struct toplevel *closest = toplevel_find_closest_floating_on_workspace(toplevel, direction);
         if(closest != NULL) {
             focus_toplevel(closest);
             cursor_jump_focused_toplevel();
-            return;
+        } else {
+            try_focus_relative_output(output, direction);
         }
-        struct output *relative_output = output_get_relative(output, direction);
-        if(relative_output != NULL) {
-            focus_output(relative_output, opposite_side);
+    } else if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
+        if(direction == DIRECTION_RIGHT) {
+            struct toplevel *focus;
+            if((focus = next_master(toplevel)) != NULL) {
+                focus_toplevel(focus);
+            } else if((focus = last_slave(workspace)) != NULL) {
+                focus_toplevel(focus);
+            } else {
+                try_focus_relative_output(output, direction);
+            }
+        } else if(direction == DIRECTION_LEFT) {
+            struct toplevel *focus;
+            if((focus = prev_master(toplevel)) != NULL) {
+                focus_toplevel(focus);
+            } else {
+                try_focus_relative_output(output, direction);
+            }
+        } else {
+            try_focus_relative_output(output, direction);
         }
-        return;
-    }
-
-    struct wl_list *next;
-    if(toplevel_is_master(toplevel)) {
-        switch(direction) {
-            case RIGHT: {
-                next = toplevel->link.next;
-                if(next == &workspace->masters) {
-                    next = workspace->slaves.prev;
-                    if(next == &workspace->slaves) {
-                        if(relative_output != NULL) {
-                            focus_output(relative_output, opposite_side);
-                        }
-                        return;
-                    }
-                }
-                struct toplevel *t = wl_container_of(next, t, link);
-                focus_toplevel(t);
-                cursor_jump_focused_toplevel();
-                return;
+    } else {
+        if(direction == DIRECTION_UP) {
+            struct toplevel *focus;
+            if((focus = prev_slave(toplevel)) != NULL) {
+                focus_toplevel(focus);
+            } else {
+                try_focus_relative_output(output, direction);
             }
-            case LEFT: {
-                next = toplevel->link.prev;
-                if(next == &workspace->masters) {
-                    if(relative_output != NULL) {
-                        focus_output(relative_output, opposite_side);
-                    }
-                    return;
-                }
-                struct toplevel *t = wl_container_of(next, t, link);
-                focus_toplevel(t);
-                cursor_jump_focused_toplevel();
-                return;
+        } else if(direction == DIRECTION_DOWN) {
+            struct toplevel *focus;
+            if((focus = next_slave(toplevel)) != NULL) {
+                focus_toplevel(focus);
+            } else {
+                try_focus_relative_output(output, direction);
             }
-            default: {
-                if(relative_output != NULL) {
-                    focus_output(relative_output, opposite_side);
-                }
-                return;
-            }
-        }
-    }
-
-    // only case left is that the toplevel is a slave
-    switch(direction) {
-        case LEFT: {
-            struct toplevel *last_master = wl_container_of(workspace->masters.prev, last_master, link);
-            focus_toplevel(last_master);
-            cursor_jump_focused_toplevel();
-            return;
-        }
-        case RIGHT: {
-            if(relative_output != NULL) {
-                focus_output(relative_output, opposite_side);
-            }
-            return;
-        }
-        case UP: {
-            struct wl_list *above = toplevel->link.prev;
-            if(above == &workspace->slaves) {
-                if(relative_output != NULL) {
-                    focus_output(relative_output, opposite_side);
-                }
-                return;
-            }
-            struct toplevel *t = wl_container_of(above, t, link);
-            focus_toplevel(t);
-            cursor_jump_focused_toplevel();
-            return;
-        }
-        case DOWN: {
-            struct wl_list *bellow = toplevel->link.next;
-            if(bellow == &workspace->slaves) {
-                if(relative_output != NULL) {
-                    focus_output(relative_output, opposite_side);
-                }
-                return;
-            }
-            struct toplevel *t = wl_container_of(bellow, t, link);
-            focus_toplevel(t);
-            cursor_jump_focused_toplevel();
-            return;
+        } else if(direction == DIRECTION_LEFT) {
+            focus_toplevel(last_master(workspace));
+        } else {
+            try_focus_relative_output(output, direction);
         }
     }
 }
 
+static void
+try_move_relative_output(struct output *output, enum direction direction, struct toplevel *toplevel) {
+    struct output *relative_output = output_get_relative(output, direction);
+    if(relative_output != NULL && relative_output->active_workspace->fullscreen == NULL) {
+        toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
+    }
+}
 void
 keybind_move(void *data) {
     uint64_t direction = (uint64_t)data;
@@ -307,91 +248,49 @@ keybind_move(void *data) {
         return;
 
     struct workspace *workspace = toplevel->workspace;
-    struct output *relative_output = output_get_relative(workspace->output, direction);
+    struct output *output = workspace->output;
 
-    if(toplevel->floating || toplevel->fullscreen) {
-        if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-            toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
+    if(toplevel->mode == TOPLEVEL_MODE_FLOATING || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
+        try_move_relative_output(output, direction, toplevel);
+    } else if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
+        if(direction == DIRECTION_RIGHT) {
+            struct toplevel *swap;
+            if((swap = next_master(toplevel)) != NULL) {
+                layout_swap(toplevel, swap);
+            } else if((swap = last_slave(workspace)) != NULL) {
+                layout_swap(toplevel, swap);
+            } else {
+                try_move_relative_output(output, direction, toplevel);
+            }
+        } else if(direction == DIRECTION_LEFT) {
+            struct toplevel *swap;
+            if((swap = prev_master(toplevel)) != NULL) {
+                layout_swap(swap, toplevel);
+            } else {
+                try_move_relative_output(output, direction, toplevel);
+            }
+        } else {
+            try_move_relative_output(output, direction, toplevel);
         }
-        return;
-    }
-
-    struct wl_list *next;
-    if(toplevel_is_master(toplevel)) {
-        switch(direction) {
-            case RIGHT: {
-                next = toplevel->link.next;
-                if(next == &workspace->masters) {
-                    next = workspace->slaves.prev;
-                    if(next == &workspace->slaves) {
-                        if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-                            toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
-                        }
-                        return;
-                    }
-                }
-                struct toplevel *t = wl_container_of(next, t, link);
-                layout_swap_toplevels(toplevel, t);
-                return;
+    } else {
+        if(direction == DIRECTION_UP) {
+            struct toplevel *swap;
+            if((swap = prev_slave(toplevel)) != NULL) {
+                layout_swap(swap, toplevel);
+            } else {
+                try_move_relative_output(output, direction, toplevel);
             }
-            case LEFT: {
-                next = toplevel->link.prev;
-                if(next == &workspace->masters) {
-                    if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-                        toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
-                    }
-                    return;
-                }
-                struct toplevel *t = wl_container_of(next, t, link);
-                layout_swap_toplevels(t, toplevel);
-                return;
+        } else if(direction == DIRECTION_DOWN) {
+            struct toplevel *swap;
+            if((swap = next_slave(toplevel)) != NULL) {
+                layout_swap(toplevel, swap);
+            } else {
+                try_move_relative_output(output, direction, toplevel);
             }
-            default: {
-                struct output *relative_output = output_get_relative(workspace->output, direction);
-                if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-                    toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
-                }
-                return;
-            }
-        }
-    }
-
-    switch(direction) {
-        case LEFT: {
-            struct toplevel *last_master = wl_container_of(workspace->masters.prev, last_master, link);
-            layout_swap_toplevels(toplevel, last_master);
-            return;
-        }
-        case RIGHT: {
-            struct output *relative_output = output_get_relative(workspace->output, direction);
-            if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-                toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
-            }
-            return;
-        }
-        case UP: {
-            next = toplevel->link.prev;
-            if(next == &workspace->slaves) {
-                if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-                    toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
-                }
-                return;
-            }
-            struct toplevel *t = wl_container_of(next, t, link);
-            layout_swap_toplevels(t, toplevel);
-            return;
-        }
-        case DOWN: {
-            next = toplevel->link.next;
-            if(next == &workspace->slaves) {
-                if(relative_output != NULL && relative_output->active_workspace->fullscreen_toplevel == NULL) {
-                    toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
-                }
-                return;
-            }
-            struct toplevel *t = wl_container_of(next, t, link);
-            layout_swap_toplevels(toplevel, t);
-            return;
+        } else if(direction == DIRECTION_LEFT) {
+            layout_swap(last_master(workspace), toplevel);
+        } else {
+            try_move_relative_output(output, direction, toplevel);
         }
     }
 }
@@ -399,51 +298,38 @@ keybind_move(void *data) {
 void
 keybind_toggle_floating(void *data) {
     struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL || toplevel->fullscreen || toplevel == server.grabbed_toplevel)
+    if(toplevel == NULL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
         return;
 
-    if(toplevel->floating) {
-        toplevel->floating = false;
+    struct workspace *workspace = toplevel->workspace;
+
+    if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         wl_list_remove(&toplevel->link);
-
-        if(wl_list_length(&toplevel->workspace->masters) < server.config->master_count) {
-            wl_list_insert(toplevel->workspace->masters.prev, &toplevel->link);
-        } else {
-            wl_list_insert(toplevel->workspace->slaves.prev, &toplevel->link);
-        }
-
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
 
-        layout_configure(toplevel->workspace);
-        return;
-    }
-
-    toplevel->floating = true;
-    if(toplevel_is_master(toplevel)) {
-        if(!wl_list_empty(&toplevel->workspace->slaves)) {
-            struct toplevel *s = wl_container_of(toplevel->workspace->slaves.prev, s, link);
-            wl_list_remove(&s->link);
-            wl_list_insert(toplevel->workspace->masters.prev, &s->link);
+        layout_add(workspace, toplevel);
+        layout_configure(workspace);
+    } else {
+        if(toplevel->mode == TOPLEVEL_MODE_MASTER && has_slaves(workspace)) {
+            promote_last_slave(workspace);
         }
         wl_list_remove(&toplevel->link);
-    } else {
-        wl_list_remove(&toplevel->link);
+        wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
+
+        toplevel->mode = TOPLEVEL_MODE_FLOATING;
+        wl_list_insert(&toplevel->workspace->floating, &toplevel->link);
+
+        uint32_t width, height;
+        if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
+            struct wlr_box centered = output_create_centered_box(workspace->output, width, height);
+            toplevel_set_state(toplevel, centered);
+        } else {
+            toplevel_floating_set_own_size(toplevel);
+        }
+
+        toplevel_raise_to_top(toplevel);
+        layout_configure(workspace);
     }
-
-    wl_list_insert(&toplevel->workspace->floating_toplevels, &toplevel->link);
-
-    uint32_t width, height;
-    if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
-        struct wlr_box centered = output_create_centered_box(toplevel->workspace->output, width, height);
-        toplevel_set_state(toplevel, centered);
-    } else {
-        toplevel_floating_set_own_size(toplevel);
-    }
-
-    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
-    toplevel_raise_to_top(toplevel);
-
-    layout_configure(toplevel->workspace);
 }
 
 void
@@ -452,7 +338,7 @@ keybind_toggle_fullscreen(void *data) {
     if(toplevel == NULL || toplevel == server.grabbed_toplevel)
         return;
 
-    if(toplevel->fullscreen) {
+    if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
         toplevel_unset_fullscreen(toplevel);
     } else {
         toplevel_set_fullscreen(toplevel);
@@ -492,21 +378,20 @@ server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyb
     const xkb_keysym_t *syms;
     int count = xkb_state_key_get_syms(keyboard->empty, keycode, &syms);
 
-    struct keybind *k;
     for(size_t i = 0; i < count; i++) {
-        wl_list_for_each(k, &server.config->keybinds, link) {
-            if(!k->initialized)
+        for(struct keybind *iter = server.config->keybinds; iter <= array_last(server.config->keybinds); iter++) {
+            if(!iter->initialized)
                 continue;
 
-            if(k->active && k->stop && syms[i] == k->key && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-                k->active = false;
-                k->stop(k->args);
+            if(iter->active && iter->stop && syms[i] == iter->key && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+                iter->active = false;
+                iter->stop(iter->args);
                 return true;
             }
 
-            if(modifiers == k->modifiers && syms[i] == k->key && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-                k->active = true;
-                k->action(k->args);
+            if(modifiers == iter->modifiers && syms[i] == iter->key && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+                iter->active = true;
+                iter->action(iter->args);
                 return true;
             }
         }

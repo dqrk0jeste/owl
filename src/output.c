@@ -450,7 +450,7 @@ cursor_jump_output(struct output *output) {
 // todo: should we handle layer surfaces before toplevels? no! if they are exclusive than they already have focus, if on
 // demand idc
 void
-focus_output(struct output *output, enum direction side) {
+focus_output(struct output *output) {
     if(server.lock != NULL) {
         if(!wl_list_empty(&server.lock->surfaces)) {
             struct lock_surface *l = wl_container_of(server.lock->surfaces.next, l, link);
