@@ -259,7 +259,7 @@ decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
         create_titlebar(decoration);
     }
 
-    // we give it initial coloring
+    // we give it the initial coloring
     decoration_set_active(decoration, false);
 
     return decoration;

@@ -738,12 +738,12 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
         if(arg_count < 1)
             goto invalid;
 
-        c->blur_params.num_passes = clamp(atoi(args[0]), 1, INT_MAX);
+        c->blur_params.num_passes = max(atoi(args[0]), 1);
     } else if(strcmp(keyword, "blur_radius") == 0) {
         if(arg_count < 1)
             goto invalid;
 
-        c->blur_params.radius = clamp(atoi(args[0]), 0, INT_MAX);
+        c->blur_params.radius = max(atoi(args[0]), 0);
     } else if(strcmp(keyword, "blur_noise") == 0) {
         if(arg_count < 1)
             goto invalid;
@@ -789,9 +789,8 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
         if(arg_count < 1)
             goto invalid;
 
-        if(!try_parse_color(args[0], &c->shadow_color)) {
+        if(!try_parse_color(args[0], &c->shadow_color))
             goto invalid;
-        }
     } else if(strcmp(keyword, "layer_rule") == 0) {
         if(arg_count < 2)
             goto invalid;
@@ -811,9 +810,8 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
         if(arg_count < 1)
             goto invalid;
 
-        if(!try_parse_color(args[0], &c->titlebar_color.active)) {
+        if(!try_parse_color(args[0], &c->titlebar_color.active))
             goto invalid;
-        }
 
         if(arg_count == 1 || !try_parse_color(args[1], &c->titlebar_color.inactive)) {
             c->titlebar_color.inactive = c->titlebar_color.active;
@@ -836,6 +834,8 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
             c->titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_LEFT;
         } else if(strcmp(args[0], "right") == 0) {
             c->titlebar_close_button_position = TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT;
+        } else {
+            goto invalid;
         }
     } else if(strcmp(keyword, "titlebar_close_button_padding") == 0) {
         if(arg_count < 1)
@@ -851,14 +851,15 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
             c->titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_SQUARE;
         } else if(strcmp(args[0], "circle") == 0) {
             c->titlebar_close_button_shape = TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE;
+        } else {
+            goto invalid;
         }
     } else if(strcmp(keyword, "titlebar_close_button_color") == 0) {
         if(arg_count < 1)
             goto invalid;
 
-        if(!try_parse_color(args[0], &c->titlebar_close_button_color.active)) {
+        if(!try_parse_color(args[0], &c->titlebar_close_button_color.active))
             goto invalid;
-        }
 
         if(arg_count == 1 || !try_parse_color(args[1], &c->titlebar_close_button_color.inactive)) {
             c->titlebar_close_button_color.inactive = c->titlebar_close_button_color.active;
@@ -892,7 +893,7 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
 
         c->font = fcft_from_name(1, (const char **)&args[0], NULL);
         if(c->font == NULL) {
-            ERROR("error while loading a font `%s`, titles wont be drawn", args[0]);
+            ERROR("error while loading the font `%s`, titles wont be drawn", args[0]);
         }
     } else {
         ERROR("invalid keyword `%s`", keyword);
@@ -918,9 +919,9 @@ get_default_config_path(char *dest, size_t size) {
 
     if(default_config_path == NULL) {
         default_config_path = "/usr/share/mwc/default.conf";
-        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, using the default %s", default_config_path);
+        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, using the default `%s`", default_config_path);
     } else {
-        wlr_log(WLR_INFO, "env DEFAULT_CONFIG_PATH set to %s, using it", default_config_path);
+        wlr_log(WLR_INFO, "env DEFAULT_CONFIG_PATH set to `%s`, using it", default_config_path);
     }
 
     strncpy(dest, default_config_path, size);
@@ -951,7 +952,7 @@ get_config_path(char *dest, size_t size) {
     return false;
 }
 
-// assumes the line is newline terminated, as it should be with fgets()
+// assumes the line is newline terminated, as it should be with `fgets()`
 static bool
 config_handle_line(char *line, char **keyword, char ***args, size_t *args_count) {
     char *p = line;
@@ -1106,7 +1107,7 @@ config_set_default_needed_params(struct config *c) {
         c->toplevel_minimum_height += c->border_width;
     }
 
-    if(c->titlebars && c->titlebar_include_close_button) {
+    if(c->titlebars) {
         c->toplevel_minimum_height += c->titlebar_height;
 
         if(c->titlebar_include_close_button) {

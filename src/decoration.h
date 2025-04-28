@@ -38,6 +38,7 @@ struct decoration {
         struct text_node *title;
     } titlebar;
 
+    // current state
     uint32_t width, height;
     bool active;
     bool blur, blur_optimized;

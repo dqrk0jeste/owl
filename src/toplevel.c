@@ -150,9 +150,6 @@ strip_decoration_of_size(uint32_t *width, uint32_t *height, bool has_border, boo
 
 static void
 toplevel_handle_initial_commit(struct toplevel *toplevel) {
-    // when an xdg_surface performs an initial commit, the compositor must reply with a configure so the client can map
-    // the surface
-
     // unlike other window rules we only check the floating ones on initial commit
     if(toplevel_should_float(toplevel)) {
         toplevel->mode = TOPLEVEL_MODE_FLOATING;
@@ -206,7 +203,7 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
         return;
     }
 
-    // toplevels geometry might have changed, so we update the clip accordingly. this can happen when the user toggles
+    // toplevels geometry might have changed, so we update the clip accordingly; this can happen when the user toggles
     // `client_side_decorations` option in the configuration and the client starts drawing them
     struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
     toplevel_clip_tree(toplevel, content_box.width, content_box.height);
@@ -891,7 +888,6 @@ toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box) {
         wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
     }
 
-    toplevel->content_box = content_box;
     toplevel->deco_box = deco_box;
 }
 

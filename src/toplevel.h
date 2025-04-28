@@ -29,7 +29,7 @@ struct toplevel {
     enum toplevel_mode mode;
 
     // these fields should not be used to check if these decorations are actually drawn right now, you should use
-    // `decoration_has_*()` function for those. these are telling if the toplevel should get these depending on the
+    // `decoration_has_*()` functions for those. these are telling if the toplevel should get these depending on the
     // current configuration and window rules. e.g. toplevels never have any of the decorations when fullscreened, but
     // that does not mean they should not have those when unfullscreened later
     bool has_titlebar, has_border, has_shadow, has_blur;
@@ -49,8 +49,8 @@ struct toplevel {
     bool should_choose_size;
     // this is set on map so the toplevel is setup for the popin effect animation
     bool needs_popin_adjustment;
-    // toplevel (with decorations) size and position of the toplevel (with decorations) in the layout
-    struct wlr_box content_box, deco_box;
+    // toplevel (with decorations) size and position in the layout
+    struct wlr_box deco_box;
 
     // cached values for toplevels opacity
     double inactive_opacity, active_opacity;
