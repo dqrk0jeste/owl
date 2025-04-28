@@ -77,7 +77,6 @@ struct server {
     struct wl_list keyboards;
     struct keyboard *last_used_keyboard;
 
-    // todo: handle resize of master ratio. do so only when there are slaves
     // this keeps state when the compositor is in the state of moving or resizing toplevels
     double grab_x, grab_y;
     // for moving/resizing toplevels

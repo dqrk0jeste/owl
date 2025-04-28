@@ -70,7 +70,11 @@ keybind_move_to_workspace(void *data) {
 }
 
 static void
-start_master_ratio_resize(void) {
+try_start_master_ratio_resize(void) {
+    if(!has_slaves(server.active_workspace) ||
+            !wlr_box_contains_point(&server.active_workspace->output->usable_area, server.cursor->x, server.cursor->y))
+        return;
+
     server.grabbed_toplevel = NULL;
     server.mode = SERVER_MODE_RESIZING_MASTER_RATIO;
 
@@ -79,10 +83,8 @@ start_master_ratio_resize(void) {
 
     server.initial_master_ratio = server.active_workspace->master_ratio;
 
-    struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout, server.active_workspace->output->wlr_output, &output_box);
-
-    if(server.grab_x <= output_box.x + server.active_workspace->master_ratio * output_box.width) {
+    if(server.grab_x <= server.active_workspace->output->usable_area.x +
+                    server.active_workspace->master_ratio * server.active_workspace->output->usable_area.width) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "right_side");
     } else {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "left_side");
@@ -105,7 +107,7 @@ keybind_start_resize(void *data) {
         toplevel_start_resize(toplevel, edges, true);
     } else {
         // else we start the master ratio resize
-        start_master_ratio_resize();
+        try_start_master_ratio_resize();
     }
 }
 
