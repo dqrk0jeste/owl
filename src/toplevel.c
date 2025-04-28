@@ -940,9 +940,7 @@ toplevel_start_move(struct toplevel *toplevel, bool by_keybind) {
     } else if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
         wl_list_remove(&toplevel->link);
         if(has_slaves(toplevel->workspace)) {
-            struct toplevel *last = last_slave(toplevel->workspace);
-            wl_list_remove(&last->link);
-            wl_list_insert(toplevel->workspace->masters.prev, &last->link);
+            promote_last_slave(toplevel->workspace);
         }
         layout_configure(toplevel->workspace);
     } else {

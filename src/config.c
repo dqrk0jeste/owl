@@ -1318,24 +1318,15 @@ config_destroy(struct config *c) {
 static void
 layout_reorganize(struct workspace *workspace) {
     uint32_t master_count = wl_list_length(&workspace->masters);
-
     if(master_count > server.config->master_count) {
         while(master_count > server.config->master_count) {
-            struct wl_list *last = workspace->masters.prev;
-            wl_list_remove(last);
-            wl_list_insert(workspace->slaves.prev, last);
+            demote_last_master(workspace);
             master_count--;
         }
-
-        return;
-    }
-
-    uint32_t slave_count = wl_list_length(&workspace->slaves);
-    if(master_count < server.config->master_count && slave_count > 0) {
+    } else {
+        uint32_t slave_count = wl_list_length(&workspace->slaves);
         while(master_count < server.config->master_count && slave_count > 0) {
-            struct wl_list *last = workspace->slaves.prev;
-            wl_list_remove(last);
-            wl_list_insert(workspace->masters.prev, last);
+            promote_last_slave(workspace);
             master_count++;
             slave_count--;
         }
