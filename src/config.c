@@ -1098,26 +1098,6 @@ config_set_default_needed_params(struct config *c) {
                 c->titlebar_close_button_size, c->titlebar_height, c->titlebar_height);
         c->titlebar_close_button_size = c->titlebar_height;
     }
-
-    c->toplevel_minimum_width = 0;
-    c->toplevel_minimum_height = 0;
-
-    if(c->borders) {
-        c->toplevel_minimum_width += c->border_width;
-        c->toplevel_minimum_height += c->border_width;
-    }
-
-    if(c->titlebars) {
-        c->toplevel_minimum_height += c->titlebar_height;
-
-        if(c->titlebar_include_close_button) {
-            c->toplevel_minimum_width += c->titlebar_close_button_size + c->titlebar_close_button_padding.left +
-                    c->titlebar_close_button_padding.right;
-        }
-    }
-
-    c->toplevel_minimum_width = max(c->toplevel_minimum_width, 10);
-    c->toplevel_minimum_height = max(c->toplevel_minimum_height, 10);
 }
 
 extern struct server server;

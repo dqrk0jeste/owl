@@ -47,13 +47,11 @@ update_shadow(struct decoration *decoration, struct wlr_box *box) {
     struct wlr_box intersection_box;
     wlr_box_intersection(&intersection_box, &relative_box, &shadow_box);
 
-    uint32_t border_radius = max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0);
-
     wlr_scene_shadow_set_size(decoration->shadow, shadow_box.width, shadow_box.height);
     wlr_scene_shadow_set_clipped_region(decoration->shadow,
             (struct clipped_region){
                     .area = intersection_box,
-                    .corner_radius = border_radius,
+                    .corner_radius = server.config->border_radius,
                     .corners = server.config->border_radius_location,
             });
 }
@@ -236,6 +234,28 @@ set_root_position(struct decoration *decoration) {
     wlr_scene_node_set_position(&decoration->tree->node, x, y);
 }
 
+static void
+decoration_set_min_size(struct decoration *decoration) {
+    uint32_t width = 0, height = 0;
+
+    if(decoration_has_border(decoration)) {
+        width += 2 * server.config->border_width;
+        height += 2 * server.config->border_width;
+    }
+
+    if(decoration_has_titlebar(decoration)) {
+        height += server.config->titlebar_height;
+
+        if(server.config->titlebar_include_close_button) {
+            width += server.config->titlebar_close_button_size + server.config->titlebar_close_button_padding.left +
+                    server.config->titlebar_close_button_padding.right;
+        }
+    }
+
+    decoration->min_width = width;
+    decoration->min_height = height;
+}
+
 struct decoration *
 decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
     struct decoration *decoration = calloc(1, sizeof(*decoration));
@@ -259,6 +279,7 @@ decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
         create_titlebar(decoration);
     }
 
+    decoration_set_min_size(decoration);
     // we give it the initial coloring
     decoration_set_active(decoration, false);
 
@@ -313,6 +334,7 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
         wlr_scene_node_lower_to_bottom(&decoration->shadow->node);
     }
 
+    decoration_set_min_size(decoration);
     set_root_position(decoration);
     // and then configure them with the current size and state
     decoration_configure(decoration, decoration->width, decoration->height);
@@ -429,7 +451,6 @@ decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box)
     return box;
 }
 
-// todo: fix this for the new thing
 void
 decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized) {
     if(decoration_has_border(decoration)) {
@@ -464,16 +485,4 @@ decoration_has_shadow(struct decoration *decoration) {
 bool
 decoration_has_titlebar(struct decoration *decoration) {
     return decoration->types & DECORATION_TITLEBAR;
-}
-
-// todo: move this into toplevel.c
-extern struct server server;
-
-void
-server_handle_request_xdg_decoration(struct wl_listener *listener, void *data) {
-    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
-
-    wlr_xdg_toplevel_decoration_v1_set_mode(decoration,
-            server.config->client_side_decorations ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
-                                                   : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }

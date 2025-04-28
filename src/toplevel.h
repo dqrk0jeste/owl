@@ -148,3 +148,6 @@ toplevel_raise_to_top(struct toplevel *toplevel);
 
 void
 xdg_activation_handle_request(struct wl_listener *listener, void *data);
+
+void
+server_handle_request_xdg_decoration(struct wl_listener *listener, void *data);

@@ -54,11 +54,12 @@ grabbed_toplevel_resize(void) {
     min_box = decoration_get_decoration_box(toplevel->decoration, min_box);
 
     // we patch it so the titlebar is drawn without overflowing
-    min_box.width = max(min_box.width, server.config->toplevel_minimum_width);
-    min_box.height = max(min_box.height, server.config->toplevel_minimum_height);
+    min_box.width = max(min_box.width, toplevel->decoration->min_width);
+    min_box.height = max(min_box.height, toplevel->decoration->min_height);
 
     struct wlr_box max_box;
     if(toplevel->xdg_toplevel->current.max_width == 0) {
+        // this means the client has not set its max size
         max_box = (struct wlr_box){0, 0, INT_MAX, INT_MAX};
     } else {
         max_box = (struct wlr_box){0, 0, toplevel->xdg_toplevel->current.max_width,

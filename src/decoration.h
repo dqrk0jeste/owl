@@ -39,7 +39,7 @@ struct decoration {
     } titlebar;
 
     // current state
-    uint32_t width, height;
+    uint32_t width, height, min_width, min_height;
     bool active;
     bool blur, blur_optimized;
 };
@@ -51,8 +51,8 @@ decoration_create(struct wlr_scene_tree *parent, uint32_t types);
 void
 decoration_destroy(struct decoration *decoration);
 
-// set decoration types to a bitmask of `decorations_type`
-// this function can be called multiple times to update the wanted decorations
+// set decoration types to a bitmask of `decorations_type`. this function can be called multiple times to update the
+// wanted decorations
 void
 decoration_set_types(struct decoration *decoration, uint types);
 
@@ -84,8 +84,6 @@ decoration_get_content_box(struct decoration *decoration, struct wlr_box box);
 struct wlr_box
 decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box);
 
-enum blur_optimized;
-
 void
 decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized);
 
@@ -100,6 +98,3 @@ decoration_has_shadow(struct decoration *decoration);
 
 bool
 decoration_has_titlebar(struct decoration *decoration);
-
-void
-server_handle_request_xdg_decoration(struct wl_listener *listener, void *data);

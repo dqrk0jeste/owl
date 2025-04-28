@@ -13,6 +13,7 @@
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/box.h>
 #include <wlr/util/edges.h>
 #include <wlr/util/log.h>
@@ -1058,4 +1059,13 @@ xdg_activation_handle_request(struct wl_listener *listener, void *data) {
     }
 
     focus_toplevel(toplevel, false);
+}
+
+void
+server_handle_request_xdg_decoration(struct wl_listener *listener, void *data) {
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
+
+    wlr_xdg_toplevel_decoration_v1_set_mode(decoration,
+            server.config->client_side_decorations ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                                   : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
