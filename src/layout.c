@@ -61,7 +61,7 @@ has_slaves(struct workspace *workspace) {
 
 struct toplevel *
 next_master(struct toplevel *toplevel) {
-    if(toplevel->link.next == toplevel->workspace->masters.prev)
+    if(toplevel->link.next == &toplevel->workspace->masters)
         return NULL;
 
     struct toplevel *t = wl_container_of(toplevel->link.next, t, link);
@@ -70,7 +70,7 @@ next_master(struct toplevel *toplevel) {
 
 struct toplevel *
 prev_master(struct toplevel *toplevel) {
-    if(toplevel->link.prev == toplevel->workspace->masters.next)
+    if(toplevel->link.prev == &toplevel->workspace->masters)
         return NULL;
 
     struct toplevel *t = wl_container_of(toplevel->link.prev, t, link);
@@ -79,7 +79,7 @@ prev_master(struct toplevel *toplevel) {
 
 struct toplevel *
 next_slave(struct toplevel *toplevel) {
-    if(toplevel->link.next == toplevel->workspace->slaves.prev)
+    if(toplevel->link.next == &toplevel->workspace->slaves)
         return NULL;
 
     struct toplevel *t = wl_container_of(toplevel->link.next, t, link);
@@ -88,7 +88,7 @@ next_slave(struct toplevel *toplevel) {
 
 struct toplevel *
 prev_slave(struct toplevel *toplevel) {
-    if(toplevel->link.prev == toplevel->workspace->slaves.next)
+    if(toplevel->link.prev == &toplevel->workspace->slaves)
         return NULL;
 
     struct toplevel *t = wl_container_of(toplevel->link.prev, t, link);
@@ -151,10 +151,10 @@ void
 layout_add(struct workspace *workspace, struct toplevel *toplevel) {
     toplevel->workspace = workspace;
     if(wl_list_length(&workspace->masters) < server.config->master_count) {
-        wl_list_insert(&workspace->masters, &toplevel->link);
+        wl_list_insert(workspace->masters.prev, &toplevel->link);
         toplevel->mode = TOPLEVEL_MODE_MASTER;
     } else {
-        wl_list_insert(&workspace->slaves, &toplevel->link);
+        wl_list_insert(workspace->slaves.prev, &toplevel->link);
         toplevel->mode = TOPLEVEL_MODE_SLAVE;
     }
 }

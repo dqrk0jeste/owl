@@ -155,7 +155,7 @@ static void
 try_focus_relative_output(struct output *output, enum direction direction) {
     struct output *relative_output = output_get_relative(output, direction);
     if(relative_output != NULL) {
-        focus_output(relative_output);
+        focus_output(relative_output, direction);
     }
 }
 
@@ -184,8 +184,7 @@ keybind_move_focus(void *data) {
     } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         struct toplevel *closest = toplevel_find_closest_floating_on_workspace(toplevel, direction);
         if(closest != NULL) {
-            focus_toplevel(closest);
-            cursor_jump_focused_toplevel();
+            focus_toplevel(closest, true);
         } else {
             try_focus_relative_output(output, direction);
         }
@@ -193,16 +192,16 @@ keybind_move_focus(void *data) {
         if(direction == DIRECTION_RIGHT) {
             struct toplevel *focus;
             if((focus = next_master(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, true);
             } else if((focus = last_slave(workspace)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, true);
             } else {
                 try_focus_relative_output(output, direction);
             }
         } else if(direction == DIRECTION_LEFT) {
             struct toplevel *focus;
             if((focus = prev_master(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, true);
             } else {
                 try_focus_relative_output(output, direction);
             }
@@ -213,19 +212,19 @@ keybind_move_focus(void *data) {
         if(direction == DIRECTION_UP) {
             struct toplevel *focus;
             if((focus = prev_slave(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, true);
             } else {
                 try_focus_relative_output(output, direction);
             }
         } else if(direction == DIRECTION_DOWN) {
             struct toplevel *focus;
             if((focus = next_slave(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, true);
             } else {
                 try_focus_relative_output(output, direction);
             }
         } else if(direction == DIRECTION_LEFT) {
-            focus_toplevel(last_master(workspace));
+            focus_toplevel(last_master(workspace), true);
         } else {
             try_focus_relative_output(output, direction);
         }

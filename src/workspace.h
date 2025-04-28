@@ -46,7 +46,7 @@ void
 toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspace);
 
 struct toplevel *
-workspace_find_closest_floating_toplevel(struct workspace *workspace, enum direction side);
+workspace_find_closest_floating(struct workspace *workspace, enum direction side);
 
 // note: this does not include the fullscreen toplevel if there is one
 void

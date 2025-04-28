@@ -35,7 +35,7 @@
 
 extern struct server server;
 
-inline bool
+bool
 toplevel_is_tiled(struct toplevel *toplevel) {
     return toplevel->mode == TOPLEVEL_MODE_MASTER || toplevel->mode == TOPLEVEL_MODE_SLAVE;
 }
@@ -272,7 +272,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
         layout_configure(toplevel->workspace);
     }
 
-    focus_toplevel(toplevel);
+    focus_toplevel(toplevel, false);
 }
 
 // maybe clean this up a bit
@@ -296,17 +296,18 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     // destroy the decoration manually; we do this because of text node that needs to be destroyed manually
     decoration_destroy(toplevel->decoration);
 
-    // reset the cursor mode if the grabbed toplevel was unmapped
+    // reset the mode if the grabbed toplevel was unmapped
     if(toplevel == server.grabbed_toplevel) {
-        cursor_stop_move_resize();
+        server.grabbed_toplevel = NULL;
+        server.mode = SERVER_MODE_NORMAL;
 
         // it surely had the focus, so we need to pass focus to some other toplevel
         // note: we use cursor position here since `toplevel->workspace` isnt up to date
         server.focused_toplevel = NULL;
         if(has_floating(server.active_workspace)) {
-            focus_toplevel(first_floating(server.active_workspace));
+            focus_toplevel(first_floating(server.active_workspace), false);
         } else if(has_masters(server.active_workspace)) {
-            focus_toplevel(first_master(server.active_workspace));
+            focus_toplevel(first_master(server.active_workspace), false);
         } else {
             ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
         }
@@ -322,9 +323,9 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         if(toplevel == server.focused_toplevel) {
             server.focused_toplevel = NULL;
             if(has_floating(workspace)) {
-                focus_toplevel(first_floating(workspace));
+                focus_toplevel(first_floating(workspace), false);
             } else if(has_masters(workspace)) {
-                focus_toplevel(first_master(workspace));
+                focus_toplevel(first_master(workspace), false);
             } else {
                 ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
             }
@@ -335,11 +336,11 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 
             struct toplevel *focus;
             if((focus = next_floating(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else if((focus = prev_floating(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else if((focus = first_master(workspace)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else {
                 ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
             }
@@ -357,11 +358,11 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 
             struct toplevel *focus;
             if((focus = first_floating(workspace)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else if((focus = next_master(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else if((focus = prev_master(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else {
                 ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
             }
@@ -375,13 +376,13 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 
             struct toplevel *focus;
             if((focus = first_floating(workspace)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else if((focus = next_slave(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else if((focus = prev_slave(toplevel)) != NULL) {
-                focus_toplevel(focus);
+                focus_toplevel(focus, false);
             } else {
-                focus_toplevel(last_master(workspace));
+                focus_toplevel(last_master(workspace), false);
             }
         }
 
@@ -458,7 +459,7 @@ static void
 toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
 
-    toplevel_recheck_window_rules(toplevel);
+    toplevel_check_rules(toplevel);
     if(toplevel->decoration != NULL) {
         decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
         // we also set the blur for this toplevels decoration
@@ -476,7 +477,7 @@ static void
 toplevel_handle_set_title(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
-    toplevel_recheck_window_rules(toplevel);
+    toplevel_check_rules(toplevel);
     if(toplevel->decoration != NULL) {
         decoration_set_types(toplevel->decoration, toplevel_get_decoration_types(toplevel));
         // we also set the blur for this toplevels decoration
@@ -507,19 +508,6 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&toplevel->request_fullscreen.link);
 
     free(toplevel);
-}
-
-void
-cursor_jump_focused_toplevel(void) {
-    struct toplevel *toplevel = server.focused_toplevel;
-    if(toplevel == NULL)
-        return;
-
-    // jump to the middpoint of the toplevel
-    wlr_cursor_warp(server.cursor, NULL, toplevel->deco_box.x + toplevel->deco_box.width / 2.0,
-            toplevel->deco_box.y + toplevel->deco_box.height / 2.0);
-
-    pointer_handle_focus(get_now_in_ms(), false);
 }
 
 static void
@@ -566,21 +554,28 @@ toplevel_set_fullscreen(struct toplevel *toplevel) {
         return;
 
     struct workspace *workspace = toplevel->workspace;
-    workspace->fullscreen = toplevel;
-
-    wl_list_remove(&toplevel->link);
 
     toplevel->prev_mode = toplevel->mode;
     if(toplevel->prev_mode == TOPLEVEL_MODE_FLOATING) {
         toplevel->prev_deco_box = toplevel->deco_box;
+    } else if(toplevel->prev_mode == TOPLEVEL_MODE_MASTER) {
+        toplevel->prev_index = list_index_of(&workspace->masters, &toplevel->link);
+        // replace this one with a slave
+        if(has_slaves(workspace)) {
+            promote_last_slave(workspace);
+        }
     } else {
-        // todo: calculate the index
-        toplevel->prev_index = 0;
+        toplevel->prev_index = list_index_of(&workspace->slaves, &toplevel->link);
     }
+
+    wl_list_remove(&toplevel->link);
     toplevel->mode = TOPLEVEL_MODE_FULLSCREEN;
+    workspace->fullscreen = toplevel;
 
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
     wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, true);
+
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
 
     // disable the decorations; be sure to call this before set state so it gets the right size
     decoration_set_enabled(toplevel->decoration, false);
@@ -589,11 +584,9 @@ toplevel_set_fullscreen(struct toplevel *toplevel) {
     wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
     toplevel_set_state(toplevel, output_box);
 
-    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
-
     // we disable all the other toplevels so they are not seen if there is transparency
     workspace_toplevels_set_enabled(workspace, false);
-    // we also disable bottom and top layer surfaces, and leave only the backgorund needed for blur
+    // we also disable bottom and top layer surfaces, and leave only the background
     layers_under_fullscreen_set_enabled(workspace->output, false);
 
     // lastly, we configure the layout; it is important to call this after the nodes have been disabled, so the
@@ -610,38 +603,44 @@ toplevel_unset_fullscreen(struct toplevel *toplevel) {
 
     struct workspace *workspace = toplevel->workspace;
 
-    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
-    wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
-
     workspace->fullscreen = NULL;
     toplevel->mode = toplevel->prev_mode;
+
+    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
+    wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
 
     // enable the decorations; be sure to call this before set state so it gets the right size
     decoration_set_enabled(toplevel->decoration, true);
 
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
-        toplevel_set_state(toplevel, toplevel->prev_deco_box);
+        wl_list_insert(&workspace->floating, &toplevel->link);
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
         // we restack the children/parents
         toplevel_raise_to_top(toplevel);
+        toplevel_set_state(toplevel, toplevel->prev_deco_box);
     } else {
-        struct wl_list *link = toplevel->mode == TOPLEVEL_MODE_MASTER
-                ? list_at(&workspace->masters, toplevel->prev_index)
-                : list_at(&workspace->slaves, toplevel->prev_index);
-        if(link != NULL) {
-            wl_list_insert(link->prev, &toplevel->link);
-            if(toplevel->mode == TOPLEVEL_MODE_MASTER &&
-                    wl_list_length(&workspace->masters) > server.config->master_count && has_slaves(workspace)) {
-                promote_last_slave(workspace);
-            }
-        } else {
+        if(toplevel->prev_index == -1U) {
             layout_add(workspace, toplevel);
+        } else {
+            struct wl_list *link = toplevel->mode == TOPLEVEL_MODE_MASTER
+                    ? list_at(&workspace->masters, toplevel->prev_index)
+                    : list_at(&workspace->slaves, toplevel->prev_index);
+            if(link != NULL) {
+                wl_list_insert(link->prev, &toplevel->link);
+                if(toplevel->mode == TOPLEVEL_MODE_MASTER &&
+                        wl_list_length(&workspace->masters) > server.config->master_count) {
+                    demote_last_master(workspace);
+                }
+            } else {
+                layout_add(workspace, toplevel);
+            }
         }
+
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
         layout_configure(workspace);
     }
 
-    // reenable the toplevels and layers
+    // reenable toplevels and layers
     workspace_toplevels_set_enabled(workspace, true);
     layers_under_fullscreen_set_enabled(workspace->output, true);
 }
@@ -667,7 +666,7 @@ unfocus_focused_toplevel(void) {
 }
 
 void
-focus_toplevel(struct toplevel *toplevel) {
+focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
     if(server.mode > SERVER_MODE_CAN_GIVE_FOCUS || server.exclusive || toplevel == server.focused_toplevel ||
             (toplevel->workspace->fullscreen != NULL && toplevel != toplevel->workspace->fullscreen))
         return;
@@ -703,6 +702,14 @@ focus_toplevel(struct toplevel *toplevel) {
                 keyboard->num_keycodes, &keyboard->modifiers);
     }
 
+    if(jump_cursor) {
+        // jump to the middpoint of the toplevel
+        wlr_cursor_warp(server.cursor, NULL, toplevel->deco_box.x + toplevel->deco_box.width / 2.0,
+                toplevel->deco_box.y + toplevel->deco_box.height / 2.0);
+
+        pointer_handle_focus(get_now_in_ms(), false);
+    }
+
     ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
 }
 
@@ -714,60 +721,57 @@ toplevel_find_closest_floating_on_workspace(struct toplevel *toplevel, enum dire
     uint32_t min_val = UINT32_MAX;
 
     struct toplevel *t;
-    switch(direction) {
-        case DIRECTION_UP: {
-            wl_list_for_each(t, &workspace->floating, link) {
-                if(t == toplevel || t->deco_box.y > toplevel->deco_box.y)
-                    continue;
+    if(direction == DIRECTION_UP) {
+        wl_list_for_each(t, &workspace->floating, link) {
+            if(t == toplevel || t->deco_box.y > toplevel->deco_box.y)
+                continue;
 
-                uint32_t dy = abs(toplevel->deco_box.y - t->deco_box.y);
-                if(dy < min_val) {
-                    min = t;
-                    min_val = dy;
-                }
+            uint32_t dy = abs(toplevel->deco_box.y - t->deco_box.y);
+            if(dy < min_val) {
+                min = t;
+                min_val = dy;
             }
-            return min;
         }
-        case DIRECTION_DOWN: {
-            wl_list_for_each(t, &workspace->floating, link) {
-                if(t == toplevel || t->deco_box.y < toplevel->deco_box.y)
-                    continue;
+        return min;
+    } else if(direction == DIRECTION_DOWN) {
+        wl_list_for_each(t, &workspace->floating, link) {
+            if(t == toplevel || t->deco_box.y < toplevel->deco_box.y)
+                continue;
 
-                uint32_t dy = abs(toplevel->deco_box.y - t->deco_box.y);
-                if(dy < min_val) {
-                    min = t;
-                    min_val = dy;
-                }
+            uint32_t dy = abs(toplevel->deco_box.y - t->deco_box.y);
+            if(dy < min_val) {
+                min = t;
+                min_val = dy;
             }
-            return min;
         }
-        case DIRECTION_LEFT: {
-            wl_list_for_each(t, &workspace->floating, link) {
-                if(t == toplevel || t->deco_box.x > toplevel->deco_box.x)
-                    continue;
+        return min;
+    } else if(direction == DIRECTION_LEFT) {
+        wl_list_for_each(t, &workspace->floating, link) {
+            if(t == toplevel || t->deco_box.x > toplevel->deco_box.x)
+                continue;
 
-                uint32_t dx = abs(toplevel->deco_box.x - t->deco_box.x);
-                if(dx < min_val) {
-                    min = t;
-                    min_val = dx;
-                }
+            uint32_t dx = abs(toplevel->deco_box.x - t->deco_box.x);
+            if(dx < min_val) {
+                min = t;
+                min_val = dx;
             }
-            return min;
         }
-        case DIRECTION_RIGHT: {
-            wl_list_for_each(t, &workspace->floating, link) {
-                if(t == toplevel || t->deco_box.x < toplevel->deco_box.x)
-                    continue;
+        return min;
+    } else if(direction == DIRECTION_RIGHT) {
+        wl_list_for_each(t, &workspace->floating, link) {
+            if(t == toplevel || t->deco_box.x < toplevel->deco_box.x)
+                continue;
 
-                uint32_t dx = abs(toplevel->deco_box.x - t->deco_box.x);
-                if(dx < min_val) {
-                    min = t;
-                    min_val = dx;
-                }
+            uint32_t dx = abs(toplevel->deco_box.x - t->deco_box.x);
+            if(dx < min_val) {
+                min = t;
+                min_val = dx;
             }
-            return min;
         }
+        return min;
     }
+
+    assert(false && "unreachable");
 }
 
 struct output *
@@ -1057,5 +1061,5 @@ xdg_activation_handle_request(struct wl_listener *listener, void *data) {
         return;
     }
 
-    focus_toplevel(toplevel);
+    focus_toplevel(toplevel, false);
 }

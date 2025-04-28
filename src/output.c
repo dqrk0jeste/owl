@@ -166,17 +166,16 @@ output_handle_frame(struct wl_listener *listener, void *data) {
 // todo: figure out what we want to do with this
 static void
 output_handle_request_state(struct wl_listener *listener, void *data) {
-    // this function is called when the backend requests a new state for
-    // the output. for example, wayland and X11 backends request a new mode
-    // when the output window is resized
+    // this function is called when the backend requests a new state for the output. for example, wayland and X11
+    // backends request a new mode when the output window is resized
     struct output *output = wl_container_of(listener, output, request_state);
     struct wlr_output_event_request_state *event = data;
 
     wlr_output_commit_state(output->wlr_output, event->state);
 }
 
-// if an output is destroyed we want to evacuate all of its workspaces to some
-// other output. we assume you always have at least one output enabled!
+// if an output is destroyed we want to evacuate all of its workspaces to some other output. we assume you always have
+// at least one output enabled!
 static void
 output_evacuate_workspaces(struct output *output) {
     struct wl_list *next = output->link.next;
@@ -284,8 +283,6 @@ output_find_mode_config_by_name(char *name) {
     return NULL;
 }
 
-// modesets this output using the provided mode from the config file. if there is none, or it cant be applied backs up
-// to the preffered mode
 bool
 output_modeset(struct wlr_output *wlr_output) {
     wlr_log(WLR_INFO, "configuring output %s", wlr_output->name);
@@ -440,54 +437,39 @@ server_handle_new_output(struct wl_listener *listener, void *data) {
 }
 
 void
-cursor_jump_output(struct output *output) {
+jump_cursor_to_output(struct output *output) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
     wlr_cursor_warp(server.cursor, NULL, output_box.x + output_box.width / 2.0, output_box.y + output_box.height / 2.0);
 }
 
-// todo: should we handle layer surfaces before toplevels? no! if they are exclusive than they already have focus, if on
-// demand idc
 void
-focus_output(struct output *output) {
-    if(server.lock != NULL) {
+focus_output(struct output *output, enum direction direction) {
+    struct workspace *workspace = output->active_workspace;
+    server.active_workspace = workspace;
+    ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
+
+    if(server.mode == SERVER_MODE_LOCKED) {
         if(!wl_list_empty(&server.lock->surfaces)) {
-            struct lock_surface *l = wl_container_of(server.lock->surfaces.next, l, link);
-            focus_lock_surface(l);
+            struct lock_surface *first = wl_container_of(server.lock->surfaces.next, first, link);
+            focus_lock_surface(first);
         }
         return;
     }
 
-    struct toplevel *focus_next = NULL;
-    struct workspace *workspace = output->active_workspace;
+    if(server.mode > SERVER_MODE_CAN_GIVE_FOCUS || server.exclusive)
+        return;
 
     if(workspace->fullscreen != NULL) {
-        focus_next = workspace->fullscreen;
-    } else if(server.focused_toplevel == NULL || !server.focused_toplevel->floating) {
-        bool is_master = server.focused_toplevel != NULL ? toplevel_is_master(server.focused_toplevel) : true;
-        focus_next = layout_find_closest_toplevel(output->active_workspace, is_master, side);
-        // if there are no tiled toplevels we try floating
-        if(focus_next == NULL) {
-            focus_next = workspace_find_closest_floating_toplevel(output->active_workspace, side);
-        }
+        focus_toplevel(workspace->fullscreen, true);
+    } else if(has_floating(workspace)) {
+        focus_toplevel(workspace_find_closest_floating(workspace, opposite(direction)), true);
+    } else if(has_masters(workspace)) {
+        focus_toplevel(first_master(workspace), true);
     } else {
-        focus_next = workspace_find_closest_floating_toplevel(output->active_workspace, side);
-        // if there are no floating toplevels we try tiled
-        if(focus_next == NULL) {
-            focus_next = layout_find_closest_toplevel(output->active_workspace, true, side);
-        }
-    }
-
-    server.active_workspace = workspace;
-    ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-
-    if(focus_next == NULL) {
         unfocus_focused_toplevel();
-        cursor_jump_output(output);
-    } else {
-        focus_toplevel(focus_next);
-        cursor_jump_focused_toplevel();
+        jump_cursor_to_output(output);
     }
 }
 

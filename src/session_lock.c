@@ -5,6 +5,7 @@
 #include <wlr/util/log.h>
 
 #include "layer_surface.h"
+#include "layout.h"
 #include "mwc.h"
 #include "rendering.h"
 #include "toplevel.h"
@@ -24,6 +25,7 @@ lock_surface_handle_unmap(struct wl_listener *listener, void *data) {
     struct lock_surface *lock_surface = wl_container_of(listener, lock_surface, unmap);
 
     wl_list_remove(&lock_surface->link);
+
     // we pass focus only if the thing is still locked
     if(lock_surface->lock->locked && !wl_list_empty(&lock_surface->lock->surfaces)) {
         struct lock_surface *next = wl_container_of(lock_surface->lock->surfaces.next, next, link);
@@ -84,10 +86,18 @@ focus_lock_surface(struct lock_surface *lock_surface) {
 
 static void
 restore_focus(void) {
+    if(try_focus_exclusive_layer_surface())
+        return;
+
     struct output *output = cursor_get_output();
-    // this should not happen
     if(output == NULL)
         return;
+
+    if(has_floating(server.active_workspace)) {
+        focus_toplevel(first_floating(server.active_workspace), false);
+    } else if(has_masters(server.active_workspace)) {
+        focus_toplevel(first_master(server.active_workspace), false);
+    }
 }
 
 static void
@@ -96,37 +106,13 @@ session_lock_handle_unlock(struct wl_listener *listener, void *data) {
     lock->locked = false;
     server.lock = NULL;
 
-    // optimize this
-    bool focused = false;
-    struct layer_surface *l;
-    wl_list_for_each(l, &output->layers.overlay, link) {
-        if(l->wlr_layer_surface->current.keyboard_interactive) {
-            focus_layer_surface(l);
-            focused = true;
-        }
-    }
-    wl_list_for_each(l, &output->layers.top, link) {
-        if(l->wlr_layer_surface->current.keyboard_interactive) {
-            focus_layer_surface(l);
-            focused = true;
-        }
-    }
+    restore_focus();
 
-    if(!focused) {
-        if(!wl_list_empty(&server.active_workspace->masters)) {
-            struct toplevel *first = wl_container_of(server.active_workspace->masters.next, first, link);
-            focus_toplevel(first);
-        } else if(!wl_list_empty(&server.active_workspace->floating_toplevels)) {
-            struct toplevel *first = wl_container_of(server.active_workspace->floating_toplevels.next, first, link);
-            focus_toplevel(first);
-        }
-    }
-
-    struct output *o;
-    wl_list_for_each(o, &server.outputs, link) {
+    struct output *iter;
+    wl_list_for_each(iter, &server.outputs, link) {
         // destroy the rectangle blocking the view
-        wlr_scene_node_destroy(&o->session_lock_rect->node);
-        o->session_lock_rect = NULL;
+        wlr_scene_node_destroy(&iter->session_lock_rect->node);
+        iter->session_lock_rect = NULL;
     }
 }
 

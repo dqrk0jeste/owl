@@ -100,7 +100,7 @@ layer_surface_handle_map(struct wl_listener *listener, void *data) {
     focus_layer_surface(layer_surface);
 }
 
-static bool
+bool
 try_focus_exclusive_layer_surface(void) {
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
@@ -147,11 +147,11 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
 
         if(!try_focus_exclusive_layer_surface()) {
             if(server.prev_focused != NULL && server.prev_focused->workspace == server.active_workspace) {
-                focus_toplevel(server.prev_focused);
+                focus_toplevel(server.prev_focused, false);
             } else if(has_floating(server.active_workspace)) {
-                focus_toplevel(first_floating(server.active_workspace));
+                focus_toplevel(first_floating(server.active_workspace), false);
             } else if(has_masters(server.active_workspace)) {
-                focus_toplevel(first_master(server.active_workspace));
+                focus_toplevel(first_master(server.active_workspace), false);
             }
         }
     }
@@ -159,7 +159,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     layer_surfaces_configure(output);
 }
 
-void
+static void
 layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, destroy);
 
@@ -170,7 +170,7 @@ layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
     free(layer_surface);
 }
 
-void
+static void
 layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
     struct wlr_xdg_popup *xdg_popup = data;

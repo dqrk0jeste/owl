@@ -43,7 +43,7 @@ void
 output_place_in_layout(struct output *output);
 
 // modesets this output using the provided mode from the config file. if there is none, or it cant be applied backs up
-// to the preffered mode. if it fails returns `false`
+// to the preffered mode. if it fails returns `falsej
 bool
 output_modeset(struct wlr_output *output);
 
@@ -51,10 +51,10 @@ struct output *
 output_get_relative(struct output *output, enum direction direction);
 
 void
-cursor_jump_output(struct output *output);
+jump_cursor_to_output(struct output *output);
 
 void
-focus_output(struct output *output);
+focus_output(struct output *output, enum direction direction);
 
 struct wlr_box
 output_create_centered_box(struct output *output, uint32_t width, uint32_t height);

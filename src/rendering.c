@@ -22,7 +22,7 @@
 extern struct server server;
 
 struct iter_layer_apply_effects_args {
-    bool has_blur, blur_ignore_transparent, blur_xray;
+    bool has_blur, blur_ignore_transparent, blur_optimized;
 };
 
 static void
@@ -30,7 +30,7 @@ iter_layer_apply_blur(struct wlr_scene_buffer *buffer, int sx, int sy, void *dat
     struct iter_layer_apply_effects_args *args = data;
 
     wlr_scene_buffer_set_backdrop_blur(buffer, args->has_blur);
-    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, args->blur_xray);
+    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, args->blur_optimized);
     wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, args->blur_ignore_transparent);
 }
 
@@ -39,7 +39,7 @@ layer_surface_apply_effects(struct layer_surface *layer_surface) {
     struct iter_layer_apply_effects_args args = {
             .has_blur = layer_surface->has_blur,
             .blur_ignore_transparent = layer_surface->blur_ignore_transparent,
-            .blur_xray = layer_surface->blur_xray,
+            .blur_optimized = layer_surface->blur_optimized,
     };
     wlr_scene_node_for_each_buffer(&layer_surface->scene->tree->node, iter_layer_apply_blur, &args);
 }
@@ -52,7 +52,7 @@ struct iter_toplevel_apply_effects_args {
     double opacity;
     uint32_t border_radius;
     bool has_titlebar;
-    bool has_blur, blur_xray;
+    bool has_blur, blur_optimized;
     bool animating;
 };
 
@@ -63,7 +63,8 @@ iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, voi
     wlr_scene_buffer_set_opacity(buffer, args->opacity);
 
     struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(buffer);
-    if(scene_surface == NULL) return;
+    if(scene_surface == NULL)
+        return;
 
     struct wlr_surface *surface = scene_surface->surface;
 
@@ -79,7 +80,8 @@ iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, voi
     }
 
     // we dont round or blur popups
-    if(wlr_xdg_popup_try_from_wlr_surface(surface) != NULL) return;
+    if(wlr_xdg_popup_try_from_wlr_surface(surface) != NULL)
+        return;
 
     int32_t x = lx - args->root_x;
     int32_t y = ly - args->root_y;
@@ -109,23 +111,21 @@ iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, voi
     wlr_scene_buffer_set_corner_radius(buffer, args->border_radius, corners);
 
     // we dont blur subsurfaces
-    if(wlr_subsurface_try_from_wlr_surface(surface) != NULL) return;
+    if(wlr_subsurface_try_from_wlr_surface(surface) != NULL)
+        return;
 
     wlr_scene_buffer_set_backdrop_blur(buffer, args->has_blur);
-    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, !args->blur_xray);
+    wlr_scene_buffer_set_backdrop_blur_optimized(buffer, args->blur_optimized);
     wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, false);
 }
 
 static void
 toplevel_apply_effects(struct toplevel *toplevel) {
-    double opacity;
-    if(!toplevel->fullscreen || server.config->opacity_apply_when_fullscreen) {
-        opacity = toplevel == server.focused_toplevel ? toplevel->active_opacity : toplevel->inactive_opacity;
-    } else {
-        opacity = 1.0;
-    }
+    double opacity = toplevel->mode != TOPLEVEL_MODE_FULLSCREEN || server.config->opacity_apply_when_fullscreen
+            ? toplevel == server.focused_toplevel ? toplevel->active_opacity : toplevel->inactive_opacity
+            : 1.0;
 
-    uint32_t border_radius = toplevel->fullscreen
+    uint32_t border_radius = toplevel->mode == TOPLEVEL_MODE_FULLSCREEN
             ? 0
             : max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0);
 
@@ -144,7 +144,7 @@ toplevel_apply_effects(struct toplevel *toplevel) {
             .border_radius = border_radius,
             .has_titlebar = decoration_has_titlebar(toplevel->decoration),
             .has_blur = toplevel->has_blur,
-            .blur_xray = server.config->blur_xray && toplevel->floating,
+            .blur_optimized = toplevel_should_have_optimized_blur(toplevel),
             .animating = toplevel->animation != NULL,
     };
     wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, iter_toplevel_apply_effects, &args);
@@ -163,19 +163,18 @@ output_draw(struct output *output) {
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
 
-    if(output->active_workspace->fullscreen_toplevel != NULL) {
-        // we only draw the fullscreen toplevel here
-        // todo: optimize this more
-        toplevel_apply_effects(output->active_workspace->fullscreen_toplevel);
-        return;
-    }
-
     // apply layer surface effects
     struct layer_surface *iter_layer_surface;
     for(size_t i = 0; i < 4; i++) {
         wl_list_for_each(iter_layer_surface, &(&output->layers.background)[i], link) {
             layer_surface_apply_effects(iter_layer_surface);
         }
+    }
+
+    if(output->active_workspace->fullscreen != NULL) {
+        // we only draw the fullscreen toplevel here; todo: optimize this more
+        toplevel_apply_effects(output->active_workspace->fullscreen);
+        return;
     }
 
     if(server.grabbed_toplevel != NULL && toplevel_is_in_box(server.grabbed_toplevel, &output_box)) {
@@ -195,7 +194,7 @@ output_draw(struct output *output) {
                 toplevel_apply_effects(iter_toplevel);
             }
         }
-        wl_list_for_each(iter_toplevel, &iter_output->active_workspace->floating_toplevels, link) {
+        wl_list_for_each(iter_toplevel, &iter_output->active_workspace->floating, link) {
             if(toplevel_is_in_box(iter_toplevel, &output_box)) {
                 toplevel_apply_effects(iter_toplevel);
             }

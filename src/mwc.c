@@ -98,7 +98,7 @@ void
 server_handle_request_cursor_shape(struct wl_listener *listener, void *data) {
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
     struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(server.cursor_mode == CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
+    if(focused_client == event->seat_client) {
         const char *name = wlr_cursor_shape_v1_name(event->shape);
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, name);
     }
@@ -108,11 +108,7 @@ void
 server_handle_request_cursor(struct wl_listener *listener, void *data) {
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(server.cursor_mode == CURSOR_PASSTHROUGH && focused_client == event->seat_client) {
-        // once we've vetted the client, we can tell the cursor to use the
-        // provided surface as the cursor image. it will set the hardware cursor
-        // on the output that it's currently on and continue to do so as the
-        // cursor moves between outputs
+    if(focused_client == event->seat_client) {
         wlr_cursor_set_surface(server.cursor, event->surface, event->hotspot_x, event->hotspot_y);
     }
 }
@@ -272,7 +268,6 @@ main(int argc, char *argv[]) {
 
     wl_list_init(&server.pointers);
 
-    server.cursor_mode = CURSOR_PASSTHROUGH;
     server.cursor_motion.notify = server_handle_cursor_motion;
     wl_signal_add(&server.cursor->events.motion, &server.cursor_motion);
     server.cursor_motion_absolute.notify = server_handle_cursor_motion_absolute;

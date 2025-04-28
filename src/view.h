@@ -28,7 +28,7 @@ struct view {
         struct wlr_scene_rect *border;
         struct wlr_scene_rect *titlebar_base;
         struct wlr_scene_rect *titlebar_close_button;
-        struct text_node *text_node;
+        struct text_node *titlebar_title;
     };
 
     // we listen for the node destroy signal so we can free this struct

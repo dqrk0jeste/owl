@@ -50,7 +50,8 @@ ipc_create_message(enum ipc_event event, char *buffer, uint32_t length) {
 
 void
 ipc_broadcast_message(enum ipc_event event) {
-    if(!server.ipc_running) return;
+    if(!server.ipc_running)
+        return;
 
     char message[512];
     ipc_create_message(event, message, sizeof(message));
@@ -86,7 +87,7 @@ ipc_handle_simple(char *request, int fd) {
             struct workspace *workspace;
             wl_list_for_each(workspace, &output->workspaces, link) {
                 struct toplevel *toplevel;
-                wl_list_for_each(toplevel, &workspace->floating_toplevels, link) {
+                wl_list_for_each(toplevel, &workspace->floating, link) {
                     char *q = toplevel->xdg_toplevel->app_id;
                     while(*q != 0) {
                         if(len >= cap) {
@@ -287,17 +288,21 @@ ipc_run(void *data) {
     sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
 
-    if(sigaction(SIGPIPE, &sa, NULL) == -1) goto no_close;
+    if(sigaction(SIGPIPE, &sa, NULL) == -1)
+        goto no_close;
 
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if(fd == -1) goto no_close;
+    if(fd == -1)
+        goto no_close;
 
     struct sockaddr_un address = {0};
     address.sun_family = AF_UNIX;
     strcpy(address.sun_path, IPC_PATH);
 
-    if(bind(fd, (struct sockaddr *)&address, sizeof(address))) goto error;
-    if(listen(fd, 128) == -1) goto error;
+    if(bind(fd, (struct sockaddr *)&address, sizeof(address)))
+        goto error;
+    if(listen(fd, 128) == -1)
+        goto error;
 
     array_init(&server.ipc_clients);
     server.ipc_running = true;
@@ -307,12 +312,14 @@ ipc_run(void *data) {
         struct sockaddr_un client_address;
         socklen_t sock_len;
         int client = accept(fd, (struct sockaddr *)&client_address, &sock_len);
-        if(client == -1) continue;
+        if(client == -1)
+            continue;
 
         wlr_log(WLR_INFO, "ipc: new client on fd: %d", client);
 
         ssize_t len = read(client, buffer, sizeof(buffer) - 1);
-        if(len < 0) continue;
+        if(len < 0)
+            continue;
 
         buffer[len] = 0;
 

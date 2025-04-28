@@ -54,8 +54,11 @@ toplevel_matches_window_rule(struct toplevel *toplevel, struct window_rule_regex
 bool
 layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct layer_rule_regex *condition);
 
+// (re)check the window rules for this toplevel
+// note: this function will only update the flags, but you need to handle the updating of the actual presentation
+// seperatelly, e.g. by calling decoration_set_types()
 void
-toplevel_recheck_window_rules(struct toplevel *toplevel);
+toplevel_check_rules(struct toplevel *toplevel);
 
 void
 layer_surface_check_rules(struct layer_surface *layer_surface);

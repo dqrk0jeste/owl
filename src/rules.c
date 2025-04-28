@@ -1,5 +1,6 @@
 #include "rules.h"
 
+#include "array.h"
 #include "config.h"
 #include "layer_surface.h"
 #include "toplevel.h"
@@ -22,16 +23,17 @@ toplevel_matches_window_rule(struct toplevel *toplevel, struct window_rule_regex
 
 bool
 layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct layer_rule_regex *condition) {
-    if(!condition->has) return true;
+    if(!condition->has)
+        return true;
 
     char *namespace = layer_surface->wlr_layer_surface->namespace;
     return namespace != NULL && regexec(&condition->regex, namespace, 0, NULL, 0) == 0;
 }
 
 static void
-recheck_opacity_rules(struct toplevel *toplevel) {
-    struct window_rule_opacity *iter;
-    wl_list_for_each(iter, &server.config->window_rules.opacity, link) {
+check_opacity_rules(struct toplevel *toplevel) {
+    for(struct window_rule_opacity *iter = server.config->window_rules.opacity;
+            iter <= array_last(server.config->window_rules.opacity); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
             toplevel->active_opacity = iter->active_value;
             toplevel->inactive_opacity = iter->inactive_value;
@@ -44,15 +46,15 @@ recheck_opacity_rules(struct toplevel *toplevel) {
 }
 
 static void
-recheck_no_titlebar_rules(struct toplevel *toplevel) {
+check_no_titlebar_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the titlebars globally
     if(!server.config->titlebars) {
         toplevel->has_titlebar = false;
         return;
     }
 
-    struct window_rule *iter;
-    wl_list_for_each(iter, &server.config->window_rules.no_titlebar, link) {
+    for(struct window_rule *iter = server.config->window_rules.no_titlebar;
+            iter <= array_last(server.config->window_rules.no_titlebar); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
             toplevel->has_titlebar = false;
             return;
@@ -63,15 +65,15 @@ recheck_no_titlebar_rules(struct toplevel *toplevel) {
 }
 
 static void
-recheck_no_border_rules(struct toplevel *toplevel) {
+check_no_border_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the titlebars globally
     if(!server.config->borders) {
         toplevel->has_border = false;
         return;
     }
 
-    struct window_rule *iter;
-    wl_list_for_each(iter, &server.config->window_rules.no_border, link) {
+    for(struct window_rule *iter = server.config->window_rules.no_border;
+            iter <= array_last(server.config->window_rules.no_border); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
             toplevel->has_border = false;
             return;
@@ -82,15 +84,15 @@ recheck_no_border_rules(struct toplevel *toplevel) {
 }
 
 static void
-recheck_no_blur_rules(struct toplevel *toplevel) {
+check_no_blur_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the titlebars globally
     if(!server.config->blur) {
         toplevel->has_blur = false;
         return;
     }
 
-    struct window_rule *iter;
-    wl_list_for_each(iter, &server.config->window_rules.no_blur, link) {
+    for(struct window_rule *iter = server.config->window_rules.no_blur;
+            iter <= array_last(server.config->window_rules.no_blur); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
             toplevel->has_blur = false;
             return;
@@ -101,7 +103,7 @@ recheck_no_blur_rules(struct toplevel *toplevel) {
 }
 
 static void
-recheck_no_shadow_rules(struct toplevel *toplevel) {
+check_no_shadow_rules(struct toplevel *toplevel) {
     // we only care about these rules if we are drawing the borders globally
     if(!server.config->shadows) {
         toplevel->has_shadow = false;
@@ -110,8 +112,8 @@ recheck_no_shadow_rules(struct toplevel *toplevel) {
 
     toplevel->has_shadow = true;
 
-    struct window_rule *iter;
-    wl_list_for_each(iter, &server.config->window_rules.no_shadow, link) {
+    for(struct window_rule *iter = server.config->window_rules.no_shadow;
+            iter <= array_last(server.config->window_rules.no_shadow); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
             toplevel->has_shadow = false;
             return;
@@ -122,51 +124,27 @@ recheck_no_shadow_rules(struct toplevel *toplevel) {
 }
 
 void
-toplevel_recheck_window_rules(struct toplevel *toplevel) {
-    recheck_opacity_rules(toplevel);
-    recheck_no_titlebar_rules(toplevel);
-    recheck_no_shadow_rules(toplevel);
-    recheck_no_border_rules(toplevel);
-    recheck_no_blur_rules(toplevel);
+toplevel_check_rules(struct toplevel *toplevel) {
+    check_opacity_rules(toplevel);
+    check_no_titlebar_rules(toplevel);
+    check_no_shadow_rules(toplevel);
+    check_no_border_rules(toplevel);
+    check_no_blur_rules(toplevel);
 }
 
 static void
 check_blur_rules(struct layer_surface *layer_surface) {
-    struct layer_rule *iter;
-    wl_list_for_each(iter, &server.config->layer_rules.blur, link) {
+    for(struct layer_rule_blur *iter = server.config->layer_rules.blur;
+            iter <= array_last(server.config->layer_rules.blur); iter++) {
         if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
             layer_surface->has_blur = true;
+            layer_surface->blur_optimized = iter->optimized;
+            layer_surface->blur_ignore_transparent = iter->ignore_transparent;
             return;
         }
     }
 
     layer_surface->has_blur = false;
-}
-
-static void
-check_blur_xray_rules(struct layer_surface *layer_surface) {
-    struct layer_rule *iter;
-    wl_list_for_each(iter, &server.config->layer_rules.blur_xray, link) {
-        if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
-            layer_surface->blur_xray = true;
-            return;
-        }
-    }
-
-    layer_surface->blur_xray = false;
-}
-
-static void
-check_blur_ignore_transparent_rules(struct layer_surface *layer_surface) {
-    struct layer_rule *iter;
-    wl_list_for_each(iter, &server.config->layer_rules.blur_ignore_transparent, link) {
-        if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
-            layer_surface->blur_ignore_transparent = true;
-            return;
-        }
-    }
-
-    layer_surface->blur_ignore_transparent = false;
 }
 
 void
@@ -178,6 +156,4 @@ layer_surface_check_rules(struct layer_surface *layer_surface) {
     }
 
     check_blur_rules(layer_surface);
-    check_blur_xray_rules(layer_surface);
-    check_blur_ignore_transparent_rules(layer_surface);
 }

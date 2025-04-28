@@ -1422,21 +1422,21 @@ config_reload() {
 
             struct toplevel *iter_toplevel;
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
-                toplevel_recheck_window_rules(iter_toplevel);
+                toplevel_check_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
                 decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur,
                         toplevel_should_have_optimized_blur(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
-                toplevel_recheck_window_rules(iter_toplevel);
+                toplevel_check_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
                 decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur,
                         toplevel_should_have_optimized_blur(iter_toplevel));
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
-                toplevel_recheck_window_rules(iter_toplevel);
+                toplevel_check_rules(iter_toplevel);
                 decoration_recreate(iter_toplevel->decoration, toplevel_get_decoration_types(iter_toplevel));
                 decoration_titlebar_set_title(iter_toplevel->decoration, iter_toplevel->xdg_toplevel->title);
                 decoration_set_blur(iter_toplevel->decoration, iter_toplevel->has_blur,

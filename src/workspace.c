@@ -20,7 +20,7 @@ has_floating(struct workspace *workspace) {
 
 struct toplevel *
 next_floating(struct toplevel *toplevel) {
-    if(toplevel->link.next == toplevel->workspace->floating.prev)
+    if(toplevel->link.next == &toplevel->workspace->floating)
         return NULL;
 
     struct toplevel *t = wl_container_of(toplevel->link.next, t, link);
@@ -29,7 +29,7 @@ next_floating(struct toplevel *toplevel) {
 
 struct toplevel *
 prev_floating(struct toplevel *toplevel) {
-    if(toplevel->link.prev == toplevel->workspace->floating.next)
+    if(toplevel->link.prev == &toplevel->workspace->floating)
         return NULL;
 
     struct toplevel *t = wl_container_of(toplevel->link.prev, t, link);
@@ -41,7 +41,7 @@ first_floating(struct workspace *workspace) {
     if(wl_list_empty(&workspace->floating))
         return NULL;
 
-    struct toplevel *t = wl_container_of(workspace->link.next, t, link);
+    struct toplevel *t = wl_container_of(workspace->floating.next, t, link);
     return t;
 }
 
@@ -50,18 +50,18 @@ last_floating(struct workspace *workspace) {
     if(wl_list_empty(&workspace->floating))
         return NULL;
 
-    struct toplevel *t = wl_container_of(workspace->link.prev, t, link);
+    struct toplevel *t = wl_container_of(workspace->floating.prev, t, link);
     return t;
 }
 
 static void
 handle_focus(struct workspace *workspace) {
     if(workspace->fullscreen != NULL) {
-        focus_toplevel(workspace->fullscreen);
-    } else if(!wl_list_empty(&workspace->floating)) {
-        focus_toplevel(first_floating(workspace));
-    } else if(!wl_list_empty(&workspace->masters)) {
-        focus_toplevel(first_master(workspace));
+        focus_toplevel(workspace->fullscreen, false);
+    } else if(has_floating(workspace)) {
+        focus_toplevel(first_floating(workspace), false);
+    } else if(has_masters(workspace)) {
+        focus_toplevel(first_master(workspace), false);
     } else {
         unfocus_focused_toplevel();
     }
@@ -96,7 +96,7 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
 
     // warp the cursor if this output is not on the same output as currently globally active workspace
     if(server.active_workspace->output != workspace->output) {
-        cursor_jump_output(workspace->output);
+        jump_cursor_to_output(workspace->output);
     }
 
     // set it as globally active workspace
@@ -135,13 +135,13 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         return;
 
     struct workspace *old_workspace = toplevel->workspace;
+    toplevel->workspace = workspace;
 
     // handle server state
     if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
         old_workspace->fullscreen = NULL;
         workspace->fullscreen = toplevel;
     } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
-        toplevel->workspace = workspace;
         wl_list_remove(&toplevel->link);
         wl_list_insert(&workspace->floating, &toplevel->link);
     } else {
@@ -171,8 +171,8 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         }
 
         if(toplevel->prev_mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
-            // calculate where the toplevel should be placed after exiting fullscreen; we use the same relative place on
-            // this output as is was on the last one
+            // calculate where the toplevel should be placed after exiting fullscreen
+            // we use the same relative place on this output as is was on the last one
             patch_relative_box_for_output(&toplevel->prev_deco_box, old_workspace->output, workspace->output);
         } else {
             // invalidate the index
@@ -180,7 +180,7 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
             layout_configure(old_workspace);
         }
     } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
-        // if the toplevel is moved between workspaces on the same output we dont do anything about the presentation.
+        // if the toplevel is moved between workspaces on the same output we dont do anything about the presentation;
         // else we place it at the same relative coords on the new output
         struct wlr_box box = toplevel->deco_box;
         patch_relative_box_for_output(&box, old_workspace->output, workspace->output);
@@ -193,7 +193,7 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
 }
 
 struct toplevel *
-workspace_find_closest_floating_toplevel(struct workspace *workspace, enum direction side) {
+workspace_find_closest_floating(struct workspace *workspace, enum direction side) {
     if(!has_floating(workspace))
         return NULL;
 

@@ -11,7 +11,7 @@ struct layer_surface {
     struct wlr_layer_surface_v1 *wlr_layer_surface;
     struct wlr_scene_layer_surface_v1 *scene;
 
-    bool has_blur, blur_ignore_transparent, blur_xray;
+    bool has_blur, blur_ignore_transparent, blur_optimized;
 
     struct wl_listener map;
     struct wl_listener unmap;
@@ -31,3 +31,6 @@ focus_layer_surface(struct layer_surface *layer_surface);
 
 void
 layers_under_fullscreen_set_enabled(struct output *output, bool enable);
+
+bool
+try_focus_exclusive_layer_surface(void);

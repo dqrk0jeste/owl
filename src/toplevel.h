@@ -7,6 +7,7 @@
 
 #include "animations.h"
 #include "decoration.h"
+#include "helpers.h"
 #include "mwc.h"
 #include "rendering.h"
 
@@ -70,7 +71,7 @@ struct toplevel {
     struct wl_listener set_title;
 };
 
-inline bool
+bool
 toplevel_is_tiled(struct toplevel *toplevel);
 
 // looks up window rules and returns true if found, with the size in `*width` and `*height`, else return false
@@ -108,9 +109,6 @@ void
 toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind);
 
 void
-cursor_jump_focused_toplevel(void);
-
-void
 toplevel_set_fullscreen(struct toplevel *toplevel);
 
 void
@@ -121,7 +119,7 @@ unfocus_focused_toplevel(void);
 
 // tries to give the keyboard focus to this toplevel
 void
-focus_toplevel(struct toplevel *toplevel);
+focus_toplevel(struct toplevel *toplevel, bool jump_cursor);
 
 struct toplevel *
 toplevel_find_closest_floating_on_workspace(struct toplevel *toplevel, enum direction direction);
@@ -133,12 +131,6 @@ toplevel_get_primary_output(struct toplevel *toplevel);
 // get the corner closest to the cursor; FIXME: this should take the x, y coords instead
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor, struct toplevel *toplevel);
-
-// recheck the window rules for this toplevel
-// note: this function will only update the flags, but you need to handle the updating of the actual presentation
-// seperatelly, e.g. by calling decoration_set_types()
-void
-toplevel_recheck_window_rules(struct toplevel *toplevel);
 
 // get the wanted decorations for this toplevel
 // returns a bitmask of `enum decoration_type`
