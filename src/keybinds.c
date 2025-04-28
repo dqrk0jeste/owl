@@ -83,15 +83,15 @@ start_master_ratio_resize(void) {
     wlr_output_layout_get_box(server.output_layout, server.active_workspace->output->wlr_output, &output_box);
 
     if(server.grab_x <= output_box.x + server.active_workspace->master_ratio * output_box.width) {
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "left_side");
-    } else {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "right_side");
+    } else {
+        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "left_side");
     }
 }
 
 void
 keybind_start_resize(void *data) {
-    if(server.grabbed_toplevel != NULL)
+    if(server.mode != SERVER_MODE_NORMAL)
         return;
 
     struct view *view = pointer_get_view_under_cursor();
@@ -111,7 +111,7 @@ keybind_start_resize(void *data) {
 
 void
 keybind_stop_resize(void *data) {
-    if(server.grabbed_toplevel == NULL)
+    if(server.mode != SERVER_MODE_RESIZING && server.mode != SERVER_MODE_RESIZING_MASTER_RATIO)
         return;
 
     cursor_stop_move_resize();
@@ -119,7 +119,7 @@ keybind_stop_resize(void *data) {
 
 void
 keybind_start_move(void *data) {
-    if(server.grabbed_toplevel != NULL)
+    if(server.mode != SERVER_MODE_NORMAL)
         return;
 
     struct view *view = pointer_get_view_under_cursor();
@@ -136,7 +136,7 @@ keybind_start_move(void *data) {
 
 void
 keybind_stop_move(void *data) {
-    if(server.grabbed_toplevel == NULL)
+    if(server.mode != SERVER_MODE_MOVING)
         return;
 
     cursor_stop_move_resize();

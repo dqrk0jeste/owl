@@ -880,6 +880,7 @@ toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box) {
     }
 
     if(server.config->animations && toplevel->scene_tree->node.enabled && toplevel != server.grabbed_toplevel &&
+            !(toplevel_is_tiled(toplevel) && server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) &&
             !wlr_box_equal(&toplevel->deco_box, &deco_box)) {
         toplevel->animation = fx_transform_animation_create(current, deco_box, server.config->animation_duration,
                 server.config->animation_curve, toplevel_animation_callback, toplevel);
@@ -910,7 +911,7 @@ toplevel_get_geometry(struct toplevel *toplevel) {
 
 void
 toplevel_start_move(struct toplevel *toplevel, bool by_keybind) {
-    if(server.mode > SERVER_MODE_NORMAL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
+    if(server.mode != SERVER_MODE_NORMAL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
         return;
 
     server.grabbed_toplevel = toplevel;

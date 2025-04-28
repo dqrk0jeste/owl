@@ -414,8 +414,9 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
     struct wlr_pointer_button_event *event = data;
 
     // drop the toplevel if grabbed
-    if(event->button == 272 && event->state == WL_POINTER_BUTTON_STATE_RELEASED && server.grabbed_toplevel != NULL &&
-            server.move_resize_by_keybind) {
+    if(event->button == 272 && event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
+            (server.mode == SERVER_MODE_MOVING || server.mode == SERVER_MODE_RESIZING) &&
+            !server.move_resize_by_keybind) {
         cursor_stop_move_resize();
         return;
     }

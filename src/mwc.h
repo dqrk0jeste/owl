@@ -80,17 +80,15 @@ struct server {
     // todo: handle resize of master ratio. do so only when there are slaves
     // this keeps state when the compositor is in the state of moving or resizing toplevels
     double grab_x, grab_y;
-    union {
-        // for moving/resizing toplevels
-        struct {
-            struct toplevel *grabbed_toplevel;
-            struct wlr_box grabbed_toplevel_initial_box;
-            uint32_t resize_edges;
-            bool move_resize_by_keybind;
-        };
-        // for resizing master ratio
-        double initial_master_ratio;
+    // for moving/resizing toplevels
+    struct {
+        struct toplevel *grabbed_toplevel;
+        struct wlr_box grabbed_toplevel_initial_box;
+        uint32_t resize_edges;
+        bool move_resize_by_keybind;
     };
+    // for resizing master ratio
+    double initial_master_ratio;
 
     // active workspace follows pointer
     struct workspace *active_workspace;

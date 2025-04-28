@@ -73,6 +73,11 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
     if(server.active_workspace == workspace)
         return;
 
+    // if we were resizing the layout stop it before switching to new workspace
+    if(server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
+        cursor_stop_move_resize();
+    }
+
     // if this workspace is not presented on its output we handle the presentation first
     if(workspace != workspace->output->active_workspace) {
         // disable all the toplevels on the current workspace on the output
