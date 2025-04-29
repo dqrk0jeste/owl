@@ -41,6 +41,7 @@ src = [
   'src/config.c',
   'src/decoration.c',
   'src/dnd.c',
+  'src/foreign_toplevel.c',
   'src/gamma_control.c',
   'src/helpers.c',
   'src/ipc.c',

@@ -179,6 +179,8 @@ toplevel_handle_initial_commit(struct toplevel *toplevel) {
     // send the initial configure
     wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 
+    wlr_xdg_toplevel_set_wm_capabilities(toplevel->xdg_toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
+
     // we lie that its maximized so it behaves better
     wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
     wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP & WLR_EDGE_RIGHT & WLR_EDGE_BOTTOM & WLR_EDGE_LEFT);
@@ -299,7 +301,9 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         if(toplevel == server.focused_toplevel) {
             // note: we use cursor position here since `toplevel->workspace` isnt up to date
             server.focused_toplevel = NULL;
-            if(has_floating(server.active_workspace)) {
+            if(server.active_workspace->fullscreen != NULL) {
+                focus_toplevel(server.active_workspace->fullscreen, false);
+            } else if(has_floating(server.active_workspace)) {
                 focus_toplevel(first_floating(server.active_workspace), false);
             } else if(has_masters(server.active_workspace)) {
                 focus_toplevel(first_master(server.active_workspace), false);
@@ -452,7 +456,8 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
         decoration_set_blur(toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
     }
 
-    wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->app_id);
+    wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle->wlr_handle,
+            toplevel->xdg_toplevel->app_id);
 
     if(toplevel == server.focused_toplevel) {
         ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
@@ -471,7 +476,8 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
         decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
     }
 
-    wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle, toplevel->xdg_toplevel->title);
+    wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle->wlr_handle,
+            toplevel->xdg_toplevel->title);
 
     if(toplevel == server.focused_toplevel) {
         ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
@@ -482,7 +488,7 @@ static void
 toplevel_handle_destroy(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
-    wlr_foreign_toplevel_handle_v1_destroy(toplevel->foreign_toplevel_handle);
+    foreign_toplevel_handle_destroy(toplevel->foreign_toplevel_handle);
 
     wl_list_remove(&toplevel->map.link);
     wl_list_remove(&toplevel->unmap.link);
@@ -559,7 +565,7 @@ toplevel_set_fullscreen(struct toplevel *toplevel) {
     workspace->fullscreen = toplevel;
 
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, true);
-    wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, true);
+    wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle->wlr_handle, true);
 
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
 
@@ -593,7 +599,7 @@ toplevel_unset_fullscreen(struct toplevel *toplevel) {
     toplevel->mode = toplevel->prev_mode;
 
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
-    wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle, false);
+    wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle->wlr_handle, false);
 
     // enable the decorations; be sure to call this before set state so it gets the right size
     decoration_set_enabled(toplevel->decoration, true);
@@ -641,7 +647,7 @@ unfocus_focused_toplevel(void) {
 
     // deactivate the surface
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, false);
-    wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, false);
+    wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle->wlr_handle, false);
 
     decoration_set_active(toplevel->decoration, false);
 
@@ -662,7 +668,8 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
 
     if(server.focused_toplevel != NULL) {
         wlr_xdg_toplevel_set_activated(server.focused_toplevel->xdg_toplevel, false);
-        wlr_foreign_toplevel_handle_v1_set_activated(server.focused_toplevel->foreign_toplevel_handle, false);
+        wlr_foreign_toplevel_handle_v1_set_activated(server.focused_toplevel->foreign_toplevel_handle->wlr_handle,
+                false);
 
         decoration_set_active(server.focused_toplevel->decoration, false);
     }
@@ -677,7 +684,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
 
     // activate the toplevel
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
-    wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle, true);
+    wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle->wlr_handle, true);
 
     toplevel_raise_to_top(toplevel);
     decoration_set_active(toplevel->decoration, true);
@@ -993,7 +1000,7 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
             ceil(toplevel->workspace->output->wlr_output->scale));
 
     // add foreign toplevel handler
-    toplevel->foreign_toplevel_handle = wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
+    toplevel->foreign_toplevel_handle = foreign_toplevel_handle_create(toplevel);
 
     toplevel->map.notify = toplevel_handle_map;
     wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);

@@ -198,18 +198,10 @@ focus_layer_surface(struct layer_surface *layer_surface) {
             (keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND && server.exclusive))
         return;
 
-    // if we determined that the focus can be given, we first need to handle the cases when we are in the process of
-    // moving or resizing a toplevel. in that case the action must be stopped, since the focus cannot be kept
-    if(server.grabbed_toplevel != NULL) {
-        cursor_stop_move_resize();
-    }
-
-    // note: even tho focused_layer_surface can also be set, we dont have anything special to do to make it
-    // unfocused. invoking the keyboard enter function will stop it from getting the new events
-
-    // unfocus the focused toplevel;
+    // unfocus the focused toplevel. note: even tho focused_layer_surface can also be set, we dont have anything special
+    // to do to make it unfocused; invoking the keyboard enter function will stop it from getting the new events
     if(server.focused_toplevel != NULL) {
-        // and keep it in this field, so it can be returned focus later
+        // keep it in this field, so it can be returned focus later
         server.prev_focused = server.focused_toplevel;
         unfocus_focused_toplevel();
     }

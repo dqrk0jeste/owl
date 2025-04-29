@@ -7,6 +7,7 @@
 
 #include "animations.h"
 #include "decoration.h"
+#include "foreign_toplevel.h"
 #include "helpers.h"
 #include "mwc.h"
 #include "rendering.h"
@@ -57,7 +58,7 @@ struct toplevel {
 
     struct fx_transform_animation *animation;
 
-    struct wlr_foreign_toplevel_handle_v1 *foreign_toplevel_handle;
+    struct foreign_toplevel_handle *foreign_toplevel_handle;
 
     struct wl_listener map;
     struct wl_listener unmap;
