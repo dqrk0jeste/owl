@@ -131,7 +131,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
     wl_list_remove(&layer_surface->link);
     struct output *output = layer_surface->wlr_layer_surface->output->data;
 
-    // hack when the output has been destroyed, idk why is works, will have to inverstigate when i am back at setup
+    // hack when the output has been destroyed, idk why is works, will have to inverstigate when i am back at setup todo
     if(output == NULL) {
         if(layer_surface == server.focused_layer_surface) {
             server.focused_layer_surface = NULL;
@@ -154,6 +154,10 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
                 focus_toplevel(first_master(server.active_workspace), false);
             }
         }
+    }
+
+    if(server.config->blur && layer_surface->wlr_layer_surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
+        wlr_scene_optimized_blur_mark_dirty(output->blur);
     }
 
     layer_surfaces_configure(output);

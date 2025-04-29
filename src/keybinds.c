@@ -96,11 +96,10 @@ keybind_start_resize(void *data) {
     if(server.mode != SERVER_MODE_NORMAL)
         return;
 
-    struct view *view = pointer_get_view_under_cursor();
-    struct toplevel *toplevel = view == NULL ? NULL : view_try_get_toplevel(view);
+    struct toplevel *toplevel = get_toplevel_under_cursor();
 
-    // if a floating toplevel is under the cursor then start the resize
     if(toplevel != NULL && toplevel->mode == TOPLEVEL_MODE_FLOATING) {
+        // if a floating toplevel is under the cursor then start the resize
         uint32_t edges = toplevel_get_closest_corner(server.cursor, toplevel);
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, wlr_xcursor_get_resize_name(edges));
 
@@ -124,11 +123,7 @@ keybind_start_move(void *data) {
     if(server.mode != SERVER_MODE_NORMAL)
         return;
 
-    struct view *view = pointer_get_view_under_cursor();
-    if(view == NULL)
-        return;
-
-    struct toplevel *toplevel = view_try_get_toplevel(view);
+    struct toplevel *toplevel = get_toplevel_under_cursor();
     if(toplevel == NULL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
         return;
 

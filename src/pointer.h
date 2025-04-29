@@ -35,7 +35,10 @@ void
 cursor_stop_move_resize(void);
 
 struct view *
-pointer_get_view_under_cursor(void);
+get_view_under_cursor(void);
+
+struct toplevel *
+get_toplevel_under_cursor(void);
 
 void
 pointer_handle_focus(uint32_t time, bool handle_keyboard_focus);

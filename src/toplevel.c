@@ -251,18 +251,16 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     // receive pointer focus
     view_create_for_node(&toplevel->scene_tree->node, VIEW_TOPLEVEL, toplevel);
 
-    // create a decoration object
+    // create a decoration object and set the initial params
     toplevel->decoration = decoration_create(toplevel->scene_tree, toplevel_get_decoration_types(toplevel));
-    // set the initial title
     decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
-    // we also set the initial blur for this toplevels decoration
     decoration_set_blur(toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
 
     // we set this flag for the popin animation
     toplevel->needs_popin_adjustment = server.config->animations;
 
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
-        // even if we have sent a concrete value here, we respect if the toplevel chose another size it would be weird
+        // even if we have sent a concrete value here, we respect if the toplevel chose another size; it would be weird
         // having a floating toplevel clipped (thats exactly what happens when a toplevel changes its size on its own,
         // left to fix)
         toplevel_handle_own_size(toplevel);
@@ -273,7 +271,6 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     focus_toplevel(toplevel, false);
 }
 
-// maybe clean this up a bit
 static void
 toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     // called when the surface is unmapped, and should no longer be shown
@@ -299,21 +296,18 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         server.grabbed_toplevel = NULL;
         server.mode = SERVER_MODE_NORMAL;
 
-        // it surely had the focus, so we need to pass focus to some other toplevel
-        // note: we use cursor position here since `toplevel->workspace` isnt up to date
-        server.focused_toplevel = NULL;
-        if(has_floating(server.active_workspace)) {
-            focus_toplevel(first_floating(server.active_workspace), false);
-        } else if(has_masters(server.active_workspace)) {
-            focus_toplevel(first_master(server.active_workspace), false);
-        } else {
-            ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+        if(toplevel == server.focused_toplevel) {
+            // note: we use cursor position here since `toplevel->workspace` isnt up to date
+            server.focused_toplevel = NULL;
+            if(has_floating(server.active_workspace)) {
+                focus_toplevel(first_floating(server.active_workspace), false);
+            } else if(has_masters(server.active_workspace)) {
+                focus_toplevel(first_master(server.active_workspace), false);
+            } else {
+                ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+            }
         }
-
-        return;
-    }
-
-    if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
+    } else if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
         workspace->fullscreen = NULL;
         layers_under_fullscreen_set_enabled(workspace->output, true);
         workspace_toplevels_set_enabled(workspace, true);
@@ -391,17 +385,16 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
 
 static void
 toplevel_handle_request_move(struct wl_listener *listener, void *data) {
-    if(server.grabbed_toplevel != NULL)
+    if(server.mode != SERVER_MODE_NORMAL)
         return;
 
     struct toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
-
-    struct view *view = pointer_get_view_under_cursor();
-    if(view == NULL)
+    if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
         return;
 
-    struct toplevel *focused = view_try_get_toplevel(view);
-    if(toplevel != focused)
+    // we make sure that the toplevel has the pointer focus
+    struct toplevel *pointer_toplevel = get_toplevel_under_cursor();
+    if(toplevel != pointer_toplevel)
         return;
 
     toplevel_start_move(toplevel, false);
@@ -409,24 +402,19 @@ toplevel_handle_request_move(struct wl_listener *listener, void *data) {
 
 static void
 toplevel_handle_request_resize(struct wl_listener *listener, void *data) {
-    if(server.grabbed_toplevel != NULL)
+    if(server.mode != SERVER_MODE_NORMAL)
+        return;
+
+    struct toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
+    if(toplevel->mode != TOPLEVEL_MODE_FLOATING)
+        return;
+
+    // we make sure that the toplevel has pointer focus
+    struct toplevel *pointer_toplevel = get_toplevel_under_cursor();
+    if(toplevel != pointer_toplevel)
         return;
 
     struct wlr_xdg_toplevel_resize_event *event = data;
-    // todo: check if this is working
-    // if(!wlr_seat_client_validate_event_serial(event->seat, event->serial))
-    //     return;
-
-    struct toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
-
-    struct view *view = pointer_get_view_under_cursor();
-    if(view == NULL)
-        return;
-
-    struct toplevel *focused = view_try_get_toplevel(view);
-    if(toplevel != focused)
-        return;
-
     toplevel_start_resize(toplevel, event->edges, true);
 }
 
@@ -911,9 +899,6 @@ toplevel_get_geometry(struct toplevel *toplevel) {
 
 void
 toplevel_start_move(struct toplevel *toplevel, bool by_keybind) {
-    if(server.mode != SERVER_MODE_NORMAL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
-        return;
-
     server.grabbed_toplevel = toplevel;
     server.mode = SERVER_MODE_MOVING;
     server.move_resize_by_keybind = by_keybind;
@@ -935,6 +920,8 @@ toplevel_start_move(struct toplevel *toplevel, bool by_keybind) {
         toplevel_set_state(toplevel, server.grabbed_toplevel_initial_box);
     }
 
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.grabbed_tree);
+
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         wl_list_remove(&toplevel->link);
     } else if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
@@ -951,9 +938,6 @@ toplevel_start_move(struct toplevel *toplevel, bool by_keybind) {
 
 void
 toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind) {
-    if(server.mode > SERVER_MODE_NORMAL || toplevel->mode != TOPLEVEL_MODE_FLOATING)
-        return;
-
     server.grabbed_toplevel = toplevel;
     server.mode = SERVER_MODE_RESIZING;
     server.move_resize_by_keybind = by_keybind;
@@ -978,6 +962,8 @@ toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind
 
     // remove is from the list, since grabbed toplevel should not be in a workspace
     wl_list_remove(&toplevel->link);
+    // and reparent the node
+    wlr_scene_node_reparent(&toplevel->scene_tree->node, server.grabbed_tree);
 }
 
 void

@@ -80,12 +80,11 @@ struct server {
     // this keeps state when the compositor is in the state of moving or resizing toplevels
     double grab_x, grab_y;
     // for moving/resizing toplevels
-    struct {
-        struct toplevel *grabbed_toplevel;
-        struct wlr_box grabbed_toplevel_initial_box;
-        uint32_t resize_edges;
-        bool move_resize_by_keybind;
-    };
+    struct wlr_scene_tree *grabbed_tree;
+    struct toplevel *grabbed_toplevel;
+    struct wlr_box grabbed_toplevel_initial_box;
+    uint32_t resize_edges;
+    bool move_resize_by_keybind;
     // for resizing master ratio
     double initial_master_ratio;
 

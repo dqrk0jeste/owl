@@ -230,22 +230,22 @@ pointer_configure(struct pointer *pointer) {
         // then apply trackpad specific settings
         if(libinput_device_config_tap_set_enabled(device, server.config->trackpad_tap_to_click) !=
                 LIBINPUT_CONFIG_STATUS_SUCCESS) {
-            wlr_log(WLR_ERROR, "applying tap to click to device '%s' failed", pointer->name);
+            wlr_log(WLR_ERROR, "applying tap to click to device `%s` failed", pointer->name);
         }
 
         if(libinput_device_config_scroll_set_natural_scroll_enabled(device, server.config->trackpad_natural_scroll) !=
                 LIBINPUT_CONFIG_STATUS_SUCCESS) {
-            wlr_log(WLR_ERROR, "applying natural scroll to device '%s' failed", pointer->name);
+            wlr_log(WLR_ERROR, "applying natural scroll to device `%s` failed", pointer->name);
         }
 
         if(libinput_device_config_scroll_set_method(device, server.config->trackpad_scroll_method) !=
                 LIBINPUT_CONFIG_STATUS_SUCCESS) {
-            wlr_log(WLR_ERROR, "applying scroll method to device '%s' failed", pointer->name);
+            wlr_log(WLR_ERROR, "applying scroll method to device `%s` failed", pointer->name);
         }
 
         if(libinput_device_config_dwt_set_enabled(device, server.config->trackpad_disable_while_typing) !=
                 LIBINPUT_CONFIG_STATUS_SUCCESS) {
-            wlr_log(WLR_ERROR, "applying disable while typing to device '%s' failed", pointer->name);
+            wlr_log(WLR_ERROR, "applying disable while typing to device `%s` failed", pointer->name);
         }
     }
 
@@ -268,7 +268,12 @@ cursor_stop_move_resize(void) {
             // we set this outputs active workspace as toplevels workspace
             toplevel->workspace = primary_output->active_workspace;
             wl_list_insert(primary_output->active_workspace->floating.next, &toplevel->link);
+            // reparent it back
+            wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
+            // and restore the previous stacking
+            toplevel_raise_to_top(toplevel);
         } else {
+            wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
             // here the only possible mode is moving, so we insert it into the layout
             layout_insert_toplevel_at(toplevel, server.cursor->x, server.cursor->y);
         }
@@ -331,10 +336,19 @@ cursor_handle_motion(uint32_t time) {
 }
 
 struct view *
-pointer_get_view_under_cursor(void) {
+get_view_under_cursor(void) {
     double sx, sy;
     struct wlr_surface *surface;
     return view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
+}
+
+struct toplevel *
+get_toplevel_under_cursor(void) {
+    struct view *view = get_view_under_cursor();
+    if(view == NULL)
+        return NULL;
+
+    return view_try_get_toplevel(view);
 }
 
 void
@@ -346,8 +360,6 @@ pointer_handle_focus(uint32_t time, bool handle_keyboard_focus) {
     struct view *view = view_at(server.cursor->x, server.cursor->y, &surface, &sx, &sy);
     if(view == NULL) {
         wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "default");
-        // clear pointer focus so future button events and such are not sent to
-        // the last client to have the cursor over it
         wlr_seat_pointer_clear_focus(seat);
         return;
     }

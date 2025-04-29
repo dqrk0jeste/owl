@@ -233,6 +233,7 @@ main(int argc, char *argv[]) {
     server.floating_tree = wlr_scene_tree_create(&server.scene->tree);
     server.top_tree = wlr_scene_tree_create(&server.scene->tree);
     server.fullscreen_tree = wlr_scene_tree_create(&server.scene->tree);
+    server.grabbed_tree = wlr_scene_tree_create(&server.scene->tree);
     server.overlay_tree = wlr_scene_tree_create(&server.scene->tree);
     server.session_lock_tree = wlr_scene_tree_create(&server.scene->tree);
 
