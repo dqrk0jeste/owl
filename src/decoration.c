@@ -135,7 +135,7 @@ create_titlebar(struct decoration *decoration) {
     }
 
     if(server.config->titlebar_include_title && server.config->font != NULL) {
-        decoration->titlebar.title = text_node_create(decoration->titlebar.tree, NULL);
+        decoration->titlebar.title = text_node_create(decoration->titlebar.tree, decoration->title);
 
         view_create_for_node(&decoration->titlebar.title->scene_buffer->node, VIEW_TITLEBAR_TITLE,
                 decoration->titlebar.title);
@@ -208,11 +208,6 @@ static void
 destroy_titlebar(struct decoration *decoration) {
     assert(decoration->titlebar.tree != NULL);
 
-    // manually destroy this, see comment in `text_node_destroy()`
-    if(decoration->titlebar.title != NULL) {
-        text_node_destroy(decoration->titlebar.title);
-    }
-
     wlr_scene_node_destroy(&decoration->titlebar.tree->node);
     decoration->titlebar.tree = NULL;
     decoration->titlebar.base = NULL;
@@ -235,7 +230,7 @@ set_root_position(struct decoration *decoration) {
 }
 
 static void
-decoration_set_min_size(struct decoration *decoration) {
+set_min_size(struct decoration *decoration) {
     uint32_t width = 0, height = 0;
 
     if(decoration_has_border(decoration)) {
@@ -257,37 +252,17 @@ decoration_set_min_size(struct decoration *decoration) {
 }
 
 struct decoration *
-decoration_create(struct wlr_scene_tree *parent, uint32_t types) {
+decoration_create(struct wlr_scene_tree *parent) {
     struct decoration *decoration = calloc(1, sizeof(*decoration));
-
-    decoration->types = types;
 
     decoration->tree = wlr_scene_tree_create(parent);
     wlr_scene_node_lower_to_bottom(&decoration->tree->node);
-    set_root_position(decoration);
-
-    // and create the wanted decorations
-    if(decoration_has_shadow(decoration)) {
-        create_shadow(decoration);
-    }
-
-    if(decoration_has_border(decoration)) {
-        create_border(decoration);
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        create_titlebar(decoration);
-    }
-
-    decoration_set_min_size(decoration);
-    // we give it the initial coloring
-    decoration_set_active(decoration, false);
 
     return decoration;
 }
 
 void
-decoration_destroy(struct decoration *decoration) {
+decoration_destroy_all(struct decoration *decoration) {
     if(decoration_has_border(decoration)) {
         destroy_border(decoration);
     }
@@ -298,6 +273,17 @@ decoration_destroy(struct decoration *decoration) {
 
     if(decoration_has_titlebar(decoration)) {
         destroy_titlebar(decoration);
+    }
+
+    decoration->types = 0;
+}
+
+void
+decoration_destroy(struct decoration *decoration) {
+    decoration_destroy_all(decoration);
+
+    if(decoration->title != NULL) {
+        free(decoration->title);
     }
 
     free(decoration);
@@ -305,22 +291,25 @@ decoration_destroy(struct decoration *decoration) {
 
 void
 decoration_set_types(struct decoration *decoration, uint32_t types) {
-    // we compare to see what has changed and create/destroy if needed
-    if((decoration->types & DECORATION_SHADOW) && !(types & DECORATION_SHADOW)) {
+    if(types == decoration->types)
+        return;
+
+    // we compare to see what has changed and create/destroy the needed
+    if(decoration_has_shadow(decoration) && !(types & DECORATION_SHADOW)) {
         destroy_shadow(decoration);
-    } else if(!(decoration->types & DECORATION_SHADOW) && (types & DECORATION_SHADOW)) {
+    } else if(!decoration_has_shadow(decoration) && (types & DECORATION_SHADOW)) {
         create_shadow(decoration);
     }
 
-    if((decoration->types & DECORATION_BORDER) && !(types & DECORATION_BORDER)) {
+    if(decoration_has_border(decoration) && !(types & DECORATION_BORDER)) {
         destroy_border(decoration);
-    } else if(!(decoration->types & DECORATION_BORDER) && (types & DECORATION_BORDER)) {
+    } else if(!decoration_has_border(decoration) && (types & DECORATION_BORDER)) {
         create_border(decoration);
     }
 
-    if((decoration->types & DECORATION_TITLEBAR) && !(types & DECORATION_TITLEBAR)) {
+    if(decoration_has_titlebar(decoration) && !(types & DECORATION_TITLEBAR)) {
         destroy_titlebar(decoration);
-    } else if(!(decoration->types & DECORATION_TITLEBAR) && (types & DECORATION_TITLEBAR)) {
+    } else if(!decoration_has_titlebar(decoration) && (types & DECORATION_TITLEBAR)) {
         create_titlebar(decoration);
     }
 
@@ -334,9 +323,10 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
         wlr_scene_node_lower_to_bottom(&decoration->shadow->node);
     }
 
-    decoration_set_min_size(decoration);
+    set_min_size(decoration);
     set_root_position(decoration);
-    // and then configure them with the current size and state
+
+    // and then configure them with the current decoration state
     decoration_configure(decoration, decoration->width, decoration->height);
     decoration_set_active(decoration, decoration->active);
     decoration_set_blur(decoration, decoration->blur, decoration->blur_optimized);
@@ -350,6 +340,7 @@ decoration_set_enabled(struct decoration *decoration, bool enabled) {
 void
 decoration_set_active(struct decoration *decoration, bool active) {
     decoration->active = active;
+
     // we set things to their active/inactive colors
     if(decoration_has_border(decoration)) {
         float border_color[4];
@@ -395,14 +386,16 @@ decoration_configure(struct decoration *decoration, uint32_t width, uint32_t hei
 }
 
 void
-decoration_recreate(struct decoration *decoration, uint32_t types) {
-    // we destroy all the decorations and create the new ones
-    decoration_set_types(decoration, 0);
-    decoration_set_types(decoration, types);
-}
-
-void
 decoration_titlebar_set_title(struct decoration *decoration, char *title) {
+    // if the title is the same we do nothing
+    if(decoration->title != NULL && strcmp(decoration->title, title) == 0)
+        return;
+
+    if(decoration->title != NULL) {
+        free(decoration->title);
+    }
+    decoration->title = strdup(title);
+
     if(decoration->titlebar.title != NULL) {
         text_node_set_text(decoration->titlebar.title, title);
         decoration_configure(decoration, decoration->width, decoration->height);
@@ -436,6 +429,9 @@ decoration_get_content_box(struct decoration *decoration, struct wlr_box box) {
 
 struct wlr_box
 decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box) {
+    if(!decoration_is_enabled(decoration))
+        return box;
+
     if(decoration_has_border(decoration)) {
         box.x -= server.config->border_width;
         box.y -= server.config->border_width;

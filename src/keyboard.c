@@ -75,7 +75,8 @@ keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 bool
 keyboard_configure(struct keyboard *keyboard) {
     struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    if(context == NULL) return false;
+    if(context == NULL)
+        return false;
 
     struct xkb_rule_names rule_names = {
             .layout = server.config->keymap_layouts,

@@ -29,11 +29,7 @@ struct toplevel {
     struct workspace *workspace;
     enum toplevel_mode mode;
 
-    // these fields should not be used to check if these decorations are actually drawn right now, you should use
-    // `decoration_has_*()` functions for those. these are telling if the toplevel should get these depending on the
-    // current configuration and window rules. e.g. toplevels never have any of the decorations when fullscreened, but
-    // that does not mean they should not have those when unfullscreened later
-    bool has_titlebar, has_border, has_shadow, has_blur;
+    uint32_t wanted_decoration_types;
     struct decoration *decoration;
 
     // if a floating toplevel becomes fullscreen, we keep its previous state
@@ -50,11 +46,11 @@ struct toplevel {
     bool should_choose_size;
     // this is set on map so the toplevel is setup for the popin effect animation
     bool needs_popin_adjustment;
-    // toplevel (with decorations) size and position in the layout
+    // toplevel size and position in the layout
     struct wlr_box deco_box;
 
-    // cached values for toplevels opacity
-    double inactive_opacity, active_opacity;
+    // cached values for toplevels opacity and blur, since they are needed every frame
+    double inactive_opacity, active_opacity, has_blur;
 
     struct fx_transform_animation *animation;
 
@@ -132,11 +128,6 @@ toplevel_get_primary_output(struct toplevel *toplevel);
 // get the corner closest to the cursor; FIXME: this should take the x, y coords instead
 uint32_t
 toplevel_get_closest_corner(struct wlr_cursor *cursor, struct toplevel *toplevel);
-
-// get the wanted decorations for this toplevel
-// returns a bitmask of `enum decoration_type`
-uint32_t
-toplevel_get_decoration_types(struct toplevel *toplevel);
 
 // shorthand to check if the toplevel should have optimized blur or not
 bool

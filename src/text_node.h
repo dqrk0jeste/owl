@@ -1,34 +1,24 @@
 #include <fcft/fcft.h>
-#include <pixman.h>
 #include <stdint.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_scene.h>
 
-struct pixman_buffer {
-    struct wlr_buffer base;
-    pixman_image_t *image;
-
-    uint32_t width, height;
-};
-
-struct pixman_buffer *
-pixman_buffer_create(uint32_t width, uint32_t height);
-
-void
-pixman_buffer_destroy(struct pixman_buffer *buffer);
+#include "pixman_buffer.h"
 
 struct text_node {
     struct pixman_buffer *buffer;
     struct wlr_scene_buffer *scene_buffer;
 
     uint32_t width, height;
+
+    // this listens for when the buffer node is destroyed, so it can free the other resources
+    struct wl_listener node_destroy;
 };
 
+// create a new text node. this node should be destroyed by destroying its underlying scene node
 struct text_node *
 text_node_create(struct wlr_scene_tree *parent, char *text);
 
-void
-text_node_destroy(struct text_node *node);
-
+// update the text
 void
 text_node_set_text(struct text_node *node, char *text);

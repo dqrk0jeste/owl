@@ -179,7 +179,7 @@ layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
     struct wlr_xdg_popup *xdg_popup = data;
 
-    // see server_handle_new_xdg_popup()
+    // see server_handle_new_popup()
     struct popup *popup = xdg_popup->base->data;
 
     popup->scene_tree = wlr_scene_xdg_surface_create(layer_surface->scene->tree, xdg_popup->base);

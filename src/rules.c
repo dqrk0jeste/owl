@@ -45,91 +45,90 @@ check_opacity_rules(struct toplevel *toplevel) {
     toplevel->inactive_opacity = server.config->opacity.inactive;
 }
 
-static void
-check_no_titlebar_rules(struct toplevel *toplevel) {
-    // we only care about these rules if we are drawing the titlebars globally
-    if(!server.config->titlebars) {
-        toplevel->has_titlebar = false;
-        return;
-    }
-
-    for(struct window_rule *iter = server.config->window_rules.no_titlebar;
-            iter <= array_last(server.config->window_rules.no_titlebar); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            toplevel->has_titlebar = false;
-            return;
-        }
-    }
-
-    toplevel->has_titlebar = true;
-}
-
-static void
-check_no_border_rules(struct toplevel *toplevel) {
-    // we only care about these rules if we are drawing the titlebars globally
-    if(!server.config->borders) {
-        toplevel->has_border = false;
-        return;
-    }
-
-    for(struct window_rule *iter = server.config->window_rules.no_border;
-            iter <= array_last(server.config->window_rules.no_border); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            toplevel->has_border = false;
-            return;
-        }
-    }
-
-    toplevel->has_border = true;
-}
-
-static void
-check_no_blur_rules(struct toplevel *toplevel) {
-    // we only care about these rules if we are drawing the titlebars globally
+static bool
+should_have_blur(struct toplevel *toplevel) {
     if(!server.config->blur) {
-        toplevel->has_blur = false;
-        return;
+        return false;
     }
 
     for(struct window_rule *iter = server.config->window_rules.no_blur;
             iter <= array_last(server.config->window_rules.no_blur); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            toplevel->has_blur = false;
-            return;
+            return false;
         }
     }
 
-    toplevel->has_blur = true;
+    return true;
 }
 
-static void
-check_no_shadow_rules(struct toplevel *toplevel) {
-    // we only care about these rules if we are drawing the borders globally
+static bool
+should_draw_shadow(struct toplevel *toplevel) {
     if(!server.config->shadows) {
-        toplevel->has_shadow = false;
-        return;
+        return false;
     }
-
-    toplevel->has_shadow = true;
 
     for(struct window_rule *iter = server.config->window_rules.no_shadow;
             iter <= array_last(server.config->window_rules.no_shadow); iter++) {
         if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            toplevel->has_shadow = false;
-            return;
+            return false;
         }
     }
 
-    toplevel->has_shadow = true;
+    return true;
+}
+
+static bool
+should_draw_border(struct toplevel *toplevel) {
+    if(!server.config->borders) {
+        return false;
+    }
+
+    for(struct window_rule *iter = server.config->window_rules.no_border;
+            iter <= array_last(server.config->window_rules.no_border); iter++) {
+        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool
+should_draw_titlebar(struct toplevel *toplevel) {
+    if(!server.config->titlebars) {
+        return false;
+    }
+
+    for(struct window_rule *iter = server.config->window_rules.no_titlebar;
+            iter <= array_last(server.config->window_rules.no_titlebar); iter++) {
+        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void
 toplevel_check_rules(struct toplevel *toplevel) {
     check_opacity_rules(toplevel);
-    check_no_titlebar_rules(toplevel);
-    check_no_shadow_rules(toplevel);
-    check_no_border_rules(toplevel);
-    check_no_blur_rules(toplevel);
+    toplevel->has_blur = should_have_blur(toplevel);
+
+    uint32_t types = 0;
+    if(should_draw_shadow(toplevel)) {
+        types |= DECORATION_SHADOW;
+    }
+    if(should_draw_border(toplevel)) {
+        types |= DECORATION_BORDER;
+    }
+    if(should_draw_titlebar(toplevel)) {
+        types |= DECORATION_TITLEBAR;
+    }
+    decoration_set_types(toplevel->decoration, types);
+    decoration_set_blur(toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
+
+    // try to optimize this
+    toplevel_set_state(toplevel, toplevel->deco_box);
 }
 
 static void

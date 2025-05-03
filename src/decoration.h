@@ -42,11 +42,17 @@ struct decoration {
     uint32_t width, height, min_width, min_height;
     bool active;
     bool blur, blur_optimized;
+    char *title;
 };
 
-// create a new decoration with `parent` as parent scene tree and `types` of decoration
+// create a new decoration with `parent` as parent scene tree
 struct decoration *
-decoration_create(struct wlr_scene_tree *parent, uint32_t types);
+decoration_create(struct wlr_scene_tree *parent);
+
+// destroys the decorations, but doesnt free the struct and keeps the current state; this is intended to be called when
+// reloading the configuration
+void
+decoration_destroy_all(struct decoration *decoration);
 
 void
 decoration_destroy(struct decoration *decoration);
@@ -54,7 +60,10 @@ decoration_destroy(struct decoration *decoration);
 // set decoration types to a bitmask of `decorations_type`. this function can be called multiple times to update the
 // wanted decorations
 void
-decoration_set_types(struct decoration *decoration, uint types);
+decoration_set_types(struct decoration *decoration, uint32_t types);
+
+bool
+decoration_is_enabled(struct decoration *decoration);
 
 // enable or disable the decoration, controlling if they are drawn or not
 void
@@ -68,13 +77,12 @@ decoration_set_active(struct decoration *decoration, bool active);
 void
 decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height);
 
-// recreate this decoration; you may call this for it to match the new config
-void
-decoration_recreate(struct decoration *decoration, uint32_t types);
-
 // set the title if there is one, you can call this function safely even if there isnt a titlebar
 void
 decoration_titlebar_set_title(struct decoration *decoration, char *title);
+
+void
+decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized);
 
 // get the content box from the decoration box
 struct wlr_box
@@ -83,12 +91,6 @@ decoration_get_content_box(struct decoration *decoration, struct wlr_box box);
 // get the decoration box from the content box
 struct wlr_box
 decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box);
-
-void
-decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized);
-
-bool
-decoration_is_enabled(struct decoration *decoration);
 
 bool
 decoration_has_border(struct decoration *decoration);

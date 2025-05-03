@@ -60,6 +60,7 @@ src = [
   'src/text_node.c',
   'src/toplevel.c',
   'src/workspace.c',
+  'util/pixman_buffer.c',
 ]
 
 inc = [
