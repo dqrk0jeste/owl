@@ -22,15 +22,17 @@ enum toplevel_mode {
 
 struct toplevel {
     struct wl_list link;
-
     struct wlr_xdg_toplevel *xdg_toplevel;
+
+    // scene tree with decorations
     struct wlr_scene_tree *scene_tree;
+    // subsurface tree for this toplevel
+    struct wlr_scene_tree *content_tree;
 
     struct workspace *workspace;
     enum toplevel_mode mode;
 
-    uint32_t wanted_decoration_types;
-    struct decoration *decoration;
+    struct decoration decoration;
 
     // if a floating toplevel becomes fullscreen, we keep its previous state
     enum toplevel_mode prev_mode;
@@ -75,11 +77,11 @@ toplevel_is_tiled(struct toplevel *toplevel);
 bool
 toplevel_get_floating_deco_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height);
 
-// send the configure of 0, 0 and set things up for patching later using `toplevel_floating_patch_for_own_size()`
+// send the configure of 0, 0 and set things up for patching later using `toplevel_handle_own_size()`
 void
 toplevel_floating_set_own_size(struct toplevel *toplevel);
 
-// sets the new state for this toplevels including decorations and sends the right configure event
+// sets the new state for this toplevel including decorations and sends the right configure event
 // this should be the only way we reposition and/or resize the clients
 void
 toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box);
@@ -89,8 +91,8 @@ struct wlr_box
 toplevel_get_geometry(struct toplevel *toplevel);
 
 // get currently displayed toplevel content box; caused by running animation
-struct wlr_box
-toplevel_get_current_display_content_box(struct toplevel *toplevel);
+void
+toplevel_get_current_display_content_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height);
 
 // get currently displayed toplevel box with decorations; caused by running animation
 struct wlr_box

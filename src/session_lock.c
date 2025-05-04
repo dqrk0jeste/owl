@@ -103,8 +103,10 @@ restore_focus(void) {
 static void
 session_lock_handle_unlock(struct wl_listener *listener, void *data) {
     struct lock *lock = wl_container_of(listener, lock, unlock);
-    lock->locked = false;
+
     server.lock = NULL;
+    server.mode = SERVER_MODE_NORMAL;
+    lock->locked = false;
 
     restore_focus();
 

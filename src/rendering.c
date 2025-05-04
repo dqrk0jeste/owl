@@ -130,19 +130,20 @@ toplevel_apply_effects(struct toplevel *toplevel) {
             : max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0);
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
-    struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
+    uint32_t width, height;
+    toplevel_get_current_display_content_size(toplevel, &width, &height);
 
     struct iter_toplevel_apply_effects_args args = {
-            .root_x = toplevel->scene_tree->node.x,
-            .root_y = toplevel->scene_tree->node.y,
+            .root_x = toplevel->scene_tree->node.x + toplevel->content_tree->node.x,
+            .root_y = toplevel->scene_tree->node.y + toplevel->content_tree->node.y,
             .geometry = geometry,
-            .width = content_box.width,
-            .height = content_box.height,
-            .width_scale = (double)content_box.width / geometry.width,
-            .height_scale = (double)content_box.height / geometry.height,
+            .width = width,
+            .height = height,
+            .width_scale = (double)width / geometry.width,
+            .height_scale = (double)height / geometry.height,
             .opacity = opacity,
             .border_radius = border_radius,
-            .has_titlebar = decoration_has_titlebar(toplevel->decoration),
+            .has_titlebar = decoration_has_titlebar(&toplevel->decoration),
             .has_blur = toplevel->has_blur,
             .blur_optimized = toplevel_should_have_optimized_blur(toplevel),
             .animating = toplevel->animation != NULL,

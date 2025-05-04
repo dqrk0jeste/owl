@@ -45,22 +45,23 @@ struct decoration {
     char *title;
 };
 
-// create a new decoration with `parent` as parent scene tree
-struct decoration *
-decoration_create(struct wlr_scene_tree *parent);
+// initialize the decoration with `parent` as parent scene tree
+void
+decoration_init(struct decoration *decoration, struct wlr_scene_tree *parent);
 
-// destroys the decorations, but doesnt free the struct and keeps the current state; this is intended to be called when
-// reloading the configuration
+// destroys all the decorations, but  keeps the current state; this is intended to be called when reloading the
+// configuration
 void
 decoration_destroy_all(struct decoration *decoration);
 
+// releases all the allocated resources
 void
 decoration_destroy(struct decoration *decoration);
 
-// set decoration types to a bitmask of `decorations_type`. this function can be called multiple times to update the
-// wanted decorations
-void
-decoration_set_types(struct decoration *decoration, uint32_t types);
+// set decoration types to a bitmask of `decorations_type`. if the decorations have changed returns `true`, with the new
+// content position in `*x` and `*y`. this function can be called multiple times to update the wanted decorations
+bool
+decoration_set_types(struct decoration *decoration, uint32_t types, uint32_t *x, uint32_t *y);
 
 bool
 decoration_is_enabled(struct decoration *decoration);
@@ -84,13 +85,13 @@ decoration_titlebar_set_title(struct decoration *decoration, char *title);
 void
 decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized);
 
-// get the content box from the decoration box
-struct wlr_box
-decoration_get_content_box(struct decoration *decoration, struct wlr_box box);
+// remove the decorations from size in `*width` and `*height`
+void
+decoration_get_content_size(struct decoration *decoration, uint32_t *width, uint32_t *height);
 
-// get the decoration box from the content box
-struct wlr_box
-decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box);
+// add the decorations to size in `*width` and `*height`
+void
+decoration_get_decoration_size(struct decoration *decoration, uint32_t *width, uint32_t *height);
 
 bool
 decoration_has_border(struct decoration *decoration);

@@ -1394,20 +1394,21 @@ config_reload() {
 
             struct toplevel *iter_toplevel;
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
-                decoration_destroy_all(iter_toplevel->decoration);
+                decoration_destroy_all(&iter_toplevel->decoration);
                 toplevel_check_rules(iter_toplevel);
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->slaves, link) {
-                decoration_destroy_all(iter_toplevel->decoration);
+                decoration_destroy_all(&iter_toplevel->decoration);
                 toplevel_check_rules(iter_toplevel);
             }
             wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
-                decoration_destroy_all(iter_toplevel->decoration);
+                decoration_destroy_all(&iter_toplevel->decoration);
                 toplevel_check_rules(iter_toplevel);
             }
 
             if(iter_workspace->fullscreen != NULL) {
-                toplevel_set_state(iter_workspace->fullscreen, iter_workspace->fullscreen->deco_box);
+                decoration_destroy_all(&iter_toplevel->decoration);
+                toplevel_check_rules(iter_toplevel);
             }
 
             // master_count might have changed in the new config, so we update the layout
@@ -1418,7 +1419,8 @@ config_reload() {
     }
 
     if(server.grabbed_toplevel != NULL) {
-        toplevel_set_state(server.grabbed_toplevel, server.grabbed_toplevel->deco_box);
+        decoration_destroy_all(&server.grabbed_toplevel->decoration);
+        toplevel_check_rules(server.grabbed_toplevel);
     }
 
     struct keyboard *keyboard;

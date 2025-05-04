@@ -216,20 +216,6 @@ destroy_titlebar(struct decoration *decoration) {
 }
 
 static void
-set_root_position(struct decoration *decoration) {
-    int32_t x = 0, y = 0;
-    if(decoration_has_border(decoration)) {
-        x -= server.config->border_width;
-        y -= server.config->border_width;
-    }
-    if(decoration_has_titlebar(decoration)) {
-        y -= server.config->titlebar_height;
-    }
-
-    wlr_scene_node_set_position(&decoration->tree->node, x, y);
-}
-
-static void
 set_min_size(struct decoration *decoration) {
     uint32_t width = 0, height = 0;
 
@@ -251,14 +237,11 @@ set_min_size(struct decoration *decoration) {
     decoration->min_height = height;
 }
 
-struct decoration *
-decoration_create(struct wlr_scene_tree *parent) {
-    struct decoration *decoration = calloc(1, sizeof(*decoration));
-
+void
+decoration_init(struct decoration *decoration, struct wlr_scene_tree *parent) {
+    // create a base tree for the decorations
     decoration->tree = wlr_scene_tree_create(parent);
     wlr_scene_node_lower_to_bottom(&decoration->tree->node);
-
-    return decoration;
 }
 
 void
@@ -285,14 +268,24 @@ decoration_destroy(struct decoration *decoration) {
     if(decoration->title != NULL) {
         free(decoration->title);
     }
-
-    free(decoration);
 }
 
-void
-decoration_set_types(struct decoration *decoration, uint32_t types) {
+static void
+get_content_coords(struct decoration *decoration, uint32_t *x, uint32_t *y) {
+    *x = *y = 0;
+    if(decoration_has_border(decoration)) {
+        *x += server.config->border_width;
+        *y += server.config->border_width;
+    }
+    if(decoration_has_titlebar(decoration)) {
+        *y += server.config->titlebar_height;
+    }
+}
+
+bool
+decoration_set_types(struct decoration *decoration, uint32_t types, uint32_t *x, uint32_t *y) {
     if(types == decoration->types)
-        return;
+        return false;
 
     // we compare to see what has changed and create/destroy the needed
     if(decoration_has_shadow(decoration) && !(types & DECORATION_SHADOW)) {
@@ -314,6 +307,7 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
     }
 
     decoration->types = types;
+    get_content_coords(decoration, x, y);
 
     // we restack them in the right order since they might not be
     if(decoration_has_border(decoration)) {
@@ -324,12 +318,13 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
     }
 
     set_min_size(decoration);
-    set_root_position(decoration);
 
     // and then configure them with the current decoration state
     decoration_configure(decoration, decoration->width, decoration->height);
     decoration_set_active(decoration, decoration->active);
     decoration_set_blur(decoration, decoration->blur, decoration->blur_optimized);
+
+    return true;
 }
 
 void
@@ -427,24 +422,42 @@ decoration_get_content_box(struct decoration *decoration, struct wlr_box box) {
     return box;
 }
 
-struct wlr_box
-decoration_get_decoration_box(struct decoration *decoration, struct wlr_box box) {
+void
+decoration_get_decoration_size(struct decoration *decoration, uint32_t *width, uint32_t *height) {
     if(!decoration_is_enabled(decoration))
-        return box;
+        return;
 
     if(decoration_has_border(decoration)) {
-        box.x -= server.config->border_width;
-        box.y -= server.config->border_width;
-        box.width += 2 * server.config->border_width;
-        box.height += 2 * server.config->border_width;
+        *width += 2 * server.config->border_width;
+        *height += 2 * server.config->border_width;
     }
 
     if(decoration_has_titlebar(decoration)) {
-        box.y -= server.config->titlebar_height;
-        box.height += server.config->titlebar_height;
+        *height += server.config->titlebar_height;
+    }
+}
+
+void
+decoration_get_content_size(struct decoration *decoration, uint32_t *width, uint32_t *height) {
+    if(!decoration_is_enabled(decoration))
+        return;
+
+    uint32_t deco_width = *width, deco_height = *height;
+
+    if(decoration_has_border(decoration)) {
+        *width -= 2 * server.config->border_width;
+        *height -= 2 * server.config->border_width;
     }
 
-    return box;
+    if(decoration_has_titlebar(decoration)) {
+        *height -= server.config->titlebar_height;
+    }
+
+    // check for overflow
+    if(*width > deco_width)
+        *width = 1;
+    if(*height > deco_height)
+        *height = 1;
 }
 
 void

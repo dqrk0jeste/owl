@@ -62,7 +62,7 @@ should_have_blur(struct toplevel *toplevel) {
 }
 
 static bool
-should_draw_shadow(struct toplevel *toplevel) {
+should_have_shadow(struct toplevel *toplevel) {
     if(!server.config->shadows) {
         return false;
     }
@@ -78,7 +78,7 @@ should_draw_shadow(struct toplevel *toplevel) {
 }
 
 static bool
-should_draw_border(struct toplevel *toplevel) {
+should_have_border(struct toplevel *toplevel) {
     if(!server.config->borders) {
         return false;
     }
@@ -94,7 +94,7 @@ should_draw_border(struct toplevel *toplevel) {
 }
 
 static bool
-should_draw_titlebar(struct toplevel *toplevel) {
+should_have_titlebar(struct toplevel *toplevel) {
     if(!server.config->titlebars) {
         return false;
     }
@@ -115,20 +115,21 @@ toplevel_check_rules(struct toplevel *toplevel) {
     toplevel->has_blur = should_have_blur(toplevel);
 
     uint32_t types = 0;
-    if(should_draw_shadow(toplevel)) {
+    if(should_have_shadow(toplevel)) {
         types |= DECORATION_SHADOW;
     }
-    if(should_draw_border(toplevel)) {
+    if(should_have_border(toplevel)) {
         types |= DECORATION_BORDER;
     }
-    if(should_draw_titlebar(toplevel)) {
+    if(should_have_titlebar(toplevel)) {
         types |= DECORATION_TITLEBAR;
     }
-    decoration_set_types(toplevel->decoration, types);
-    decoration_set_blur(toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
+    uint32_t x, y;
+    if(decoration_set_types(&toplevel->decoration, types, &x, &y)) {
+        wlr_scene_node_set_position(&toplevel->content_tree->node, x, y);
+    }
 
-    // try to optimize this
-    toplevel_set_state(toplevel, toplevel->deco_box);
+    decoration_set_blur(&toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
 }
 
 static void

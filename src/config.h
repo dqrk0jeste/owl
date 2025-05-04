@@ -165,9 +165,6 @@ struct config {
 
     // run on startup
     char **run;  // array
-
-    // extracted
-    uint32_t toplevel_minimum_width, toplevel_minimum_height;
 };
 
 struct config *

@@ -48,63 +48,60 @@ grabbed_toplevel_resize(void) {
     struct wlr_box start_box = server.grabbed_toplevel_initial_box;
     struct wlr_box new_box = server.grabbed_toplevel_initial_box;
 
-    struct wlr_box min_box = {0, 0, max(toplevel->xdg_toplevel->current.min_width, 10),
-            max(toplevel->xdg_toplevel->current.min_height, 10)};
-    // add the decorations to this box
-    min_box = decoration_get_decoration_box(toplevel->decoration, min_box);
+    uint32_t min_width = max(toplevel->xdg_toplevel->current.min_width, 10);
+    uint32_t min_height = max(toplevel->xdg_toplevel->current.min_height, 10);
+    decoration_get_decoration_size(&toplevel->decoration, &min_width, &min_height);
 
-    // we patch it so the titlebar is drawn without overflowing
-    min_box.width = max(min_box.width, toplevel->decoration->min_width);
-    min_box.height = max(min_box.height, toplevel->decoration->min_height);
+    min_width = max(min_width, toplevel->decoration.min_width);
+    min_height = max(min_height, toplevel->decoration.min_height);
 
-    struct wlr_box max_box;
-    if(toplevel->xdg_toplevel->current.max_width == 0) {
-        // this means the client has not set its max size
-        max_box = (struct wlr_box){0, 0, INT_MAX, INT_MAX};
-    } else {
-        max_box = (struct wlr_box){0, 0, toplevel->xdg_toplevel->current.max_width,
-                toplevel->xdg_toplevel->current.max_height};
-        // add the decorations to this box
-        max_box = decoration_get_decoration_box(toplevel->decoration, max_box);
-    }
+    uint32_t max_width = toplevel->xdg_toplevel->current.max_width;
+    if(max_width == 0)
+        max_width = 10000;
+
+    uint32_t max_height = toplevel->xdg_toplevel->current.max_height;
+    if(max_height == 0)
+        max_height = 10000;
+
+    decoration_get_decoration_size(&toplevel->decoration, &max_width, &max_height);
 
     if(server.resize_edges & WLR_EDGE_TOP) {
         new_box.y = start_box.y + (server.cursor->y - server.grab_y);
         new_box.height = start_box.height - (server.cursor->y - server.grab_y);
-        if(new_box.height < min_box.height) {
-            new_box.y = start_box.y + start_box.height - min_box.height;
-            new_box.height = min_box.height;
-        } else if(new_box.height > max_box.height) {
-            new_box.y = start_box.y + start_box.height - max_box.height;
-            new_box.height = max_box.height;
+        if(new_box.height < (int)min_height) {
+            new_box.y = start_box.y + start_box.height - min_height;
+            new_box.height = min_height;
+        } else if(new_box.height > (int)max_height) {
+            new_box.y = start_box.y + start_box.height - max_height;
+            new_box.height = max_height;
         }
     } else if(server.resize_edges & WLR_EDGE_BOTTOM) {
         new_box.y = start_box.y;
         new_box.height = start_box.height + (server.cursor->y - server.grab_y);
-        if(new_box.height < min_box.height) {
-            new_box.height = min_box.height;
-        } else if(new_box.height > max_box.height) {
-            new_box.height = max_box.height;
+        if(new_box.height < (int)min_height) {
+            new_box.height = min_height;
+        } else if(new_box.height > (int)max_height) {
+            new_box.height = max_height;
         }
     }
 
     if(server.resize_edges & WLR_EDGE_LEFT) {
         new_box.x = start_box.x + (server.cursor->x - server.grab_x);
         new_box.width = start_box.width - (server.cursor->x - server.grab_x);
-        if(new_box.width < min_box.width) {
-            new_box.x = start_box.x + start_box.width - min_box.width;
-            new_box.width = min_box.width;
-        } else if(new_box.height > max_box.height) {
-            new_box.x = start_box.x + start_box.width - max_box.width;
-            new_box.width = max_box.width;
+        if(new_box.width < (int)min_width) {
+            new_box.x = start_box.x + start_box.width - min_width;
+            new_box.width = min_width;
+        } else if(new_box.width > (int)max_width) {
+            new_box.x = start_box.x + start_box.width - max_width;
+            new_box.width = max_width;
         }
     } else if(server.resize_edges & WLR_EDGE_RIGHT) {
         new_box.x = start_box.x;
         new_box.width = start_box.width + (server.cursor->x - server.grab_x);
-        if(new_box.width < min_box.width) {
-            new_box.width = min_box.width;
-        } else if(new_box.width > max_box.width) {
-            new_box.width = max_box.width;
+        if(new_box.width < (int)min_width) {
+            new_box.width = min_width;
+        } else if(new_box.width > (int)max_width) {
+            new_box.width = max_width;
         }
     }
 
@@ -113,7 +110,6 @@ grabbed_toplevel_resize(void) {
 
 static void
 master_ratio_resize(void) {
-    // todo: stop on active workspace change (by keybind or by cursor movement)
     double moved_relative =
             (double)(server.cursor->x - server.grab_x) / server.active_workspace->output->usable_area.width;
 

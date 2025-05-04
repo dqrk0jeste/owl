@@ -67,18 +67,8 @@ toplevel_handle_own_size(struct toplevel *toplevel) {
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
 
-    uint32_t width = geometry.width;
-    uint32_t height = geometry.height;
-    // since this can be called before map, there may not be decorations to check for decorations. but since this
-    // toplevel is floating these must line up with those of `decoration_has_*` functions
-    if(decoration_has_border(toplevel->decoration)) {
-        width += 2 * server.config->border_width;
-        height += 2 * server.config->border_width;
-    }
-
-    if(decoration_has_titlebar(toplevel->decoration)) {
-        height += server.config->titlebar_height;
-    }
+    uint32_t width = geometry.width, height = geometry.height;
+    decoration_get_decoration_size(&toplevel->decoration, &width, &height);
 
     toplevel_set_state(toplevel, output_create_centered_box(toplevel->workspace->output, width, height));
 }
@@ -130,26 +120,6 @@ toplevel_clip_tree(struct toplevel *toplevel, uint32_t width, uint32_t height) {
 }
 
 static void
-strip_decoration_of_size(uint32_t *width, uint32_t *height, bool has_border, bool has_titlebar) {
-    uint32_t starting_width = *width;
-    uint32_t starting_height = *height;
-    if(has_border) {
-        *width -= 2 * server.config->border_width;
-        *height -= 2 * server.config->border_width;
-    }
-
-    if(has_titlebar) {
-        *height -= server.config->titlebar_height;
-    }
-
-    // if there has been overflow we patch it to 1
-    if(*width > starting_width)
-        *width = 1;
-    if(*height > starting_height)
-        *height = 1;
-}
-
-static void
 toplevel_handle_initial_commit(struct toplevel *toplevel) {
     // unlike other window rules we only check the floating ones on initial commit
     if(toplevel_should_float(toplevel)) {
@@ -160,8 +130,7 @@ toplevel_handle_initial_commit(struct toplevel *toplevel) {
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         // we lookup window rules
         if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
-            strip_decoration_of_size(&width, &height, decoration_has_border(toplevel->decoration),
-                    decoration_has_titlebar(toplevel->decoration));
+            decoration_get_content_size(&toplevel->decoration, &width, &height);
         } else {
             width = height = 0;
             toplevel->should_choose_size = true;
@@ -174,15 +143,13 @@ toplevel_handle_initial_commit(struct toplevel *toplevel) {
         } else {
             layout_get_slaves_container_size(toplevel->workspace, slave_count + 1, &width, &height);
         }
-        strip_decoration_of_size(&width, &height, decoration_has_border(toplevel->decoration),
-                decoration_has_titlebar(toplevel->decoration));
+        decoration_get_content_size(&toplevel->decoration, &width, &height);
     }
 
     // send the initial configure
     wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 
     wlr_xdg_toplevel_set_wm_capabilities(toplevel->xdg_toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
-
     // we lie that its maximized so it behaves better
     wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, true);
     wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP & WLR_EDGE_RIGHT & WLR_EDGE_BOTTOM & WLR_EDGE_LEFT);
@@ -210,8 +177,9 @@ toplevel_handle_commit(struct wl_listener *listener, void *data) {
 
     // toplevels geometry might have changed, so we update the clip accordingly; this can happen when the user toggles
     // `client_side_decorations` option in the configuration and the client starts drawing them
-    struct wlr_box content_box = toplevel_get_current_display_content_box(toplevel);
-    toplevel_clip_tree(toplevel, content_box.width, content_box.height);
+    uint32_t width, height;
+    toplevel_get_current_display_content_size(toplevel, &width, &height);
+    toplevel_clip_tree(toplevel, width, height);
 }
 
 bool
@@ -226,7 +194,7 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
     // set initial decoration blur
-    decoration_set_blur(toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
+    decoration_set_blur(&toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
     // we set this flag for the pop-in animation
     toplevel->needs_popin_adjustment = server.config->animations;
 
@@ -263,8 +231,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
         fx_transform_animation_destroy(toplevel->animation);
     }
 
-    // destroy the decoration manually; we do this because of text node that needs to be destroyed manually
-    decoration_destroy(toplevel->decoration);
+    decoration_destroy(&toplevel->decoration);
 
     // reset the mode if the grabbed toplevel was unmapped
     if(toplevel == server.grabbed_toplevel) {
@@ -437,7 +404,7 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
     toplevel_check_rules(toplevel);
-    decoration_titlebar_set_title(toplevel->decoration, toplevel->xdg_toplevel->title);
+    decoration_titlebar_set_title(&toplevel->decoration, toplevel->xdg_toplevel->title);
 
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle->wlr_handle,
             toplevel->xdg_toplevel->title);
@@ -533,7 +500,7 @@ toplevel_set_fullscreen(struct toplevel *toplevel) {
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
 
     // disable the decorations; be sure to call this before set state so it gets the right size
-    decoration_set_enabled(toplevel->decoration, false);
+    decoration_set_enabled(&toplevel->decoration, false);
 
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
@@ -565,7 +532,7 @@ toplevel_unset_fullscreen(struct toplevel *toplevel) {
     wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle->wlr_handle, false);
 
     // enable the decorations; be sure to call this before set state so it gets the right size
-    decoration_set_enabled(toplevel->decoration, true);
+    decoration_set_enabled(&toplevel->decoration, true);
 
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         wl_list_insert(&workspace->floating, &toplevel->link);
@@ -612,7 +579,7 @@ unfocus_focused_toplevel(void) {
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, false);
     wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle->wlr_handle, false);
 
-    decoration_set_active(toplevel->decoration, false);
+    decoration_set_active(&toplevel->decoration, false);
 
     // clear all focus on the keyboard
     wlr_seat_keyboard_notify_clear_focus(server.seat);
@@ -634,7 +601,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
         wlr_foreign_toplevel_handle_v1_set_activated(server.focused_toplevel->foreign_toplevel_handle->wlr_handle,
                 false);
 
-        decoration_set_active(server.focused_toplevel->decoration, false);
+        decoration_set_active(&server.focused_toplevel->decoration, false);
     }
 
     server.focused_toplevel = toplevel;
@@ -650,7 +617,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
     wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle->wlr_handle, true);
 
     toplevel_raise_to_top(toplevel);
-    decoration_set_active(toplevel->decoration, true);
+    decoration_set_active(&toplevel->decoration, true);
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
     if(keyboard != NULL) {
@@ -785,21 +752,25 @@ toplevel_get_current_display_deco_box(struct toplevel *toplevel) {
     return toplevel->deco_box;
 }
 
-struct wlr_box
-toplevel_get_current_display_content_box(struct toplevel *toplevel) {
+void
+toplevel_get_current_display_content_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height) {
     struct wlr_box deco_box = toplevel_get_current_display_deco_box(toplevel);
-    return decoration_get_content_box(toplevel->decoration, deco_box);
+    *width = deco_box.width;
+    *height = deco_box.height;
+    decoration_get_content_size(&toplevel->decoration, width, height);
 }
 
 static void
 toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) {
     struct toplevel *toplevel = user_data;
 
-    decoration_configure(toplevel->decoration, current.width, current.height);
+    decoration_configure(&toplevel->decoration, current.width, current.height);
 
-    struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, current);
-    toplevel_clip_tree(toplevel, content_box.width, content_box.height);
-    wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
+    uint32_t width = current.width, height = current.height;
+    decoration_get_content_size(&toplevel->decoration, &width, &height);
+    toplevel_clip_tree(toplevel, width, height);
+
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, current.x, current.y);
 
     if(done) {
         fx_transform_animation_destroy(toplevel->animation);
@@ -809,20 +780,21 @@ toplevel_animation_callback(struct wlr_box current, bool done, void *user_data) 
 
 void
 toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box) {
-    struct wlr_box content_box = decoration_get_content_box(toplevel->decoration, deco_box);
+    uint32_t width = deco_box.width, height = deco_box.height;
+    decoration_get_content_size(&toplevel->decoration, &width, &height);
 
     // this may have been left at true if the user was fast enough
     toplevel->should_choose_size = false;
 
     if(server.mode != SERVER_MODE_MOVING || toplevel != server.grabbed_toplevel) {
-        wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, content_box.width, content_box.height);
+        wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
     }
 
     struct wlr_box current;
     if(toplevel->needs_popin_adjustment) {
         // we patch the animation for the popin effect; note: we add +1 so there is some toplevel surface shown
-        current.width = toplevel->decoration->min_width + 1;
-        current.height = toplevel->decoration->min_height + 1;
+        current.width = toplevel->decoration.min_width + 1;
+        current.height = toplevel->decoration.min_height + 1;
         current.x = deco_box.x + (deco_box.width - current.width) / 2;
         current.y = deco_box.y + (deco_box.height - current.height) / 2;
 
@@ -841,9 +813,9 @@ toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box) {
         toplevel->animation = fx_transform_animation_create(current, deco_box, server.config->animation_duration,
                 server.config->animation_curve, toplevel_animation_callback, toplevel);
     } else {
-        decoration_configure(toplevel->decoration, deco_box.width, deco_box.height);
-        toplevel_clip_tree(toplevel, content_box.width, content_box.height);
-        wlr_scene_node_set_position(&toplevel->scene_tree->node, content_box.x, content_box.y);
+        decoration_configure(&toplevel->decoration, deco_box.width, deco_box.height);
+        toplevel_clip_tree(toplevel, width, height);
+        wlr_scene_node_set_position(&toplevel->scene_tree->node, deco_box.x, deco_box.y);
     }
 
     toplevel->deco_box = deco_box;
@@ -948,7 +920,8 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     toplevel->workspace = server.active_workspace;
 
     // we assign it to the tiled tree, but will reparent it later if necessery
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(server.tiled_tree, toplevel->xdg_toplevel->base);
+    toplevel->scene_tree = wlr_scene_tree_create(server.tiled_tree);
+    toplevel->content_tree = wlr_scene_xdg_surface_create(toplevel->scene_tree, toplevel->xdg_toplevel->base);
     // in the node we want to keep information what it represents. we do that be keeping view in user data field,
     // which is a union of all possible 'things' we can have on the screen, or more precicely, all the things that can
     // receive pointer focus
@@ -959,8 +932,8 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     toplevel->active_opacity = server.config->opacity.active;
     toplevel->inactive_opacity = server.config->opacity.inactive;
 
-    // create the initial decoration
-    toplevel->decoration = decoration_create(toplevel->scene_tree);
+    // initialize the decoration
+    decoration_init(&toplevel->decoration, toplevel->scene_tree);
 
     wlr_fractional_scale_v1_notify_scale(toplevel->xdg_toplevel->base->surface,
             toplevel->workspace->output->wlr_output->scale);
