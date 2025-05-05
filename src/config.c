@@ -246,22 +246,18 @@ string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
 
 static void
 config_add_keymap(struct config *c, char *layout, char *variant) {
-    // everything here is ugly
-    static size_t layout_cap, variant_cap;
-    static size_t count;
     if(c->keymap_layouts == NULL) {
         // it has not been allocated yet
-        layout_cap = STRING_INITIAL_LENGTH;
-        c->keymap_layouts = calloc(layout_cap, sizeof(char));
-        variant_cap = STRING_INITIAL_LENGTH;
-        c->keymap_variants = calloc(variant_cap, sizeof(char));
-        count = 0;
+        c->keymap_layouts = string_new(NULL);
+        c->keymap_variants = string_new(NULL);
+        string_append_string(&c->keymap_layouts, layout);
+        string_append_string(&c->keymap_variants, variant);
     }
 
-    c->keymap_layouts = string_append_with_comma(c->keymap_layouts, layout, &layout_cap, count);
-    c->keymap_variants = string_append_with_comma(c->keymap_variants, variant, &variant_cap, count);
-
-    count++;
+    string_append(&c->keymap_layouts, ',');
+    string_append(&c->keymap_variants, ',');
+    string_append_string(&c->keymap_layouts, layout);
+    string_append_string(&c->keymap_variants, variant);
 }
 
 static bool
@@ -270,12 +266,10 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
     uint32_t modifiers_flag = 0;
 
     while(*p != '\0') {
-        char mod[64] = {0};
-        char *q = mod;
+        char *mod = string_new(NULL);
         while(*p != '+' && *p != '\0') {
-            *q = *p;
+            string_append(&mod, *p);
             p++;
-            q++;
         }
 
         if(strcmp(mod, "alt") == 0) {
@@ -288,9 +282,10 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
             modifiers_flag |= WLR_MODIFIER_SHIFT;
         }
 
-        if(*p == '+') {
+        string_destroy(mod);
+
+        if(*p == '+')
             p++;
-        }
     }
 
     uint32_t key_sym = 0;
@@ -352,7 +347,7 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
             .key = key_sym,
     };
 
-    // this is true for most, needs to be set to false if otherwise
+    // this is immediately true for most, needs to be set to false if otherwise
     keybind.initialized = true;
 
     if(strcmp(action, "exit") == 0) {
@@ -1261,8 +1256,8 @@ config_destroy(struct config *c) {
     }
     array_destroy(c->layer_rules.blur);
 
-    free(c->keymap_layouts);
-    free(c->keymap_variants);
+    string_destroy(c->keymap_layouts);
+    string_destroy(c->keymap_variants);
     free(c->keymap_options);
 
     for(struct pointer_config *iter = c->pointers; iter <= array_last(c->pointers); iter++) {

@@ -76,7 +76,7 @@ struct config {
     // keyboard stuff
     char *keymap_layouts;  // string
     char *keymap_variants;  // string
-    char *keymap_options;  // string
+    char *keymap_options;
     uint32_t keyboard_rate;
     uint32_t keyboard_delay;
 
