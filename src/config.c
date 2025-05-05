@@ -19,6 +19,8 @@
 #include <wlr/util/log.h>
 
 #include "array.h"
+#define STRING_IMPLEMENTATION
+#include "dyn_string.h"
 #include "helpers.h"
 #include "keybinds.h"
 #include "keyboard.h"
@@ -32,7 +34,7 @@
 #include "workspace.h"
 
 // this is a helper for logging the config errors
-static uint32_t line_number;
+uint32_t line_number;
 #define ERROR(msg, ...) wlr_log(WLR_ERROR, "config: line %u: " msg, line_number, ##__VA_ARGS__)
 
 // assumes valid hex
@@ -462,17 +464,18 @@ invalid:
 }
 
 static void
-config_free_args(char **args, size_t arg_count) {
-    for(size_t i = 0; i < arg_count; i++) {
-        if(args[i] != NULL)
-            free(args[i]);
+destroy_args(char **args) {
+    for(size_t i = 0; i < array_len(args); i++) {
+        string_destroy(args[i]);
     }
 
-    free(args);
+    array_destroy(args);
 }
 
 static bool
-config_handle_value(struct config *c, char *keyword, char **args, size_t arg_count) {
+handle_value(struct config *c, char *keyword, char **args) {
+    size_t arg_count = array_len(args);
+
     if(strcmp(keyword, "keyboard_rate") == 0) {
         if(arg_count < 1)
             goto invalid;
@@ -897,19 +900,19 @@ config_handle_value(struct config *c, char *keyword, char **args, size_t arg_cou
         }
     } else {
         ERROR("invalid keyword `%s`", keyword);
-        free(keyword);
-        config_free_args(args, arg_count);
+        string_destroy(keyword);
+        destroy_args(args);
         return false;
     }
 
-    free(keyword);
-    config_free_args(args, arg_count);
+    string_destroy(keyword);
+    destroy_args(args);
     return true;
 
 invalid:
     ERROR("invalid args to `%s`", keyword);
-    free(keyword);
-    config_free_args(args, arg_count);
+    string_destroy(keyword);
+    destroy_args(args);
     return false;
 }
 
@@ -952,9 +955,11 @@ get_config_path(char *dest, size_t size) {
     return false;
 }
 
-// assumes the line is newline terminated, as it should be with `fgets()`
+// returns `false` if the line is empty, else returns `true` with the parametars extracted into the passed pointers.
+// `*keyword` is a string, and `*arguments` is an array of strings. assumes the line is newline terminated, as it should
+// be with `fgets()`
 static bool
-config_handle_line(char *line, char **keyword, char ***args, size_t *args_count) {
+parse_line(char *line, char **keyword, char ***arguments) {
     char *p = line;
 
     // skip whitespace
@@ -965,46 +970,23 @@ config_handle_line(char *line, char **keyword, char ***args, size_t *args_count)
     if(*p == '\n' || *p == '#')
         return false;
 
-    size_t len = 0, cap = STRING_INITIAL_LENGTH;
-    char *kw = calloc(cap, sizeof(char));
-    size_t ars_len = 0, ars_cap = 8;
-    char **ars = calloc(ars_cap, sizeof(*args));
+    // we create these more ergonomic variables to use; will 'return' them at the end
+    char *kw = string_new(NULL);
+    char **args;
+    array_init(&args);
 
-    char *q = kw;
     while(*p != ' ' && *p != '\t' && *p != '\n') {
-        if(len >= cap) {
-            cap *= 2;
-            keyword = realloc(keyword, cap);
-            q = &kw[len];
-        }
-        *q = *p;
+        string_append(&kw, *p);
         p++;
-        q++;
-        len++;
     }
-
-    if(len >= cap) {
-        cap += 1;
-        keyword = realloc(keyword, cap);
-        q = &kw[len];
-    }
-    *q = 0;
 
     // skip whitespace
     while(*p == ' ' || *p == '\t')
         p++;
 
     while(*p != '\n') {
-        if(ars_len >= ars_cap) {
-            ars_cap *= 2;
-            ars = realloc(ars, ars_cap * sizeof(*ars));
-        }
+        char *arg = string_new(NULL);
 
-        len = 0;
-        cap = STRING_INITIAL_LENGTH;
-        ars[ars_len] = calloc(cap, sizeof(char));
-
-        q = ars[ars_len];
         bool word = false;
         if(*p == '\"') {
             word = true;
@@ -1012,47 +994,38 @@ config_handle_line(char *line, char **keyword, char ***args, size_t *args_count)
         };
 
         while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\t' && *p != '\n')) {
-            if(len >= cap) {
-                cap *= 2;
-                ars[ars_len] = realloc(ars[ars_len], cap);
-                q = &ars[ars_len][len];
-            }
             if(word && *p == '\\' && *(p + 1) == '\"') {
-                *q = '\"';
+                // escape quotes
+                string_append(&arg, '\"');
                 p += 2;
             } else if(word && *p == '\\' && *(p + 1) == '\\') {
-                *q = '\\';
+                // escape double backslash
+                string_append(&arg, '\\');
                 p += 2;
             } else {
-                *q = *p;
+                string_append(&arg, *p);
                 p++;
             }
-            q++;
-            len++;
         }
-        if(len >= cap) {
-            cap += 1;
-            ars[ars_len] = realloc(ars[ars_len], cap);
-            q = &ars[ars_len][len];
-        }
-        *q = 0;
-        ars_len++;
+
+        array_push(&args, arg);
 
         if(word)
             p++;
+
         // skip whitespace
         while(*p == ' ' || *p == '\t')
             p++;
     }
 
-    *args_count = ars_len;
     *keyword = kw;
-    *args = ars;
+    *arguments = args;
+
     return true;
 }
 
 static void
-config_set_default_needed_params(struct config *c) {
+set_default_needed_params(struct config *c) {
     // as we are initializing config with calloc, some fields that are necessary in order for mwc to not crash may be
     // not specified in the config. we set their values to some default value
     if(c->keyboard_rate == 0) {
@@ -1099,8 +1072,6 @@ config_set_default_needed_params(struct config *c) {
         c->titlebar_close_button_size = c->titlebar_height;
     }
 }
-
-extern struct server server;
 
 struct config *
 config_load() {
@@ -1159,30 +1130,30 @@ config_load() {
 
     array_init(&c->run);
 
-    // you aint gonna have lines longer than 1kB
-    char line_buffer[1024] = {0};
     char *keyword, **args;
-    size_t args_count;
     line_number = 1;
-    // clean this up
-    while(fgets(line_buffer, 1024, config_file) != NULL) {
-        if(config_handle_line(line_buffer, &keyword, &args, &args_count)) {
-            config_handle_value(c, keyword, args, args_count);
+
+    // you aint gonna have lines longer than this
+    char buffer[1024];
+    while(fgets(buffer, sizeof(buffer), config_file) != NULL) {
+        if(parse_line(buffer, &keyword, &args)) {
+            handle_value(c, keyword, args);
         }
+
         line_number++;
     }
 
     fclose(config_file);
-    config_set_default_needed_params(c);
+    set_default_needed_params(c);
 
     return c;
 }
 
-// workspaces are the only thing that are never freed, as we do not allow destroying them for the lifetime of the
-// compositor
 void
 config_destroy(struct config *c) {
-    free(c->dir);
+    if(c->dir != NULL) {
+        free(c->dir);
+    }
 
     for(struct output_mode_config *iter = c->output_modes; iter <= array_last(c->output_modes); iter++) {
         free(iter->name);
@@ -1314,6 +1285,8 @@ config_destroy(struct config *c) {
 
     free(c);
 }
+
+extern struct server server;
 
 static void
 layout_reorganize(struct workspace *workspace) {

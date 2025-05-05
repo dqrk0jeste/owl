@@ -74,9 +74,9 @@ struct config {
     } layer_rules;
 
     // keyboard stuff
-    char *keymap_layouts;
-    char *keymap_variants;
-    char *keymap_options;
+    char *keymap_layouts;  // string
+    char *keymap_variants;  // string
+    char *keymap_options;  // string
     uint32_t keyboard_rate;
     uint32_t keyboard_delay;
 
@@ -164,7 +164,7 @@ struct config {
     struct fx_animation_curve *animation_curve;
 
     // run on startup
-    char **run;  // array
+    char **run;  // array of c-strings
 };
 
 struct config *
