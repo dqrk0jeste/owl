@@ -77,6 +77,7 @@ deps = [
   dependency('xkbcommon'),
   dependency('libinput'),
   dependency('fcft'),
+  dependency('json-c'),
 ]
 
 executable('mwc',

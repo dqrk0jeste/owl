@@ -1376,8 +1376,8 @@ config_reload() {
             }
 
             if(iter_workspace->fullscreen != NULL) {
-                decoration_destroy_all(&iter_toplevel->decoration);
-                toplevel_check_rules(iter_toplevel);
+                decoration_destroy_all(&iter_workspace->fullscreen->decoration);
+                toplevel_check_rules(iter_workspace->fullscreen);
             }
 
             // master_count might have changed in the new config, so we update the layout

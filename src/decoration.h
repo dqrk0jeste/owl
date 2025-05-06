@@ -25,6 +25,7 @@ struct decoration {
     // bitmask of `decorations_types`
     uint32_t types;
 
+    struct wlr_scene_tree *content_tree;
     struct wlr_scene_tree *tree;
 
     struct wlr_scene_rect *border;
@@ -38,18 +39,18 @@ struct decoration {
         struct text_node *title;
     } titlebar;
 
-    // current state
+    // state
     uint32_t width, height, min_width, min_height;
     bool active;
     bool blur, blur_optimized;
     char *title;
 };
 
-// initialize the decoration with `parent` as parent scene tree
+// initialize the decoration for the `content_tree`
 void
-decoration_init(struct decoration *decoration, struct wlr_scene_tree *parent);
+decoration_init(struct decoration *decoration, struct wlr_scene_tree *content_tree);
 
-// destroys all the decorations, but  keeps the current state; this is intended to be called when reloading the
+// destroys all the decorations, but keeps the current state; this is intended to be called when reloading the
 // configuration
 void
 decoration_destroy_all(struct decoration *decoration);
@@ -58,10 +59,10 @@ decoration_destroy_all(struct decoration *decoration);
 void
 decoration_destroy(struct decoration *decoration);
 
-// set decoration types to a bitmask of `decorations_type`. if the decorations have changed returns `true`, with the new
-// content position in `*x` and `*y`. this function can be called multiple times to update the wanted decorations
-bool
-decoration_set_types(struct decoration *decoration, uint32_t types, uint32_t *x, uint32_t *y);
+// set decoration types to a bitmask of `decorations_type`. this function can be called multiple times to update the
+// wanted decorations
+void
+decoration_set_types(struct decoration *decoration, uint32_t types);
 
 bool
 decoration_is_enabled(struct decoration *decoration);

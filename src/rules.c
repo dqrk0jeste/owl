@@ -124,10 +124,7 @@ toplevel_check_rules(struct toplevel *toplevel) {
     if(should_have_titlebar(toplevel)) {
         types |= DECORATION_TITLEBAR;
     }
-    uint32_t x, y;
-    if(decoration_set_types(&toplevel->decoration, types, &x, &y)) {
-        wlr_scene_node_set_position(&toplevel->content_tree->node, x, y);
-    }
+    decoration_set_types(&toplevel->decoration, types);
 
     decoration_set_blur(&toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
 }

@@ -193,8 +193,11 @@ toplevel_handle_map(struct wl_listener *listener, void *data) {
     // called when the surface is mapped, or ready to display on the screen
     struct toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
+    // enable the node
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
     // set initial decoration blur
     decoration_set_blur(&toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
+
     // we set this flag for the pop-in animation
     toplevel->needs_popin_adjustment = server.config->animations;
 
@@ -906,6 +909,22 @@ toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.grabbed_tree);
 }
 
+static void
+set_default_decoration_types(struct decoration *decoration) {
+    uint32_t types = 0;
+    if(server.config->shadows) {
+        types |= DECORATION_SHADOW;
+    }
+    if(server.config->borders) {
+        types |= DECORATION_BORDER;
+    }
+    if(server.config->titlebars) {
+        types |= DECORATION_TITLEBAR;
+    }
+
+    decoration_set_types(decoration, types);
+}
+
 void
 server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     // this event is raised when a client creates a new toplevel
@@ -921,6 +940,7 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
 
     // we assign it to the tiled tree, but will reparent it later if necessery
     toplevel->scene_tree = wlr_scene_tree_create(server.tiled_tree);
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
     toplevel->content_tree = wlr_scene_xdg_surface_create(toplevel->scene_tree, toplevel->xdg_toplevel->base);
     // in the node we want to keep information what it represents. we do that be keeping view in user data field,
     // which is a union of all possible 'things' we can have on the screen, or more precicely, all the things that can
@@ -933,7 +953,10 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     toplevel->inactive_opacity = server.config->opacity.inactive;
 
     // initialize the decoration
-    decoration_init(&toplevel->decoration, toplevel->scene_tree);
+    decoration_init(&toplevel->decoration, toplevel->content_tree);
+    // we set the default decoration types, they may be changed even before map if the client submits app_id and title
+    // and they match some window rules
+    set_default_decoration_types(&toplevel->decoration);
 
     wlr_fractional_scale_v1_notify_scale(toplevel->xdg_toplevel->base->surface,
             toplevel->workspace->output->wlr_output->scale);

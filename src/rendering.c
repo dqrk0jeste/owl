@@ -125,9 +125,10 @@ toplevel_apply_effects(struct toplevel *toplevel) {
             ? toplevel == server.focused_toplevel ? toplevel->active_opacity : toplevel->inactive_opacity
             : 1.0;
 
-    uint32_t border_radius = toplevel->mode == TOPLEVEL_MODE_FULLSCREEN
-            ? 0
-            : max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0);
+    uint32_t border_radius = toplevel->mode == TOPLEVEL_MODE_FULLSCREEN ? 0
+            : decoration_has_border(&toplevel->decoration)
+            ? max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0)
+            : server.config->border_radius;
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
     uint32_t width, height;

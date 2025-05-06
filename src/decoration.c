@@ -116,9 +116,6 @@ create_titlebar(struct decoration *decoration) {
     decoration->titlebar.tree = wlr_scene_tree_create(decoration->tree);
 
     decoration->titlebar.base = wlr_scene_rect_create(decoration->titlebar.tree, 0, 0, (float[4]){0});
-    wlr_scene_rect_set_corner_radius(decoration->titlebar.base,
-            max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0),
-            CORNER_LOCATION_TOP & server.config->border_radius_location);
 
     view_create_for_node(&decoration->titlebar.base->node, VIEW_TITLEBAR_BASE, decoration->titlebar.base);
 
@@ -150,6 +147,14 @@ update_titlebar(struct decoration *decoration, struct wlr_box *box) {
 
     // set the size of the titlebar base
     wlr_scene_rect_set_size(decoration->titlebar.base, box->width, server.config->titlebar_height);
+
+    // set the rounding; note: this needs to happen here because of this scenario: there is border -> border is
+    // destroyed -> we need to update the rounding of the titlebar
+    wlr_scene_rect_set_corner_radius(decoration->titlebar.base,
+            decoration_has_border(decoration)
+                    ? max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0)
+                    : server.config->border_radius,
+            CORNER_LOCATION_TOP & server.config->border_radius_location);
 
     if(decoration->titlebar.close_button != NULL) {
         int32_t x = server.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT
@@ -238,9 +243,10 @@ set_min_size(struct decoration *decoration) {
 }
 
 void
-decoration_init(struct decoration *decoration, struct wlr_scene_tree *parent) {
+decoration_init(struct decoration *decoration, struct wlr_scene_tree *content_tree) {
     // create a base tree for the decorations
-    decoration->tree = wlr_scene_tree_create(parent);
+    decoration->content_tree = content_tree;
+    decoration->tree = wlr_scene_tree_create(content_tree->node.parent);
     wlr_scene_node_lower_to_bottom(&decoration->tree->node);
 }
 
@@ -259,6 +265,9 @@ decoration_destroy_all(struct decoration *decoration) {
     }
 
     decoration->types = 0;
+    // we reset its position to 0, 0; note: this is needed because `decoration_set_types()` might not reset it if the
+    // `types` passed are 0.
+    wlr_scene_node_set_position(&decoration->content_tree->node, 0, 0);
 }
 
 void
@@ -270,9 +279,12 @@ decoration_destroy(struct decoration *decoration) {
     }
 }
 
-static void
-get_content_coords(struct decoration *decoration, uint32_t *x, uint32_t *y) {
+static inline void
+get_content_coords(struct decoration *decoration, int *x, int *y) {
     *x = *y = 0;
+    if(!decoration_is_enabled(decoration))
+        return;
+
     if(decoration_has_border(decoration)) {
         *x += server.config->border_width;
         *y += server.config->border_width;
@@ -282,10 +294,18 @@ get_content_coords(struct decoration *decoration, uint32_t *x, uint32_t *y) {
     }
 }
 
-bool
-decoration_set_types(struct decoration *decoration, uint32_t types, uint32_t *x, uint32_t *y) {
+static inline void
+update_content_tree(struct decoration *decoration) {
+    int x, y;
+    get_content_coords(decoration, &x, &y);
+
+    wlr_scene_node_set_position(&decoration->content_tree->node, x, y);
+}
+
+void
+decoration_set_types(struct decoration *decoration, uint32_t types) {
     if(types == decoration->types)
-        return false;
+        return;
 
     // we compare to see what has changed and create/destroy the needed
     if(decoration_has_shadow(decoration) && !(types & DECORATION_SHADOW)) {
@@ -307,7 +327,9 @@ decoration_set_types(struct decoration *decoration, uint32_t types, uint32_t *x,
     }
 
     decoration->types = types;
-    get_content_coords(decoration, x, y);
+
+    // we update the content tree position
+    update_content_tree(decoration);
 
     // we restack them in the right order since they might not be
     if(decoration_has_border(decoration)) {
@@ -324,12 +346,13 @@ decoration_set_types(struct decoration *decoration, uint32_t types, uint32_t *x,
     decoration_set_active(decoration, decoration->active);
     decoration_set_blur(decoration, decoration->blur, decoration->blur_optimized);
 
-    return true;
+    return;
 }
 
 void
 decoration_set_enabled(struct decoration *decoration, bool enabled) {
     wlr_scene_node_set_enabled(&decoration->tree->node, enabled);
+    update_content_tree(decoration);
 }
 
 void
@@ -395,31 +418,6 @@ decoration_titlebar_set_title(struct decoration *decoration, char *title) {
         text_node_set_text(decoration->titlebar.title, title);
         decoration_configure(decoration, decoration->width, decoration->height);
     }
-}
-
-struct wlr_box
-decoration_get_content_box(struct decoration *decoration, struct wlr_box box) {
-    if(!decoration_is_enabled(decoration))
-        return box;
-
-    if(decoration_has_border(decoration)) {
-        box.x += server.config->border_width;
-        box.y += server.config->border_width;
-        box.width -= 2 * server.config->border_width;
-        box.height -= 2 * server.config->border_width;
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        box.y += server.config->titlebar_height;
-        box.height -= server.config->titlebar_height;
-    }
-
-    if(box.width <= 0)
-        box.width = 1;
-    if(box.height <= 0)
-        box.height = 1;
-
-    return box;
 }
 
 void
