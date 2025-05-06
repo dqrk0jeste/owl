@@ -18,11 +18,14 @@
 #include "output.h"
 #include "workspace.h"
 
+// this part of the code is horrendous, and in a a desparate need of a rewrite
+// will probably use json format in the future
+
 extern struct server server;
 
 void
 sigpipe_handler(int signum) {
-    /* do nothing */
+    // do nothing
 }
 
 void
@@ -74,7 +77,7 @@ ipc_add_client(int fd) {
     }
 }
 
-/* this is horrendous, but i dont care, never going to touch it again */
+// this is horrendous, but i dont care, never going to touch it again
 void
 ipc_handle_simple(char *request, int fd) {
     size_t len = 0;

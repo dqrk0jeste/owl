@@ -244,6 +244,7 @@ string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
     return a;
 }
 
+// handle appending to the config string
 static void
 config_add_keymap(struct config *c, char *layout, char *variant) {
     if(c->keymap_layouts == NULL) {
@@ -675,7 +676,7 @@ handle_value(struct config *c, char *keyword, char **args) {
     } else if(strcmp(keyword, "keymap") == 0) {
         if(arg_count < 2)
             goto invalid;
-        // handle appending to this string
+
         config_add_keymap(c, args[0], args[1]);
     } else if(strcmp(keyword, "keymap_options") == 0) {
         if(arg_count < 1)
