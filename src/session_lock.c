@@ -112,9 +112,7 @@ session_lock_handle_unlock(struct wl_listener *listener, void *data) {
 
     struct output *iter;
     wl_list_for_each(iter, &server.outputs, link) {
-        // destroy the rectangle blocking the view
-        wlr_scene_node_destroy(&iter->session_lock_rect->node);
-        iter->session_lock_rect = NULL;
+        wlr_scene_node_set_enabled(&iter->session_lock_rect->node, false);
     }
 }
 
@@ -150,10 +148,12 @@ session_lock_manager_handle_new(struct wl_listener *listener, void *data) {
 
     server.lock = lock;
     // we want to set current server mode to locked, but before that we cancel the other modes
-    if(server.mode == SERVER_MODE_MOVING || server.mode == SERVER_MODE_RESIZING) {
+    // todo: see how to cancel drag if any
+    if(server.mode == SERVER_MODE_MOVING || server.mode == SERVER_MODE_RESIZING ||
+            server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
         cursor_stop_move_resize();
     }
-    // todo: add canceling for other things
+
     server.mode = SERVER_MODE_LOCKED;
 
     // clear all focus on the keyboard; note: this is a bit of a hacky way of saying unfocus anything, but we dont want
@@ -164,15 +164,10 @@ session_lock_manager_handle_new(struct wl_listener *listener, void *data) {
     unfocus_focused_toplevel();
     server.focused_layer_surface = NULL;
 
-    // draw black rects over the screens
+    // show black rects over the screens
     struct output *iter;
     wl_list_for_each(iter, &server.outputs, link) {
-        struct wlr_box output_box;
-        wlr_output_layout_get_box(server.output_layout, iter->wlr_output, &output_box);
-
-        iter->session_lock_rect = wlr_scene_rect_create(server.session_lock_tree, output_box.width, output_box.height,
-                (float[4]){0.0, 0.0, 0.0, 1.0});
-        wlr_scene_node_set_position(&iter->session_lock_rect->node, output_box.x, output_box.y);
+        wlr_scene_node_set_enabled(&iter->session_lock_rect->node, true);
     }
 
     lock->new_surface.notify = session_lock_handle_new_surface;

@@ -873,53 +873,76 @@ invalid:
     return false;
 }
 
+static bool
+need_optimized_blur(struct config *c) {
+    if(c->blur)
+        return true;
+
+    for(struct toplevel_rule_bool *iter = c->toplevel_rules.blur; iter <= array_last(c->toplevel_rules.blur); iter++) {
+        if(iter->value)
+            return true;
+    }
+
+    for(struct layer_rule_blur *iter = c->layer_rules.blur; iter <= array_last(c->layer_rules.blur); iter++) {
+        if(iter->optimized)
+            return true;
+    }
+
+    return false;
+}
+
 static void
-set_default_needed_params(struct config *c) {
+patch(struct config *c) {
     // as we are initializing config with calloc, some fields that are necessary in order for mwc to not crash may be
-    // not specified in the config. we set their values to some default value
+    // not specified in the config. we set their values to some default value. we also tackle some other things that may
+    // be confilicting with one another
     if(c->keyboard_rate == 0) {
         c->keyboard_rate = 150;
-        wlr_log(WLR_INFO, "keyboard_rate not specified. using default %u", c->keyboard_rate);
+        wlr_log(WLR_INFO, "config: `keyboard_rate` not specified. using default `%u`", c->keyboard_rate);
     }
     if(c->keyboard_delay == 0) {
         c->keyboard_delay = 50;
-        wlr_log(WLR_INFO, "keyboard_delay not specified. using default %u", c->keyboard_delay);
+        wlr_log(WLR_INFO, "config: `keyboard_delay` not specified. using default %u", c->keyboard_delay);
     }
     if(c->cursor_size == 0) {
         c->cursor_size = 24;
-        wlr_log(WLR_INFO, "cursor_size not specified. using default %u", c->cursor_size);
+        wlr_log(WLR_INFO, "config: `cursor_size` not specified. using default %u", c->cursor_size);
     }
     if(c->master_count == 0) {
         c->master_count = 1;
-        wlr_log(WLR_INFO, "master_count not specified. using default %u", c->master_count);
+        wlr_log(WLR_INFO, "config: `master_count` not specified. using default %u", c->master_count);
     }
     if(c->master_ratio == 0) {
         // here we evenly space toplevels if there is no master_ratio specified
         c->master_ratio = c->master_count / (double)(c->master_count + 1);
-        wlr_log(WLR_INFO, "master_ratio not specified. using default %lf", c->master_ratio);
+        wlr_log(WLR_INFO, "config: `master_ratio` not specified. using default %lf", c->master_ratio);
     }
     if(c->animations && c->animation_duration == 0) {
         c->animation_duration = 500;
-        wlr_log(WLR_INFO, "animation_duration not specified. using default %u", c->animation_duration);
+        wlr_log(WLR_INFO, "config: `animation_duration` not specified. using default %u", c->animation_duration);
     }
     if(c->animations && c->animation_curve == NULL) {
         c->animation_curve = fx_animation_curve_create((double[4]){0});
-        wlr_log(WLR_INFO, "animation_curve not specified. using linear");
+        wlr_log(WLR_INFO, "config: `animation_curve` not specified. using linear");
     }
     if(c->opacity.active == 0) {
         c->opacity.active = 1.0;
         c->opacity.inactive = 1.0;
-        wlr_log(WLR_INFO, "opacity not specified. using default %lf %lf", c->opacity.active, c->opacity.inactive);
+        wlr_log(WLR_INFO, "config: `opacity` not specified. using default %lf %lf", c->opacity.active,
+                c->opacity.inactive);
     }
     if(c->border_radius_location == 0) {
         c->border_radius_location = CORNER_LOCATION_ALL;
-        wlr_log(WLR_INFO, "border_radius_location not specified. using all");
+        wlr_log(WLR_INFO, "config: `border_radius_location` not specified. using all");
     }
     if(c->titlebar_close_button_size > c->titlebar_height) {
-        wlr_log(WLR_INFO, "titlebar_close_button_size (%u) larger than titlebar_height (%u). setting it to %u",
+        wlr_log(WLR_INFO,
+                "config: `titlebar_close_button_size` (%u) larger than `titlebar_height` (%u). setting it to %u",
                 c->titlebar_close_button_size, c->titlebar_height, c->titlebar_height);
         c->titlebar_close_button_size = c->titlebar_height;
     }
+
+    c->need_optimized_blur = need_optimized_blur(c);
 }
 
 // returns a default config path, does not need to be freed
@@ -985,7 +1008,7 @@ config_load(char *path) {
     }
 
     fclose(config_file);
-    set_default_needed_params(c);
+    patch(c);
 
     wlr_log(WLR_ERROR, "keymap: %s\n%s", c->keymap_layouts, c->keymap_variants);
 
@@ -1180,9 +1203,7 @@ config_reload(void) {
     // we reconfigure and reposition the outputs
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
-        output_modeset(iter_output->wlr_output);
-        output_place_in_layout(iter_output);
-        output_configure_blur(iter_output);
+        output_configure(iter_output);
 
         // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
         layer_surfaces_configure(iter_output);

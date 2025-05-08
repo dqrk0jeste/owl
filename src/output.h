@@ -35,17 +35,9 @@ struct output {
 void
 server_handle_new_output(struct wl_listener *listener, void *data);
 
-// based on the current state and the current config creates, updates or destroys blur
+// configures the output according to the current configuration
 void
-output_configure_blur(struct output *output);
-
-void
-output_place_in_layout(struct output *output);
-
-// modesets this output using the provided mode from the config file. if there is none, or it cant be applied backs up
-// to the preffered mode. if it fails returns `falsej
-bool
-output_modeset(struct wlr_output *output);
+output_configure(struct output *output);
 
 struct output *
 output_get_relative(struct output *output, enum direction direction);

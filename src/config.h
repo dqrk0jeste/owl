@@ -150,7 +150,10 @@ struct config {
         double active, inactive;
     } opacity;
     bool opacity_apply_when_fullscreen;
-    bool blur;
+    // need_optimized_blur is not a user configuration option but instead a calulated value in `patch()` that tells if
+    // we should or should not have blur nodes enabled. this is needed because although the user might set `blur` to 0,
+    // he might have some toplevel or layer rules that request blur. this flag accounts for that.
+    bool blur, need_optimized_blur;
     enum blur_optimized blur_optimized;
     struct blur_data blur_params;
 

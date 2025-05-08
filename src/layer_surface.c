@@ -83,7 +83,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
         layer_surfaces_configure(output);
     }
 
-    if(server.config->blur && layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
+    if(layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
         wlr_scene_optimized_blur_mark_dirty(output->blur);
     }
 }
@@ -156,7 +156,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
         }
     }
 
-    if(server.config->blur && layer_surface->wlr_layer_surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
+    if(layer_surface->wlr_layer_surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
         wlr_scene_optimized_blur_mark_dirty(output->blur);
     }
 

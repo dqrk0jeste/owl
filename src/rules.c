@@ -52,6 +52,7 @@ set_blur(struct toplevel *toplevel) {
             iter >= server.config->toplevel_rules.blur; iter--) {
         if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
             toplevel->has_blur = iter->value;
+            return;
         }
     }
 
@@ -115,7 +116,7 @@ toplevel_check_rules(struct toplevel *toplevel) {
 }
 
 static void
-check_blur_rules(struct layer_surface *layer_surface) {
+set_blur_layer(struct layer_surface *layer_surface) {
     for(struct layer_rule_blur *iter = server.config->layer_rules.blur;
             iter <= array_last(server.config->layer_rules.blur); iter++) {
         if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
@@ -131,11 +132,5 @@ check_blur_rules(struct layer_surface *layer_surface) {
 
 void
 layer_surface_check_rules(struct layer_surface *layer_surface) {
-    // since all the rules affect blur we dont check any if blur is disabled globally
-    if(!server.config->blur) {
-        layer_surface->has_blur = false;
-        return;
-    }
-
-    check_blur_rules(layer_surface);
+    set_blur_layer(layer_surface);
 }
