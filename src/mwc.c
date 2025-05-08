@@ -1,6 +1,8 @@
 #include "mwc.h"
 
+#include <assert.h>
 #include <fcft/fcft.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <scenefx/render/fx_renderer/fx_renderer.h>
 #include <scenefx/types/wlr_scene.h>
@@ -23,8 +25,10 @@
 
 #include "array.h"
 #include "config.h"
-#include "decoration.h"
+#include "cursor.h"
 #include "dnd.h"
+#define STRING_IMPLEMENTATION
+#include "dyn_string.h"
 #include "gamma_control.h"
 #include "helpers.h"
 #include "ipc.h"
@@ -52,14 +56,7 @@
 #include "wlr/util/log.h"
 
 // we initialize an instance of our global state
-struct server server;
-
-// handles exits of child processes
-void
-sigchld_handler(int signo) {
-    while(waitpid(-1, NULL, WNOHANG) > 0)
-        ;
-}
+struct server server = {0};
 
 void
 server_handle_new_input(struct wl_listener *listener, void *data) {
@@ -89,127 +86,158 @@ server_handle_new_input(struct wl_listener *listener, void *data) {
 }
 
 void
-server_handle_cursor_shape_destroy(struct wl_listener *listener, void *data) {
-    wl_list_remove(&server.request_cursor_shape.link);
-    wl_list_remove(&server.cursor_shape_manager_destroy.link);
-}
-
-void
-server_handle_request_cursor_shape(struct wl_listener *listener, void *data) {
-    struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
-    struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(focused_client == event->seat_client) {
-        const char *name = wlr_cursor_shape_v1_name(event->shape);
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, name);
-    }
-}
-
-void
-server_handle_request_cursor(struct wl_listener *listener, void *data) {
-    struct wlr_seat_pointer_request_set_cursor_event *event = data;
-    struct wlr_seat_client *focused_client = server.seat->pointer_state.focused_client;
-    if(focused_client == event->seat_client) {
-        wlr_cursor_set_surface(server.cursor, event->surface, event->hotspot_x, event->hotspot_y);
-    }
-}
-
-void
 server_handle_request_set_selection(struct wl_listener *listener, void *data) {
-    // this event is raised by the seat when a client wants to set the selection,
-    // usually when the user copies something
+    // this event is raised by the seat when a client wants to set the selection, usually when the user copies something
     struct wlr_seat_request_set_selection_event *event = data;
     wlr_seat_set_selection(server.seat, event->source, event->serial);
 }
 
+static void
+init_logs(enum wlr_log_importance log_level) {
+    // open or create the log file
+    int log_fd = open("/tmp/mwc/logs", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if(log_fd > 0) {
+        // redirect the logs to the log file
+        dup2(log_fd, 1);
+        dup2(log_fd, 2);
+        close(log_fd);
+    }
+
+    wlr_log_init(log_level, NULL);
+}
+
+// handles exits of child processes
+static int
+sigchld_handler(int signal_number, void *data) {
+    while(waitpid(-1, NULL, WNOHANG) > 0) {
+        // do nothing
+    }
+
+    return 0;
+}
+
+// dont crash on broken pipe
+static int
+sigpipe_handler(int signal_number, void *data) {
+    // do nothing
+    return 0;
+}
+
+static char *
+get_config_path(void) {
+    char *env_path = getenv("MWC_CONFIG_PATH");
+    if(env_path != NULL) {
+        wlr_log(WLR_INFO, "env CONFIG_PATH set to `%s`, using it", env_path);
+        return string_new(env_path);
+    }
+
+    char *config_home = getenv("XDG_CONFIG_HOME");
+    if(config_home != NULL) {
+        char *path = string_new(config_home);
+        string_append_c_string(&path, "/mwc/mwc.conf");
+        return path;
+    }
+
+    char *home = getenv("HOME");
+    if(home != NULL) {
+        char *path = string_new(home);
+        string_append_c_string(&path, "/.config/mwc/mwc.conf");
+        return path;
+    }
+
+    return NULL;
+}
+
+static char *
+get_parent_dir_path(char *path) {
+    size_t len = string_len(path);
+    while(len >= 0 && path[len] != '/')
+        len--;
+
+    if(len < 0) {
+        return NULL;
+    }
+
+    return string_substring(path, 0, len);
+}
+
 int
 main(int argc, char *argv[]) {
-    // this is ripped straight from chatgpt, it prevents the creation of zombie processes
-    struct sigaction sa;
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
-    sigaction(SIGCHLD, &sa, NULL);
+    enum wlr_log_importance log_level = WLR_INFO;
+    if(argc > 1) {
+        if(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+            printf("usage: mwc [-d]\n\n"
+                   "\t-d (--debug) - enable debug level logging");
 
-    bool debug = false;
-    for(int i = 1; i < argc; i++) {
-        if(strcmp(argv[i], "--debug") == 0) {
-            debug = true;
+            return 0;
+        } else if(strcmp(argv[1], "-d") == 0 || strcmp(argv[1], "--debug") == 0) {
+            log_level = WLR_DEBUG;
         }
     }
 
+    int ret = 0;
+
+    // initialize all the systems
     mkdir("/tmp/mwc", 0777);
-    if(debug) {
-        // make it so all the logs do to the log file
-        FILE *logs = fopen("/tmp/mwc/logs", "w");
-        if(logs != NULL) {
-            int fd = fileno(logs);
-            close(1);
-            close(2);
-            dup2(fd, 1);
-            dup2(fd, 2);
-            fclose(logs);
-        }
+    init_logs(log_level);
 
-        wlr_log_init(WLR_DEBUG, NULL);
-    } else {
-        wlr_log_init(WLR_INFO, NULL);
-    }
-
+    // initialize the font library before parsing the initial config file
     fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_INFO);
 
-    server.config = config_load();
+    server.config_path = get_config_path();
+    server.config = config_load(server.config_path);
     if(server.config == NULL) {
-        wlr_log(WLR_ERROR, "there was a problem loading the config, quiting");
-        fcft_fini();
-        return 1;
+        ret = 1;
+        goto fcft;
     }
 
-    // the wayland display is managed by libwayland. it handles accepting
-    // clients from the unix socket, manging wayland globals, and so on
+    // the wayland display is managed by libwayland. it handles accepting clients from the unix socket, manging
+    // wayland globals, and so on
     server.wl_display = wl_display_create();
+    if(server.wl_display == NULL) {
+        wlr_log(WLR_ERROR, "failed to create the display");
+        ret = 1;
+        goto config;
+    }
+
     server.wl_event_loop = wl_display_get_event_loop(server.wl_display);
 
-    // the backend is a wlroots feature which abstracts the underlying input and
-    // output hardware. the autocreate option will choose the most suitable
-    // backend based on the current environment, such as opening an x11 window
+    // the backend is a wlroots feature which abstracts the underlying input and output hardware. the autocreate
+    // option will choose the most suitable backend based on the current environment, such as opening an x11 window
     // if an x11 server is running
     server.backend = wlr_backend_autocreate(server.wl_event_loop, &server.session);
     if(server.backend == NULL) {
-        wlr_log(WLR_ERROR, "failed to create wlr_backend");
-        return 1;
+        wlr_log(WLR_ERROR, "failed to create the backend");
+        ret = 1;
+        goto display;
     }
 
     server.renderer = fx_renderer_create(server.backend);
     if(server.renderer == NULL) {
-        wlr_log(WLR_ERROR, "failed to create wlr_renderer");
-        return 1;
+        wlr_log(WLR_ERROR, "failed to create the renderer");
+        ret = 1;
+        goto backend;
     }
 
     wlr_renderer_init_wl_display(server.renderer, server.wl_display);
 
-    // autocreates an allocator for us. the allocator is the bridge between the
-    // renderer and the backend. it handles the buffer creation,
-    // allowing wlroots to render onto the screen
+    // autocreates an allocator for us. the allocator is the bridge between the renderer and the backend. it handles
+    // the buffer creation, allowing wlroots to render onto the screen
     server.allocator = wlr_allocator_autocreate(server.backend, server.renderer);
     if(server.allocator == NULL) {
-        wlr_log(WLR_ERROR, "failed to create wlr_allocator");
-        return 1;
+        wlr_log(WLR_ERROR, "failed to create the allocator");
+        ret = 1;
+        goto renderer;
     }
 
-    // this creates some hands-off wlroots interfaces. the compositor is
-    // necessary for clients to allocate surfaces, the subcompositor allows to
-    // assign the role of subsurfaces to surfaces and the data device manager
-    // handles the clipboard. each of these wlroots interfaces has room for you
-    // to dig your fingers in and play with their behavior if you want. note that
-    // the clients cannot set the selection directly without compositor approval,
-    // see the handling of the request_set_selection event below
+    // create all the systems and attach listeners
     wlr_compositor_create(server.wl_display, 6, server.renderer);
     wlr_subcompositor_create(server.wl_display);
 
     wlr_data_device_manager_create(server.wl_display);
 
-    // creates an output layout, which a wlroots utility for working with
-    // an arrangement of screens in a physical layout
+    // creates an output layout, which a wlroots utility for working with an arrangement of screens in a physical
+    // layout
     server.output_layout = wlr_output_layout_create(server.wl_display);
 
     wl_list_init(&server.outputs);
@@ -218,15 +246,13 @@ main(int argc, char *argv[]) {
     server.new_output.notify = server_handle_new_output;
     wl_signal_add(&server.backend->events.new_output, &server.new_output);
 
-    // create a scene graph. this is a wlroots abstraction that handles all
-    // rendering and damage tracking. all the compositor author needs to do
-    // is add things that should be rendered to the scene graph at the proper
+    // create a scene graph. this is a wlroots abstraction that handles all rendering and damage tracking. all the
+    // compositor author needs to do is add things that should be rendered to the scene graph at the proper
     // positions and then call wlr_scene_output_commit() to render a frame
-
     server.scene = wlr_scene_create();
     server.scene_layout = wlr_scene_attach_output_layout(server.scene, server.output_layout);
 
-    /* create all the scenes in the correct order */
+    // create all the scene trees in the correct order
     server.background_tree = wlr_scene_tree_create(&server.scene->tree);
     server.bottom_tree = wlr_scene_tree_create(&server.scene->tree);
     server.tiled_tree = wlr_scene_tree_create(&server.scene->tree);
@@ -240,13 +266,14 @@ main(int argc, char *argv[]) {
     // set the initial blur params
     wlr_scene_set_blur_data(server.scene, server.config->blur_params);
 
-    // set up xdg-shell version 6
+    // set up the xdg shell
     server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 6);
     server.new_toplevel.notify = server_handle_new_toplevel;
     wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_toplevel);
     server.new_popup.notify = server_handle_new_popup;
     wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_popup);
 
+    // set up the layer shell
     server.layer_shell = wlr_layer_shell_v1_create(server.wl_display, 4);
     server.new_layer_surface.notify = server_handle_new_layer_surface;
     wl_signal_add(&server.layer_shell->events.new_surface, &server.new_layer_surface);
@@ -257,18 +284,9 @@ main(int argc, char *argv[]) {
 
     server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
     // we also add xcursor theme env variables
-    char cursor_size[8];
-    snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
-    setenv("XCURSOR_SIZE", cursor_size, true);
+    cursor_set_xcursor_variables(server.config->cursor_theme, server.config->cursor_size);
 
-    if(server.config->cursor_theme != NULL) {
-        setenv("XCURSOR_THEME", server.config->cursor_theme, true);
-    } else {
-        setenv("XCURSOR_THEME", "", true);
-    }
-
-    wl_list_init(&server.pointers);
-
+    // todo: move these into cursor.c
     server.cursor_motion.notify = server_handle_cursor_motion;
     wl_signal_add(&server.cursor->events.motion, &server.cursor_motion);
     server.cursor_motion_absolute.notify = server_handle_cursor_motion_absolute;
@@ -283,29 +301,28 @@ main(int argc, char *argv[]) {
     server.new_input.notify = server_handle_new_input;
     wl_signal_add(&server.backend->events.new_input, &server.new_input);
 
-    // configures a seat, which is a single "seat" at which a user sits and
-    // operates the computer. this conceptually includes up to one keyboard,
-    // pointer, touch, and drawing tablet device. we also rig up a listener to
-    // let us know when new input devices are available on the backend.
     wl_list_init(&server.keyboards);
+    wl_list_init(&server.pointers);
 
+    // configures a seat, which is a single "seat" at which a user sits and operates the computer. this conceptually
+    // includes up to one keyboard, pointer, touch, and drawing tablet device.
     server.seat = wlr_seat_create(server.wl_display, "seat0");
 
-    server.request_cursor.notify = server_handle_request_cursor;
+    server.request_cursor.notify = cursor_handle_request;
     wl_signal_add(&server.seat->events.request_set_cursor, &server.request_cursor);
     server.request_set_selection.notify = server_handle_request_set_selection;
     wl_signal_add(&server.seat->events.request_set_selection, &server.request_set_selection);
 
+    // configure drag presentation and listeners
     server.drag_icon_tree = wlr_scene_tree_create(&server.scene->tree);
     wlr_scene_node_set_enabled(&server.drag_icon_tree->node, false);
 
     server.request_drag.notify = server_handle_request_drag;
     wl_signal_add(&server.seat->events.request_start_drag, &server.request_drag);
-
     server.request_start_drag.notify = server_handle_request_start_drag;
     wl_signal_add(&server.seat->events.start_drag, &server.request_start_drag);
-
     server.request_destroy_drag.notify = server_handle_destroy_drag;
+    // we dont wire this one up since it is wired per drag
 
     // handles clipboard clients
     wlr_data_control_manager_v1_create(server.wl_display);
@@ -345,8 +362,8 @@ main(int argc, char *argv[]) {
     wl_signal_add(&server.session_lock_manager->events.destroy, &server.lock_manager_destroy);
 
     server.cursor_shape_manager = wlr_cursor_shape_manager_v1_create(server.wl_display, 1);
-    server.request_cursor_shape.notify = server_handle_request_cursor_shape;
-    server.cursor_shape_manager_destroy.notify = server_handle_cursor_shape_destroy;
+    server.request_cursor_shape.notify = cursor_shape_manager_handle_request;
+    server.cursor_shape_manager_destroy.notify = cursor_shape_manager_handle_destroy;
     wl_signal_add(&server.cursor_shape_manager->events.request_set_shape, &server.request_cursor_shape);
     wl_signal_add(&server.cursor_shape_manager->events.destroy, &server.cursor_shape_manager_destroy);
 
@@ -367,54 +384,71 @@ main(int argc, char *argv[]) {
     // Add a unix socket to the wayland display
     const char *socket = wl_display_add_socket_auto(server.wl_display);
     if(!socket) {
-        wlr_backend_destroy(server.backend);
-        return 1;
+        wlr_log(WLR_ERROR, "failed to add a socket");
+        ret = 1;
+        goto scene;
     }
 
-    // Start the backend. This will enumerate outputs and inputs, become the DRM master, etc
+    // start the backend
     if(!wlr_backend_start(server.backend)) {
-        wlr_backend_destroy(server.backend);
-        wl_display_destroy(server.wl_display);
-        return 1;
+        wlr_log(WLR_ERROR, "failed to start the backend");
+        ret = 1;
+        goto scene;
     }
 
-    // Set the WAYLAND_DISPLAY environment variable to our socket
+    // set the WAYLAND_DISPLAY environment variable to our socket
     setenv("WAYLAND_DISPLAY", socket, true);
 
-    // creating a thread for the ipc to run on
-    pthread_t ipc_thread;
-    pthread_create(&ipc_thread, NULL, ipc_run, NULL);
+    // add other relevant fds and signal handlers to the main loop
+    struct wl_event_source *sigchld_source =
+            wl_event_loop_add_signal(server.wl_event_loop, SIGCHLD, sigchld_handler, NULL);
+    struct wl_event_source *sigpipe_source =
+            wl_event_loop_add_signal(server.wl_event_loop, SIGPIPE, sigpipe_handler, NULL);
 
-    pthread_t inotify_thread;
-    pthread_create(&inotify_thread, NULL, config_watch, server.config->dir);
+    ipc_init();
 
-    // sleep a bit so the ipc starts, 0.1 seconds is probably enough
-    usleep(100000);
+    char *config_dir = get_parent_dir_path(server.config_path);
+    config_watcher_init(config_dir);
+    string_destroy(config_dir);
 
+    // run the startup commands
     for(size_t i = 0; i < array_len(server.config->run); i++) {
         run_cmd(server.config->run[i]);
     }
-
-    server.running = true;
 
     // run the wayland event loop
     wlr_log(WLR_INFO, "running mwc on WAYLAND_DISPLAY=%s", socket);
     wl_display_run(server.wl_display);
 
-    unlink(IPC_PATH);
+    // after the loop returns cleanup
+    if(ipc_running()) {
+        ipc_deinit();
+    }
 
-    // Once wl_display_run returns, we destroy all clients then shut down the server
+    if(config_watcher_running()) {
+        config_watcher_deinit();
+    }
+
+    wl_event_source_remove(sigchld_source);
+    wl_event_source_remove(sigpipe_source);
+
+    // destroy server resources
     wl_display_destroy_clients(server.wl_display);
+scene:
     wlr_scene_node_destroy(&server.scene->tree.node);
     wlr_xcursor_manager_destroy(server.cursor_mgr);
     wlr_cursor_destroy(server.cursor);
     wlr_allocator_destroy(server.allocator);
+renderer:
     wlr_renderer_destroy(server.renderer);
+backend:
     wlr_backend_destroy(server.backend);
+display:
     wl_display_destroy(server.wl_display);
-
+config:
     config_destroy(server.config);
+fcft:
     fcft_fini();
 
-    return 0;
+    return ret;
 }

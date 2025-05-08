@@ -13,7 +13,6 @@
 #include "decoration.h"
 #include "helpers.h"
 #include "keybinds.h"
-#include "mwc.h"
 
 struct output_mode_config {
     char *name;
@@ -54,20 +53,17 @@ enum blur_optimized {
     }
 
 struct config {
-    // NULL if default config
-    char *dir;
-
     struct output_mode_config *output_modes;
     struct output_position_config *output_positions;
     struct keybind *keybinds;  // array
     struct keybind *pointer_keybinds;  // array
     struct workspace_config *workspaces;  // array
     struct {
-        struct window_rule *floating;  // array
-        struct window_rule_size *size;  // array
-        struct window_rule_opacity *opacity;  // array
-        struct window_rule *no_titlebar, *no_border, *no_shadow, *no_blur;  // array
-    } window_rules;
+        struct toplevel_rule *floating;  // array
+        struct toplevel_rule_size *size;  // array
+        struct toplevel_rule_opacity *opacity;  // array
+        struct toplevel_rule_bool *titlebar, *border, *shadow, *blur;  // array
+    } toplevel_rules;
 
     struct {
         struct layer_rule_blur *blur;  // array
@@ -168,13 +164,16 @@ struct config {
 };
 
 struct config *
-config_load();
-
-void
-config_reload();
+config_load(char *path);
 
 void
 config_destroy(struct config *c);
 
-void *
-config_watch(void *data);
+void
+config_watcher_init(char *dir);
+
+void
+config_watcher_deinit(void);
+
+bool
+config_watcher_running(void);

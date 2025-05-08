@@ -1,3 +1,7 @@
+#pragma once
+
+#include <stdbool.h>
+
 #include "ipc_shared.h"
 
 enum ipc_event {
@@ -9,5 +13,11 @@ enum ipc_event {
 void
 ipc_broadcast_message(enum ipc_event event);
 
-void *
-ipc_run(void *args);
+void
+ipc_init(void);
+
+void
+ipc_deinit(void);
+
+bool
+ipc_running(void);

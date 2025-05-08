@@ -19,7 +19,7 @@
 #include <wlr/util/log.h>
 
 #include "array.h"
-#define STRING_IMPLEMENTATION
+#include "cursor.h"
 #include "dyn_string.h"
 #include "helpers.h"
 #include "keybinds.h"
@@ -28,6 +28,8 @@
 #include "layout.h"
 #include "mwc.h"
 #include "output.h"
+#define PARSER_IMPLEMENTATION
+#include "parser.h"
 #include "pointer.h"
 #include "rules.h"
 #include "toplevel.h"
@@ -111,9 +113,9 @@ config_add_layer_rule(struct config *c, char *regex, char *predicate, char **arg
 }
 
 static bool
-config_add_window_rule(struct config *c, char *app_id_regex, char *title_regex, char *predicate, char **args,
+config_add_toplevel_rule(struct config *c, char *app_id_regex, char *title_regex, char *predicate, char **args,
         size_t arg_count) {
-    struct window_rule_regex condition;
+    struct toplevel_rule_regex condition;
     if(strcmp(app_id_regex, "_") == 0) {
         condition.has_app_id_regex = false;
     } else {
@@ -139,31 +141,31 @@ config_add_window_rule(struct config *c, char *app_id_regex, char *title_regex, 
     }
 
     if(strcmp(predicate, "float") == 0) {
-        array_push(&c->window_rules.floating,
-                ((struct window_rule){
+        array_push(&c->toplevel_rules.floating,
+                ((struct toplevel_rule){
                         .condition = condition,
                 }));
     } else if(strcmp(predicate, "size") == 0) {
         if(arg_count < 2)
             goto invalid;
 
-        struct window_rule_size window_rule;
-        window_rule.condition = condition;
+        struct toplevel_rule_size toplevel_rule;
+        toplevel_rule.condition = condition;
 
         // if it ends with '%' we treat it as a relative unit
         if(args[0][strlen(args[0]) - 1] == '%') {
             args[0][strlen(args[0]) - 1] = 0;
-            window_rule.relative_width = true;
+            toplevel_rule.relative_width = true;
         }
         if(args[1][strlen(args[1]) - 1] == '%') {
             args[1][strlen(args[1]) - 1] = 0;
-            window_rule.relative_height = true;
+            toplevel_rule.relative_height = true;
         }
 
-        window_rule.width = max(atoi(args[0]), 0);
-        window_rule.height = max(atoi(args[1]), 0);
+        toplevel_rule.width = max(atoi(args[0]), 0);
+        toplevel_rule.height = max(atoi(args[1]), 0);
 
-        array_push(&c->window_rules.size, window_rule);
+        array_push(&c->toplevel_rules.size, toplevel_rule);
     } else if(strcmp(predicate, "opacity") == 0) {
         if(arg_count < 1)
             goto invalid;
@@ -171,41 +173,57 @@ config_add_window_rule(struct config *c, char *app_id_regex, char *title_regex, 
         double active = clamp(atof(args[0]), 0.0, 1.0);
         double inactive = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : active;
 
-        array_push(&c->window_rules.opacity,
-                ((struct window_rule_opacity){
+        array_push(&c->toplevel_rules.opacity,
+                ((struct toplevel_rule_opacity){
                         .condition = condition,
                         .active_value = active,
                         .inactive_value = inactive,
                 }));
-    } else if(strcmp(predicate, "no_titlebar") == 0) {
-        array_push(&c->window_rules.no_titlebar,
-                ((struct window_rule){
+    } else if(strcmp(predicate, "titlebar") == 0) {
+        if(arg_count < 1)
+            goto invalid;
+
+        array_push(&c->toplevel_rules.titlebar,
+                ((struct toplevel_rule_bool){
                         .condition = condition,
+                        .value = atoi(args[0]),
                 }));
-    } else if(strcmp(predicate, "no_border") == 0) {
-        array_push(&c->window_rules.no_border,
-                ((struct window_rule){
+    } else if(strcmp(predicate, "border") == 0) {
+        if(arg_count < 1)
+            goto invalid;
+
+        array_push(&c->toplevel_rules.border,
+                ((struct toplevel_rule_bool){
                         .condition = condition,
+                        .value = atoi(args[0]),
                 }));
-    } else if(strcmp(predicate, "no_shadow") == 0) {
-        array_push(&c->window_rules.no_shadow,
-                ((struct window_rule){
+    } else if(strcmp(predicate, "shadow") == 0) {
+        if(arg_count < 1)
+            goto invalid;
+
+        array_push(&c->toplevel_rules.shadow,
+                ((struct toplevel_rule_bool){
                         .condition = condition,
+                        .value = atoi(args[0]),
                 }));
-    } else if(strcmp(predicate, "no_blur") == 0) {
-        array_push(&c->window_rules.no_blur,
-                ((struct window_rule){
+    } else if(strcmp(predicate, "blur") == 0) {
+        if(arg_count < 1)
+            goto invalid;
+
+        array_push(&c->toplevel_rules.blur,
+                ((struct toplevel_rule_bool){
                         .condition = condition,
+                        .value = atoi(args[0]),
                 }));
     } else {
-        ERROR("invalid window_rule `%s`", predicate);
+        ERROR("invalid toplevel_rule `%s`", predicate);
         goto cleanup;
     }
 
     return true;
 
 invalid:
-    ERROR("invalid args to window_rule `%s`", predicate);
+    ERROR("invalid args to toplevel_rule `%s`", predicate);
 cleanup:
     if(condition.has_app_id_regex) {
         regfree(&condition.app_id_regex);
@@ -216,34 +234,6 @@ cleanup:
     return false;
 }
 
-static char *
-string_append_with_comma(char *a, char *b, size_t *cap, bool comma) {
-    // append this while making sure there is enough space
-    size_t a_len = strlen(a);
-    size_t b_len = strlen(b);
-    while(*cap < a_len + b_len + 2) {
-        *cap *= 2;
-        a = realloc(a, *cap);
-    }
-
-    // now there is enough space to fit the new one; we add , if its not the first one
-    if(comma) {
-        a[a_len] = ',';
-        a_len++;
-    }
-    // and then copy the thing over
-    char *p = b;
-    char *q = &a[a_len];
-    while(*p != 0) {
-        *q = *p;
-        p++;
-        q++;
-    }
-    *q = 0;
-
-    return a;
-}
-
 // handle appending to the config string
 static void
 config_add_keymap(struct config *c, char *layout, char *variant) {
@@ -251,60 +241,41 @@ config_add_keymap(struct config *c, char *layout, char *variant) {
         // it has not been allocated yet
         c->keymap_layouts = string_new(NULL);
         c->keymap_variants = string_new(NULL);
-        string_append_string(&c->keymap_layouts, layout);
-        string_append_string(&c->keymap_variants, variant);
+        string_append_c_string(&c->keymap_layouts, layout);
+        string_append_c_string(&c->keymap_variants, variant);
+        return;
     }
 
     string_append(&c->keymap_layouts, ',');
     string_append(&c->keymap_variants, ',');
-    string_append_string(&c->keymap_layouts, layout);
-    string_append_string(&c->keymap_variants, variant);
+    string_append_c_string(&c->keymap_layouts, layout);
+    string_append_c_string(&c->keymap_variants, variant);
 }
 
 static bool
 config_add_keybind(struct config *c, char *modifiers, char *key, char *action, char **args, size_t arg_count) {
-    char *p = modifiers;
     uint32_t modifiers_flag = 0;
 
-    while(*p != '\0') {
-        char *mod = string_new(NULL);
-        while(*p != '+' && *p != '\0') {
-            string_append(&mod, *p);
-            p++;
-        }
-
-        if(strcmp(mod, "alt") == 0) {
+    char *tok = strtok(modifiers, "+");
+    while(tok != NULL) {
+        if(strcmp(tok, "alt") == 0) {
             modifiers_flag |= WLR_MODIFIER_ALT;
-        } else if(strcmp(mod, "super") == 0) {
+        } else if(strcmp(tok, "super") == 0) {
             modifiers_flag |= WLR_MODIFIER_LOGO;
-        } else if(strcmp(mod, "ctrl") == 0) {
+        } else if(strcmp(tok, "ctrl") == 0) {
             modifiers_flag |= WLR_MODIFIER_CTRL;
-        } else if(strcmp(mod, "shift") == 0) {
+        } else if(strcmp(tok, "shift") == 0) {
             modifiers_flag |= WLR_MODIFIER_SHIFT;
         }
 
-        string_destroy(mod);
-
-        if(*p == '+')
-            p++;
+        tok = strtok(NULL, "+");
     }
 
     uint32_t key_sym = 0;
     bool pointer = false;
-    if(strncmp(key, "mouse_", 6) == 0) {
+    if(strncmp(key, "pointer_", strlen("pointer_")) == 0) {
         pointer = true;
-        key = key + 6;
-        if(strcmp(key, "left_click") == 0) {
-            key_sym = 272;
-        } else if(strcmp(key, "right_click") == 0) {
-            key_sym = 273;
-        } else if(strcmp(key, "middle_click") == 0) {
-            key_sym = 274;
-        } else {
-            key_sym = atoi(key);
-        }
-    } else if(strncmp(key, "pointer_", 8) == 0) {
-        pointer = true;
+
         key = key + 8;
         if(strcmp(key, "left_click") == 0) {
             key_sym = 272;
@@ -336,7 +307,7 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
             key_sym = XKB_KEY_Right;
         } else {
             key_sym = xkb_keysym_from_name(key, 0);
-            if(key_sym == 0) {
+            if(key_sym == XKB_KEY_NoSymbol) {
                 ERROR("key `%s` doesn't seem right", key);
                 return false;
             }
@@ -459,18 +430,14 @@ invalid:
     return false;
 }
 
-static void
-destroy_args(char **args) {
-    for(size_t i = 0; i < array_len(args); i++) {
-        string_destroy(args[i]);
-    }
-
-    array_destroy(args);
-}
-
 static bool
-handle_value(struct config *c, char *keyword, char **args) {
-    size_t arg_count = array_len(args);
+handle_line(struct config *c, char **words) {
+    if(array_len(words) < 2)
+        return false;
+
+    char *keyword = words[0];
+    char **args = &words[1];
+    size_t arg_count = array_len(words) - 1;
 
     if(strcmp(keyword, "keyboard_rate") == 0) {
         if(arg_count < 1)
@@ -548,6 +515,17 @@ handle_value(struct config *c, char *keyword, char **args) {
             goto invalid;
 
         c->border_width = max(atoi(args[0]), 0);
+    } else if(strcmp(keyword, "border_color") == 0) {
+        if(arg_count < 1)
+            goto invalid;
+
+        if(!try_parse_color(args[0], &c->border_color.active)) {
+            goto invalid;
+        }
+
+        if(arg_count == 1 || !try_parse_color(args[1], &c->border_color.inactive)) {
+            c->border_color.inactive = c->border_color.active;
+        }
     } else if(strcmp(keyword, "outer_gaps") == 0) {
         if(arg_count < 1)
             goto invalid;
@@ -578,17 +556,6 @@ handle_value(struct config *c, char *keyword, char **args) {
             goto invalid;
 
         c->cursor_size = max(atoi(args[0]), 0);
-    } else if(strcmp(keyword, "border_color") == 0) {
-        if(arg_count < 1)
-            goto invalid;
-
-        if(!try_parse_color(args[0], &c->border_color.active)) {
-            goto invalid;
-        }
-
-        if(arg_count == 1 || !try_parse_color(args[1], &c->border_color.inactive)) {
-            c->border_color.inactive = c->border_color.active;
-        }
     } else if(strcmp(keyword, "output_mode") == 0) {
         if(arg_count < 4)
             goto invalid;
@@ -636,11 +603,11 @@ handle_value(struct config *c, char *keyword, char **args) {
             goto invalid;
 
         setenv(args[0], args[1], true);
-    } else if(strcmp(keyword, "window_rule") == 0) {
+    } else if(strcmp(keyword, "toplevel_rule") == 0) {
         if(arg_count < 3)
             goto invalid;
 
-        config_add_window_rule(c, args[0], args[1], args[2], &args[3], arg_count - 3);
+        config_add_toplevel_rule(c, args[0], args[1], args[2], &args[3], arg_count - 3);
     } else if(strcmp(keyword, "animations") == 0) {
         if(arg_count < 1)
             goto invalid;
@@ -896,128 +863,14 @@ handle_value(struct config *c, char *keyword, char **args) {
         }
     } else {
         ERROR("invalid keyword `%s`", keyword);
-        string_destroy(keyword);
-        destroy_args(args);
         return false;
     }
 
-    string_destroy(keyword);
-    destroy_args(args);
     return true;
 
 invalid:
     ERROR("invalid args to `%s`", keyword);
-    string_destroy(keyword);
-    destroy_args(args);
     return false;
-}
-
-static void
-get_default_config_path(char *dest, size_t size) {
-    char *default_config_path = getenv("DEFAULT_CONFIG_PATH");
-
-    if(default_config_path == NULL) {
-        default_config_path = "/usr/share/mwc/default.conf";
-        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, using the default `%s`", default_config_path);
-    } else {
-        wlr_log(WLR_INFO, "env DEFAULT_CONFIG_PATH set to `%s`, using it", default_config_path);
-    }
-
-    strncpy(dest, default_config_path, size);
-    dest[size - 1] = 0;
-}
-
-static bool
-get_config_path(char *dest, size_t size) {
-    char *env_conf = getenv("CONFIG_PATH");
-    if(env_conf != NULL) {
-        strncpy(dest, env_conf, size);
-        dest[size - 1] = 0;
-        return true;
-    }
-
-    char *config_home = getenv("XDG_CONFIG_HOME");
-    if(config_home != NULL) {
-        snprintf(dest, size, "%s/mwc/mwc.conf", config_home);
-        return true;
-    }
-
-    char *home = getenv("HOME");
-    if(home != NULL) {
-        snprintf(dest, size, "%s/.config/mwc/mwc.conf", home);
-        return true;
-    }
-
-    return false;
-}
-
-// returns `false` if the line is empty, else returns `true` with the parametars extracted into the passed pointers.
-// `*keyword` is a string, and `*arguments` is an array of strings. assumes the line is newline terminated, as it should
-// be with `fgets()`
-static bool
-parse_line(char *line, char **keyword, char ***arguments) {
-    char *p = line;
-
-    // skip whitespace
-    while(*p == ' ' || *p == '\t')
-        p++;
-
-    // if its an empty line or it starts with '#' (comment) skip
-    if(*p == '\n' || *p == '#')
-        return false;
-
-    // we create these more ergonomic variables to use; will 'return' them at the end
-    char *kw = string_new(NULL);
-    char **args;
-    array_init(&args);
-
-    while(*p != ' ' && *p != '\t' && *p != '\n') {
-        string_append(&kw, *p);
-        p++;
-    }
-
-    // skip whitespace
-    while(*p == ' ' || *p == '\t')
-        p++;
-
-    while(*p != '\n') {
-        char *arg = string_new(NULL);
-
-        bool word = false;
-        if(*p == '\"') {
-            word = true;
-            p++;
-        };
-
-        while((word && *p != '\"' && *p != '\n') || (!word && *p != ' ' && *p != '\t' && *p != '\n')) {
-            if(word && *p == '\\' && *(p + 1) == '\"') {
-                // escape quotes
-                string_append(&arg, '\"');
-                p += 2;
-            } else if(word && *p == '\\' && *(p + 1) == '\\') {
-                // escape double backslash
-                string_append(&arg, '\\');
-                p += 2;
-            } else {
-                string_append(&arg, *p);
-                p++;
-            }
-        }
-
-        array_push(&args, arg);
-
-        if(word)
-            p++;
-
-        // skip whitespace
-        while(*p == ' ' || *p == '\t')
-            p++;
-    }
-
-    *keyword = kw;
-    *arguments = args;
-
-    return true;
 }
 
 static void
@@ -1069,43 +922,34 @@ set_default_needed_params(struct config *c) {
     }
 }
 
-struct config *
-config_load() {
-    struct config *c = calloc(1, sizeof(*c));
+// returns a default config path, does not need to be freed
+static char *
+get_default_config_path(void) {
+    char *path = getenv("DEFAULT_CONFIG_PATH");
 
-    FILE *config_file;
-    char path[1024];
-    if(get_config_path(path, sizeof(path))) {
-        config_file = fopen(path, "r");
-        if(config_file != NULL) {
-            char *current = path;
-            char *last_slash = NULL;
-            while(*current != 0) {
-                if(*current == '/') {
-                    last_slash = current;
-                }
-                current++;
-            }
-
-            assert(last_slash != NULL);
-            *last_slash = 0;
-            c->dir = strdup(path);
-        } else {
-            wlr_log(WLR_INFO, "couldn't open the config file");
-            get_default_config_path(path, sizeof(path));
-            config_file = fopen(path, "r");
-        }
+    if(path == NULL) {
+        path = "/usr/share/mwc/default.conf";
+        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, using the default `%s`", path);
     } else {
-        wlr_log(WLR_INFO, "couldn't get config file path, backing to default config");
-        get_default_config_path(path, sizeof(path));
-        config_file = fopen(path, "r");
+        wlr_log(WLR_INFO, "env DEFAULT_CONFIG_PATH set to `%s`, using it", path);
     }
 
-    if(config_file == NULL) {
-        wlr_log(WLR_ERROR, "couldn't open the default config file");
-        free(c);
-        return NULL;
+    return path;
+}
+
+struct config *
+config_load(char *path) {
+    FILE *config_file;
+    if(path == NULL || (config_file = fopen(path, "r")) == NULL) {
+        wlr_log(WLR_ERROR, "config: coundn't open the config file, backing to default config");
+        config_file = fopen(get_default_config_path(), "r");
+        if(config_file == NULL) {
+            wlr_log(WLR_ERROR, "config: couldn't open the default config file, quitting");
+            return NULL;
+        }
     }
+
+    struct config *c = calloc(1, sizeof(*c));
 
     // initialize all of the arrays
     array_init(&c->keybinds);
@@ -1114,43 +958,42 @@ config_load() {
     array_init(&c->output_positions);
     array_init(&c->workspaces);
     array_init(&c->pointers);
-    array_init(&c->window_rules.floating);
-    array_init(&c->window_rules.size);
-    array_init(&c->window_rules.opacity);
-    array_init(&c->window_rules.no_titlebar);
-    array_init(&c->window_rules.no_border);
-    array_init(&c->window_rules.no_shadow);
-    array_init(&c->window_rules.no_blur);
+    array_init(&c->toplevel_rules.floating);
+    array_init(&c->toplevel_rules.size);
+    array_init(&c->toplevel_rules.opacity);
+    array_init(&c->toplevel_rules.titlebar);
+    array_init(&c->toplevel_rules.border);
+    array_init(&c->toplevel_rules.shadow);
+    array_init(&c->toplevel_rules.blur);
 
     array_init(&c->layer_rules.blur);
 
     array_init(&c->run);
 
-    char *keyword, **args;
-    line_number = 1;
-
+    line_number = 0;
     // you aint gonna have lines longer than this
     char buffer[1024];
     while(fgets(buffer, sizeof(buffer), config_file) != NULL) {
-        if(parse_line(buffer, &keyword, &args)) {
-            handle_value(c, keyword, args);
-        }
-
         line_number++;
+
+        if(buffer[0] == '#')
+            continue;
+
+        char **words = parse_string(buffer, '"', '\\', '\n');
+        handle_line(c, words);
+        array_destroy(words);
     }
 
     fclose(config_file);
     set_default_needed_params(c);
+
+    wlr_log(WLR_ERROR, "keymap: %s\n%s", c->keymap_layouts, c->keymap_variants);
 
     return c;
 }
 
 void
 config_destroy(struct config *c) {
-    if(c->dir != NULL) {
-        free(c->dir);
-    }
-
     for(struct output_mode_config *iter = c->output_modes; iter <= array_last(c->output_modes); iter++) {
         free(iter->name);
     }
@@ -1176,28 +1019,8 @@ config_destroy(struct config *c) {
     // here we dont allocate anything more than just a struct
     array_destroy(c->pointer_keybinds);
 
-    // destroy window rules
-    for(struct window_rule *iter = c->window_rules.floating; iter <= array_last(c->window_rules.floating); iter++) {
-        if(iter->condition.has_app_id_regex) {
-            regfree(&iter->condition.app_id_regex);
-        }
-        if(iter->condition.has_title_regex) {
-            regfree(&iter->condition.title_regex);
-        }
-    }
-    array_destroy(c->window_rules.floating);
-
-    for(struct window_rule_size *iter = c->window_rules.size; iter <= array_last(c->window_rules.size); iter++) {
-        if(iter->condition.has_app_id_regex) {
-            regfree(&iter->condition.app_id_regex);
-        }
-        if(iter->condition.has_title_regex) {
-            regfree(&iter->condition.title_regex);
-        }
-    }
-    array_destroy(c->window_rules.size);
-
-    for(struct window_rule_opacity *iter = c->window_rules.opacity; iter <= array_last(c->window_rules.opacity);
+    // destroy toplevel rules
+    for(struct toplevel_rule *iter = c->toplevel_rules.floating; iter <= array_last(c->toplevel_rules.floating);
             iter++) {
         if(iter->condition.has_app_id_regex) {
             regfree(&iter->condition.app_id_regex);
@@ -1206,9 +1029,19 @@ config_destroy(struct config *c) {
             regfree(&iter->condition.title_regex);
         }
     }
-    array_destroy(c->window_rules.opacity);
+    array_destroy(c->toplevel_rules.floating);
 
-    for(struct window_rule *iter = c->window_rules.no_titlebar; iter <= array_last(c->window_rules.no_titlebar);
+    for(struct toplevel_rule_size *iter = c->toplevel_rules.size; iter <= array_last(c->toplevel_rules.size); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
+        }
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
+    }
+    array_destroy(c->toplevel_rules.size);
+
+    for(struct toplevel_rule_opacity *iter = c->toplevel_rules.opacity; iter <= array_last(c->toplevel_rules.opacity);
             iter++) {
         if(iter->condition.has_app_id_regex) {
             regfree(&iter->condition.app_id_regex);
@@ -1217,9 +1050,10 @@ config_destroy(struct config *c) {
             regfree(&iter->condition.title_regex);
         }
     }
-    array_destroy(c->window_rules.no_titlebar);
+    array_destroy(c->toplevel_rules.opacity);
 
-    for(struct window_rule *iter = c->window_rules.no_border; iter <= array_last(c->window_rules.no_border); iter++) {
+    for(struct toplevel_rule_bool *iter = c->toplevel_rules.titlebar; iter <= array_last(c->toplevel_rules.titlebar);
+            iter++) {
         if(iter->condition.has_app_id_regex) {
             regfree(&iter->condition.app_id_regex);
         }
@@ -1227,9 +1061,10 @@ config_destroy(struct config *c) {
             regfree(&iter->condition.title_regex);
         }
     }
-    array_destroy(c->window_rules.no_border);
+    array_destroy(c->toplevel_rules.titlebar);
 
-    for(struct window_rule *iter = c->window_rules.no_shadow; iter <= array_last(c->window_rules.no_shadow); iter++) {
+    for(struct toplevel_rule_bool *iter = c->toplevel_rules.border; iter <= array_last(c->toplevel_rules.border);
+            iter++) {
         if(iter->condition.has_app_id_regex) {
             regfree(&iter->condition.app_id_regex);
         }
@@ -1237,9 +1072,10 @@ config_destroy(struct config *c) {
             regfree(&iter->condition.title_regex);
         }
     }
-    array_destroy(c->window_rules.no_shadow);
+    array_destroy(c->toplevel_rules.border);
 
-    for(struct window_rule *iter = c->window_rules.no_blur; iter <= array_last(c->window_rules.no_blur); iter++) {
+    for(struct toplevel_rule_bool *iter = c->toplevel_rules.shadow; iter <= array_last(c->toplevel_rules.shadow);
+            iter++) {
         if(iter->condition.has_app_id_regex) {
             regfree(&iter->condition.app_id_regex);
         }
@@ -1247,7 +1083,17 @@ config_destroy(struct config *c) {
             regfree(&iter->condition.title_regex);
         }
     }
-    array_destroy(c->window_rules.no_blur);
+    array_destroy(c->toplevel_rules.shadow);
+
+    for(struct toplevel_rule_bool *iter = c->toplevel_rules.blur; iter <= array_last(c->toplevel_rules.blur); iter++) {
+        if(iter->condition.has_app_id_regex) {
+            regfree(&iter->condition.app_id_regex);
+        }
+        if(iter->condition.has_title_regex) {
+            regfree(&iter->condition.title_regex);
+        }
+    }
+    array_destroy(c->toplevel_rules.blur);
 
     // destroy layer rules
     for(struct layer_rule_blur *iter = c->layer_rules.blur; iter <= array_last(c->layer_rules.blur); iter++) {
@@ -1302,12 +1148,12 @@ layout_reorganize(struct workspace *workspace) {
     }
 }
 
-void
-config_reload() {
-    struct config *c = config_load();
+static void
+config_reload(void) {
+    struct config *c = config_load(server.config_path);
     if(c == NULL) {
         // if we couldnt load the config then skip the reload
-        wlr_log(WLR_ERROR, "could not reload the config, keeping the old one");
+        wlr_log(WLR_ERROR, "config: could not reload the config, keeping the old one");
         return;
     }
 
@@ -1373,6 +1219,8 @@ config_reload() {
             wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
                 decoration_destroy_all(&iter_toplevel->decoration);
                 toplevel_check_rules(iter_toplevel);
+
+                toplevel_set_state(iter_toplevel, iter_toplevel->deco_box);
             }
 
             if(iter_workspace->fullscreen != NULL) {
@@ -1390,6 +1238,8 @@ config_reload() {
     if(server.grabbed_toplevel != NULL) {
         decoration_destroy_all(&server.grabbed_toplevel->decoration);
         toplevel_check_rules(server.grabbed_toplevel);
+
+        toplevel_set_state(server.grabbed_toplevel, server.grabbed_toplevel->deco_box);
     }
 
     struct keyboard *keyboard;
@@ -1404,65 +1254,65 @@ config_reload() {
 
     wlr_xcursor_manager_destroy(server.cursor_mgr);
     server.cursor_mgr = wlr_xcursor_manager_create(server.config->cursor_theme, server.config->cursor_size);
-
-    if(server.config->cursor_theme != NULL) {
-        setenv("XCURSOR_THEME", server.config->cursor_theme, true);
-    } else {
-        setenv("XCURSOR_THEME", "", true);
-    }
-
-    char cursor_size[8];
-    snprintf(cursor_size, sizeof(cursor_size), "%u", server.config->cursor_size);
-    setenv("XCURSOR_SIZE", cursor_size, true);
+    cursor_set_xcursor_variables(c->cursor_theme, c->cursor_size);
 }
 
-static void
-idle_reload_config(void *data) {
-    wlr_log(WLR_INFO, "reloading config");
-    config_reload();
-}
-
-#define EVENT_SIZE (sizeof(struct inotify_event))
-#define BUF_LEN (16 * (EVENT_SIZE + 16))
-
-void *
-config_watch(void *arg) {
-    char *dir = arg;
-
-    if(dir == NULL)
-        return NULL;
-
-    int inotify_fd = inotify_init();
-    if(inotify_fd < 0) {
-        wlr_log(WLR_ERROR, "inotify failed to start");
-        return NULL;
+static int
+watch_callback(int fd, uint32_t mask, void *data) {
+    if((mask & WL_EVENT_ERROR) || (mask & WL_EVENT_HANGUP)) {
+        wlr_log(WLR_ERROR, "config watcher: error occurred, quitting");
+        config_watcher_deinit();
+        return 0;
     }
 
-    int wd = inotify_add_watch(inotify_fd, dir, IN_MODIFY);
-    if(wd < 0) {
-        wlr_log(WLR_ERROR, "inotify failed to start");
-        close(inotify_fd);
-        return NULL;
+    char buffer[1024];
+    ssize_t len = read(fd, buffer, sizeof(buffer));
+    if(len < 0) {
+        wlr_log(WLR_ERROR, "config watcher: inotify failed read");
+        return 0;
     }
 
-    char buffer[BUF_LEN];
-    while(true) {
-        ssize_t length = read(inotify_fd, buffer, BUF_LEN);
-        if(length < 0) {
-            wlr_log(WLR_ERROR, "inotify failed read");
-            break;
-        }
-
-        for(char *ptr = buffer; ptr < buffer + length; ptr += EVENT_SIZE + ((struct inotify_event *)ptr)->len) {
-            struct inotify_event *event = (struct inotify_event *)ptr;
-            if(event->mask & IN_MODIFY) {
-                wl_event_loop_add_idle(server.wl_event_loop, idle_reload_config, NULL);
-            }
+    for(char *ptr = buffer; ptr < buffer + len;
+            ptr += sizeof(struct inotify_event) + ((struct inotify_event *)ptr)->len) {
+        struct inotify_event *event = (struct inotify_event *)ptr;
+        if(event->mask & IN_MODIFY) {
+            wlr_log(WLR_INFO, "config watcher: config modified, reloading");
+            config_reload();
         }
     }
 
-    inotify_rm_watch(inotify_fd, wd);
-    close(inotify_fd);
+    return 0;
+}
 
-    return NULL;
+void
+config_watcher_init(char *dir) {
+    server.config_watcher.fd = inotify_init();
+    if(server.config_watcher.fd < 0) {
+        wlr_log(WLR_ERROR, "config watcher: failed to start");
+        return;
+    }
+
+    server.config_watcher.wd = inotify_add_watch(server.config_watcher.fd, dir, IN_MODIFY);
+    if(server.config_watcher.wd < 0) {
+        wlr_log(WLR_ERROR, "config watcher: failed to add directory `%s`", dir);
+        close(server.config_watcher.fd);
+        return;
+    }
+
+    server.config_watcher.source = wl_event_loop_add_fd(server.wl_event_loop, server.config_watcher.fd,
+            WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR, watch_callback, NULL);
+}
+
+void
+config_watcher_deinit(void) {
+    wl_event_source_remove(server.config_watcher.source);
+    server.config_watcher.source = NULL;
+
+    inotify_rm_watch(server.config_watcher.fd, server.config_watcher.wd);
+    close(server.config_watcher.fd);
+}
+
+bool
+config_watcher_running(void) {
+    return server.config_watcher.source != NULL;
 }

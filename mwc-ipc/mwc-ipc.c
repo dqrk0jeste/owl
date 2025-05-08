@@ -7,6 +7,16 @@
 
 #include "ipc_shared.h"
 
+// action - keybind dispatchers
+// get - get some state
+// watch - watch for some state change
+
+int server_fd;
+
+void
+ipc_send(char *message, bool wait_response) {
+}
+
 void
 ipc_subscribe(int fd) {
     if(write(fd, "subscribe", strlen("subscribe")) < 0) {
@@ -46,39 +56,34 @@ ipc_simple(int fd, char *message) {
 int
 main(int argc, char *argv[]) {
     if(argc < 2 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
-        fprintf(stderr,
-                "usage: mwc-ipc message\n"
-                "where message is one of\n"
-                "\tsubscribe - receive all the events from the compositor\n"
-                "\ttoplevels - list app_ids and titles of all the toplevels\n"
-                "\tlayers - list namespaces of all the layers\n"
-                "\toutputs - list names of all the outputs\n");
+        printf("usage: mwc-ipc message\n\n"
+               "where message is one of\n"
+               "\tget <toplevels|outputs|layers|workspaces|active_workspace|focused_toplevel|focused_layer> - get the "
+               "information about the asked resourse\n"
+               "\twatch <active_workspace|focused_toplevel|focused_layer> - watch the specified state\n"
+               "\action <action> - perform the desired action\n");
         return 0;
     }
 
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if(fd == -1) {
+    server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if(server_fd < 0) {
         perror("socket");
         return 1;
     }
 
     struct sockaddr_un address = {0};
     address.sun_family = AF_UNIX;
-    strcpy(address.sun_path, IPC_PATH);
+    strcpy(address.sun_path, IPC_SOCKET);
 
-    if(connect(fd, (struct sockaddr *)&address, sizeof(address)) == -1) {
+    if(connect(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("connect");
-        close(fd);
+        close(server_fd);
         return 1;
     }
 
-    if(strcmp(argv[1], "subscribe") == 0) {
-        ipc_subscribe(fd);
-    } else {
-        ipc_simple(fd, argv[1]);
-    }
+    // code here
 
-    close(fd);
+    close(server_fd);
 
     return 0;
 }

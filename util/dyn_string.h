@@ -18,7 +18,10 @@ char *
 string_new_with_capacity(char *s, size_t cap);
 
 char *
-string_new_empty(size_t cap);
+string_new_empty(void);
+
+char *
+string_new_empty_with_capacity(size_t cap);
 
 void
 string_destroy(char *s);
@@ -29,9 +32,12 @@ string_len(char *s);
 size_t
 string_cap(char *s);
 
-// check if the two provided strings `a` and `b` are the same; note: even tho you can use `strcmp()`, you are advised to
-// use this function, since it will skip the comparasion if their lengths are not the same. it still uses `strcmp()`
-// under the hood, so there isn't a speed tradeoff at all
+char *
+string_clone(char *s);
+
+// check if the two provided strings `a` and `b` are the same; note: even tho you can use `strcmp()`, you are
+// advised to use this function, since it will skip the comparasion if their lengths are not the same. it still
+// uses `strcmp()` under the hood, so there isn't a speed tradeoff at all
 bool
 string_equal(char *a, char *b);
 
@@ -93,7 +99,7 @@ __grow_cap(char **s, size_t cap) {
 }
 
 char *
-string_new_empty(size_t cap) {
+string_new_empty_with_capacity(size_t cap) {
     size_t *meta = (size_t *)malloc(2 * sizeof(size_t) + cap);
 
     // capacity
@@ -109,9 +115,14 @@ string_new_empty(size_t cap) {
 }
 
 char *
+string_new_empty(void) {
+    return string_new_empty_with_capacity(STRING_DEFAULT_CAP);
+}
+
+char *
 string_new_with_capacity(char *s, size_t cap) {
     if(s == NULL)
-        return string_new_empty(cap);
+        return string_new_empty_with_capacity(cap);
 
     size_t len = strlen(s);
     cap = len + 1 > cap ? len + 1 : cap;
@@ -144,6 +155,15 @@ string_len(char *s) {
 size_t
 string_cap(char *s) {
     return *((size_t *)s - 2);
+}
+
+char *
+string_clone(char *s) {
+    char *ret = string_new_empty_with_capacity(string_len(s) + 1);
+    memcpy(ret, s, string_len(s) + 1);
+    __set_len(ret, string_len(s));
+
+    return ret;
 }
 
 bool
@@ -206,7 +226,7 @@ string_substring(char *s, size_t start, size_t end) {
     if(end > len)
         end = len;
     if(start > end)
-        return string_new_empty(0);
+        return string_new_empty();
 
     char *sub = string_new_with_capacity(NULL, end - start + 1);
     memcpy(sub, s + start, end - start);

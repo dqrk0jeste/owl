@@ -39,6 +39,7 @@ endforeach
 src = [
   'src/animations.c',
   'src/config.c',
+  'src/cursor.c',
   'src/decoration.c',
   'src/dnd.c',
   'src/foreign_toplevel.c',
@@ -51,6 +52,7 @@ src = [
   'src/layout.c',
   'src/mwc.c',
   'src/output.c',
+  'src/pixman_buffer.c',
   'src/pointer.c',
   'src/popup.c',
   'src/rendering.c',
@@ -60,7 +62,6 @@ src = [
   'src/text_node.c',
   'src/toplevel.c',
   'src/workspace.c',
-  'util/pixman_buffer.c',
 ]
 
 inc = [
@@ -77,7 +78,6 @@ deps = [
   dependency('xkbcommon'),
   dependency('libinput'),
   dependency('fcft'),
-  dependency('json-c'),
 ]
 
 executable('mwc',

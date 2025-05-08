@@ -8,7 +8,7 @@
 extern struct server server;
 
 bool
-toplevel_matches_window_rule(struct toplevel *toplevel, struct window_rule_regex *condition) {
+toplevel_matches_toplevel_rule(struct toplevel *toplevel, struct toplevel_rule_regex *condition) {
     char *app_id = toplevel->xdg_toplevel->app_id;
     char *title = toplevel->xdg_toplevel->title;
 
@@ -30,11 +30,12 @@ layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct lay
     return namespace != NULL && regexec(&condition->regex, namespace, 0, NULL, 0) == 0;
 }
 
+// note: we go backwards when checking for rules, so the later rules 'override' the previous ones
 static void
-check_opacity_rules(struct toplevel *toplevel) {
-    for(struct window_rule_opacity *iter = server.config->window_rules.opacity;
-            iter <= array_last(server.config->window_rules.opacity); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+set_opacity(struct toplevel *toplevel) {
+    for(struct toplevel_rule_opacity *iter = array_last(server.config->toplevel_rules.opacity);
+            iter >= server.config->toplevel_rules.opacity; iter--) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
             toplevel->active_opacity = iter->active_value;
             toplevel->inactive_opacity = iter->inactive_value;
             return;
@@ -45,74 +46,58 @@ check_opacity_rules(struct toplevel *toplevel) {
     toplevel->inactive_opacity = server.config->opacity.inactive;
 }
 
-static bool
-should_have_blur(struct toplevel *toplevel) {
-    if(!server.config->blur) {
-        return false;
-    }
-
-    for(struct window_rule *iter = server.config->window_rules.no_blur;
-            iter <= array_last(server.config->window_rules.no_blur); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            return false;
+static void
+set_blur(struct toplevel *toplevel) {
+    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.blur);
+            iter >= server.config->toplevel_rules.blur; iter--) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
+            toplevel->has_blur = iter->value;
         }
     }
 
-    return true;
+    toplevel->has_blur = server.config->blur;
 }
 
 static bool
 should_have_shadow(struct toplevel *toplevel) {
-    if(!server.config->shadows) {
-        return false;
-    }
-
-    for(struct window_rule *iter = server.config->window_rules.no_shadow;
-            iter <= array_last(server.config->window_rules.no_shadow); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            return false;
+    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.shadow);
+            iter >= server.config->toplevel_rules.shadow; iter--) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
+            return iter->value;
         }
     }
 
-    return true;
+    return server.config->shadows;
 }
 
 static bool
 should_have_border(struct toplevel *toplevel) {
-    if(!server.config->borders) {
-        return false;
-    }
-
-    for(struct window_rule *iter = server.config->window_rules.no_border;
-            iter <= array_last(server.config->window_rules.no_border); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            return false;
+    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.border);
+            iter >= server.config->toplevel_rules.border; iter--) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
+            return iter->value;
         }
     }
 
-    return true;
+    return server.config->borders;
 }
 
 static bool
 should_have_titlebar(struct toplevel *toplevel) {
-    if(!server.config->titlebars) {
-        return false;
-    }
-
-    for(struct window_rule *iter = server.config->window_rules.no_titlebar;
-            iter <= array_last(server.config->window_rules.no_titlebar); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
-            return false;
+    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.titlebar);
+            iter >= server.config->toplevel_rules.titlebar; iter--) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
+            return iter->value;
         }
     }
 
-    return true;
+    return server.config->titlebars;
 }
 
 void
 toplevel_check_rules(struct toplevel *toplevel) {
-    check_opacity_rules(toplevel);
-    toplevel->has_blur = should_have_blur(toplevel);
+    set_opacity(toplevel);
+    set_blur(toplevel);
 
     uint32_t types = 0;
     if(should_have_shadow(toplevel)) {

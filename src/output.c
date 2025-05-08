@@ -222,7 +222,7 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
     // them until some output is attached again?
     // todo: try to make this cleaner, and remove this server.running maybe
     // todo: extract this into a function and also disable the things in the scene
-    if(server.running) {
+    if(server.mode != SERVER_MODE_SHUTTING) {
         output_evacuate_workspaces(output);
         if(output->session_lock_rect != NULL) {
             wlr_scene_node_destroy(&output->session_lock_rect->node);
@@ -232,7 +232,7 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
             output_destroy_blur(output);
         }
 
-    } else {
+        // } else {
         // todo: maybe destroy the workspaces? this way we could also handle the case of no output
     }
 

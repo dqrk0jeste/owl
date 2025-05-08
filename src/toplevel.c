@@ -51,9 +51,9 @@ toplevel_should_float(struct toplevel *toplevel) {
             toplevel->xdg_toplevel->parent != NULL)
         return true;
 
-    for(struct window_rule *iter = server.config->window_rules.floating;
-            iter <= array_last(server.config->window_rules.floating); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition))
+    for(struct toplevel_rule *iter = server.config->toplevel_rules.floating;
+            iter <= array_last(server.config->toplevel_rules.floating); iter++) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition))
             return true;
     }
 
@@ -75,9 +75,9 @@ toplevel_handle_own_size(struct toplevel *toplevel) {
 
 bool
 toplevel_get_floating_deco_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height) {
-    for(struct window_rule_size *iter = server.config->window_rules.size;
-            iter <= array_last(server.config->window_rules.size); iter++) {
-        if(toplevel_matches_window_rule(toplevel, &iter->condition)) {
+    for(struct toplevel_rule_size *iter = server.config->toplevel_rules.size;
+            iter <= array_last(server.config->toplevel_rules.size); iter++) {
+        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
             if(iter->relative_width) {
                 *width = toplevel->workspace->output->usable_area.width * iter->width / 100;
             } else {
@@ -121,14 +121,14 @@ toplevel_clip_tree(struct toplevel *toplevel, uint32_t width, uint32_t height) {
 
 static void
 toplevel_handle_initial_commit(struct toplevel *toplevel) {
-    // unlike other window rules we only check the floating ones on initial commit
+    // unlike other toplevel rules we only check the floating ones on initial commit
     if(toplevel_should_float(toplevel)) {
         toplevel->mode = TOPLEVEL_MODE_FLOATING;
     }
 
     uint32_t width, height;
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
-        // we lookup window rules
+        // we lookup toplevel rules
         if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
             decoration_get_content_size(&toplevel->decoration, &width, &height);
         } else {
@@ -233,8 +233,6 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
     if(toplevel->animation != NULL) {
         fx_transform_animation_destroy(toplevel->animation);
     }
-
-    decoration_destroy(&toplevel->decoration);
 
     // reset the mode if the grabbed toplevel was unmapped
     if(toplevel == server.grabbed_toplevel) {
@@ -422,6 +420,9 @@ toplevel_handle_destroy(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
     foreign_toplevel_handle_destroy(toplevel->foreign_toplevel_handle);
+
+    decoration_destroy(&toplevel->decoration);
+    wlr_scene_node_destroy(&toplevel->scene_tree->node);
 
     wl_list_remove(&toplevel->map.link);
     wl_list_remove(&toplevel->unmap.link);
@@ -909,7 +910,7 @@ toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.grabbed_tree);
 }
 
-static void
+static inline void
 set_default_decoration_types(struct decoration *decoration) {
     uint32_t types = 0;
     if(server.config->shadows) {
@@ -947,7 +948,7 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     // receive pointer focus
     view_create_for_node(&toplevel->scene_tree->node, VIEW_TOPLEVEL, toplevel);
 
-    // these values can be later rewritten by window rules; check toplevel_check_window_rules()
+    // these values can be later rewritten by toplevel rules; check toplevel_check_toplevel_rules()
     toplevel->has_blur = server.config->blur;
     toplevel->active_opacity = server.config->opacity.active;
     toplevel->inactive_opacity = server.config->opacity.inactive;
@@ -955,7 +956,7 @@ server_handle_new_toplevel(struct wl_listener *listener, void *data) {
     // initialize the decoration
     decoration_init(&toplevel->decoration, toplevel->content_tree);
     // we set the default decoration types, they may be changed even before map if the client submits app_id and title
-    // and they match some window rules
+    // and they match some toplevel rules
     set_default_decoration_types(&toplevel->decoration);
 
     wlr_fractional_scale_v1_notify_scale(toplevel->xdg_toplevel->base->surface,

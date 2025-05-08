@@ -22,7 +22,7 @@ extern struct server server;
 
 void
 keybind_stop_server(void *data) {
-    server.running = false;
+    server.mode = SERVER_MODE_SHUTTING;
     wl_display_terminate(server.wl_display);
 }
 

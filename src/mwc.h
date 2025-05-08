@@ -10,9 +10,12 @@
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/util/box.h>
 
+#include "config.h"
 #include "keyboard.h"
 #include "pointer.h"
 #include "session_lock.h"
+
+#define MWC_VERSION 0.2.0
 
 enum server_mode {
     SERVER_MODE_NORMAL = 0,
@@ -22,6 +25,7 @@ enum server_mode {
     SERVER_MODE_RESIZING,
     SERVER_MODE_RESIZING_MASTER_RATIO,
     SERVER_MODE_LOCKED,
+    SERVER_MODE_SHUTTING,
 };
 
 struct server {
@@ -132,11 +136,16 @@ struct server {
     struct wl_listener xdg_activation_request;
     struct wl_listener xdg_activation_new_token;
 
+    char *config_path;
     struct config *config;
+    struct {
+        struct wl_event_source *source;
+        int fd, wd;
+    } config_watcher;
 
-    int *ipc_clients;
-    bool ipc_running;
-
-    // todo: find a way to remove this
-    bool running;
+    struct {
+        struct wl_event_source *source;
+        int fd;
+        int *client_fds;  // array
+    } ipc;
 };

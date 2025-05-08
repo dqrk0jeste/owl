@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=mwc
-Comment=tiling wayland compositor based on wlroots
+Comment=tiling wayland compositor based on wlroots and scenefx
 Exec=mwc
 Type=Application
 DesktopNames=mwc
