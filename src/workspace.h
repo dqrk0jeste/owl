@@ -54,3 +54,6 @@ workspace_toplevels_set_enabled(struct workspace *workspace, bool enabled);
 
 void
 workspace_set_master_ratio(struct workspace *workspace, double master_ratio);
+
+struct workspace *
+workspace_find_by_index(uint32_t index);

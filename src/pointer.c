@@ -315,7 +315,7 @@ cursor_handle_motion(uint32_t time) {
         // }
 
         server.active_workspace = output->active_workspace;
-        ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
+        ipc_send_active_workspace();
     }
 
     if(server.mode == SERVER_MODE_MOVING) {
@@ -435,20 +435,17 @@ server_handle_cursor_button(struct wl_listener *listener, void *data) {
 
     for(struct keybind *iter = server.config->pointer_keybinds; iter <= array_last(server.config->pointer_keybinds);
             iter++) {
-        if(!iter->initialized)
-            continue;
-
         if(iter->active && iter->stop && event->button == iter->key &&
                 event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
             iter->active = false;
-            iter->stop(iter->args);
+            iter->stop(iter->data);
             return;
         }
 
         if(modifiers == iter->modifiers && event->button == iter->key &&
                 event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
             iter->active = true;
-            iter->action(iter->args);
+            iter->action(iter->data);
             return;
         }
     }

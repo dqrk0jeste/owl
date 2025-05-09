@@ -7,13 +7,14 @@
 typedef void (*keybind_action_func_t)(void *);
 
 struct keybind {
-    bool initialized;
     uint32_t modifiers;
     uint32_t key;
-    keybind_action_func_t action;
+
     bool active;
+    keybind_action_func_t action;
     keybind_action_func_t stop;
-    void *args;
+    void *data;
+
     struct wl_list link;
 };
 

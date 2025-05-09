@@ -33,8 +33,11 @@ keybind_run(void *data) {
 
 void
 keybind_change_workspace(void *data) {
-    struct workspace *workspace = data;
-    change_workspace(workspace, server.grabbed_toplevel != NULL);
+    struct workspace *workspace = workspace_find_by_index((uintptr_t)data);
+
+    if(workspace != NULL) {
+        change_workspace(workspace, server.grabbed_toplevel != NULL);
+    }
 }
 
 void
@@ -65,8 +68,11 @@ keybind_move_to_workspace(void *data) {
     if(toplevel == NULL || toplevel == server.grabbed_toplevel)
         return;
 
-    struct workspace *workspace = data;
-    toplevel_move_to_workspace(toplevel, workspace);
+    struct workspace *workspace = workspace_find_by_index((uintptr_t)data);
+
+    if(workspace != NULL) {
+        toplevel_move_to_workspace(toplevel, workspace);
+    }
 }
 
 static void
@@ -376,18 +382,15 @@ server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyb
 
     for(size_t i = 0; i < count; i++) {
         for(struct keybind *iter = server.config->keybinds; iter <= array_last(server.config->keybinds); iter++) {
-            if(!iter->initialized)
-                continue;
-
             if(iter->active && iter->stop && syms[i] == iter->key && state == WL_KEYBOARD_KEY_STATE_RELEASED) {
                 iter->active = false;
-                iter->stop(iter->args);
+                iter->stop(iter->data);
                 return true;
             }
 
             if(modifiers == iter->modifiers && syms[i] == iter->key && state == WL_KEYBOARD_KEY_STATE_PRESSED) {
                 iter->active = true;
-                iter->action(iter->args);
+                iter->action(iter->data);
                 return true;
             }
         }

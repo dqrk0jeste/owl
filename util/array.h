@@ -43,7 +43,7 @@
 } while(0)
 
 #define array_remove_by_ptr(arr, ptr) do {                                    \
-    for(typeof(*(arr)) __ptr = (ptr); __ptr < array_last(*(arr)); __ptr++) { \
+    for(typeof(*(arr)) __ptr = (ptr); __ptr < array_last(*(arr)); __ptr++) {  \
         *__ptr = *(__ptr + 1);                                                \
     }                                                                         \
     array_len(*(arr))--;                                                      \

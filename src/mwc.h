@@ -146,6 +146,6 @@ struct server {
     struct {
         struct wl_event_source *source;
         int fd;
-        int *client_fds;  // array
+        int *watching_workspace, *watching_toplevel, *watching_layer;  // array
     } ipc;
 };

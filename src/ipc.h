@@ -4,15 +4,6 @@
 
 #include "ipc_shared.h"
 
-enum ipc_event {
-    IPC_ACTIVE_WORKSPACE,
-    IPC_ACTIVE_TOPLEVEL,
-    IPC_EVENT_COUNT,
-};
-
-void
-ipc_broadcast_message(enum ipc_event event);
-
 void
 ipc_init(void);
 
@@ -21,3 +12,12 @@ ipc_deinit(void);
 
 bool
 ipc_running(void);
+
+void
+ipc_send_active_workspace(void);
+
+void
+ipc_send_focused_toplevel(void);
+
+void
+ipc_send_focused_layer(void);

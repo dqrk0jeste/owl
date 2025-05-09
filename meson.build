@@ -45,6 +45,7 @@ src = [
   'src/foreign_toplevel.c',
   'src/gamma_control.c',
   'src/helpers.c',
+  'src/input.c',
   'src/ipc.c',
   'src/keybinds.c',
   'src/keyboard.c',
@@ -78,6 +79,7 @@ deps = [
   dependency('xkbcommon'),
   dependency('libinput'),
   dependency('fcft'),
+  dependency('json-c'),
 ]
 
 executable('mwc',

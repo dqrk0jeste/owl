@@ -319,9 +319,6 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
             .key = key_sym,
     };
 
-    // this is immediately true for most, needs to be set to false if otherwise
-    keybind.initialized = true;
-
     if(strcmp(action, "exit") == 0) {
         keybind.action = keybind_stop_server;
     } else if(strcmp(action, "run") == 0) {
@@ -329,7 +326,7 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
             goto invalid;
 
         keybind.action = keybind_run;
-        keybind.args = strdup(args[0]);
+        keybind.data = strdup(args[0]);
     } else if(strcmp(action, "close") == 0) {
         keybind.action = keybind_close;
     } else if(strcmp(action, "toggle_floating") == 0) {
@@ -358,7 +355,7 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
         }
 
         keybind.action = keybind_move_focus;
-        keybind.args = (void *)direction;
+        keybind.data = (void *)direction;
     } else if(strcmp(action, "move") == 0) {
         if(arg_count < 1)
             goto invalid;
@@ -377,23 +374,21 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
         }
 
         keybind.action = keybind_move;
-        keybind.args = (void *)direction;
+        keybind.data = (void *)direction;
     } else if(strcmp(action, "workspace") == 0) {
         if(arg_count < 1)
             goto invalid;
 
         keybind.action = keybind_change_workspace;
         // this is going to be overriden by the actual workspace that is needed for change_workspace()
-        keybind.args = (void *)(uintptr_t)atoi(args[0]);
-        keybind.initialized = false;
+        keybind.data = (void *)(uintptr_t)atoi(args[0]);
     } else if(strcmp(action, "move_to_workspace") == 0) {
         if(arg_count < 1)
             goto invalid;
 
         keybind.action = keybind_move_to_workspace;
         // this is going to be overriden by the actual workspace that is needed for change_workspace()
-        keybind.args = (void *)(uintptr_t)atoi(args[0]);
-        keybind.initialized = false;
+        keybind.data = (void *)(uintptr_t)atoi(args[0]);
     } else if(strcmp(action, "next_workspace") == 0) {
         keybind.action = keybind_next_workspace;
     } else if(strcmp(action, "prev_workspace") == 0) {
@@ -405,13 +400,13 @@ config_add_keybind(struct config *c, char *modifiers, char *key, char *action, c
             goto invalid;
 
         keybind.action = keybind_increase_master_ratio;
-        keybind.args = (void *)(uintptr_t)(atof(args[0]) * 100);
+        keybind.data = (void *)(uintptr_t)(atof(args[0]) * 100);
     } else if(strcmp(action, "decrease_master_ratio") == 0) {
         if(arg_count < 1)
             goto invalid;
 
         keybind.action = keybind_decrease_master_ratio;
-        keybind.args = (void *)(uintptr_t)(atof(args[0]) * 100);
+        keybind.data = (void *)(uintptr_t)(atof(args[0]) * 100);
     } else {
         ERROR("invalid keybind action `%s`", action);
         return false;
@@ -1034,7 +1029,7 @@ config_destroy(struct config *c) {
 
     for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
         if(iter->action == keybind_run) {
-            free(iter->args);
+            free(iter->data);
         }
     }
     array_destroy(c->keybinds);
@@ -1217,17 +1212,6 @@ config_reload(void) {
 
         struct workspace *iter_workspace;
         wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
-            // we rewire the keybinds
-            for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
-                if(iter->action == keybind_change_workspace && (uintptr_t)iter->args == iter_workspace->index) {
-                    iter->args = iter_workspace;
-                    iter->initialized = true;
-                } else if(iter->action == keybind_move_to_workspace && (uintptr_t)iter->args == iter_workspace->index) {
-                    iter->args = iter_workspace;
-                    iter->initialized = true;
-                }
-            }
-
             struct toplevel *iter_toplevel;
             wl_list_for_each(iter_toplevel, &iter_workspace->masters, link) {
                 decoration_destroy_all(&iter_toplevel->decoration);

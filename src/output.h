@@ -28,7 +28,6 @@ struct output {
     struct wlr_scene_rect *session_lock_rect;
 
     struct wl_listener frame;
-    struct wl_listener request_state;
     struct wl_listener destroy;
 };
 

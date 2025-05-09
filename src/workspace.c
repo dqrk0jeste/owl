@@ -109,7 +109,7 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
     // and also as this outputs active workspace
     workspace->output->active_workspace = workspace;
 
-    ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
+    ipc_send_active_workspace();
 
     // handle the keyboard focus
     if(!keep_focus && server.mode <= SERVER_MODE_CAN_GIVE_FOCUS && !server.exclusive) {
@@ -252,4 +252,18 @@ workspace_set_master_ratio(struct workspace *workspace, double master_ratio) {
     workspace->master_ratio = clamp(master_ratio, 0.0, 1.0);
 
     layout_configure(workspace);
+}
+
+struct workspace *
+workspace_find_by_index(uint32_t index) {
+    struct output *iter_output;
+    wl_list_for_each(iter_output, &server.outputs, link) {
+        struct workspace *iter_workspace;
+        wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
+            if(iter_workspace->index == index)
+                return iter_workspace;
+        }
+    }
+
+    return NULL;
 }

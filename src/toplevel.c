@@ -249,7 +249,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
             } else if(has_masters(server.active_workspace)) {
                 focus_toplevel(first_master(server.active_workspace), false);
             } else {
-                ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+                ipc_send_focused_toplevel();
             }
         }
     } else if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
@@ -264,7 +264,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
             } else if(has_masters(workspace)) {
                 focus_toplevel(first_master(workspace), false);
             } else {
-                ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+                ipc_send_focused_toplevel();
             }
         }
     } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
@@ -279,7 +279,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
             } else if((focus = first_master(workspace)) != NULL) {
                 focus_toplevel(focus, false);
             } else {
-                ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+                ipc_send_focused_toplevel();
             }
         }
 
@@ -301,7 +301,7 @@ toplevel_handle_unmap(struct wl_listener *listener, void *data) {
             } else if((focus = prev_master(toplevel)) != NULL) {
                 focus_toplevel(focus, false);
             } else {
-                ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+                ipc_send_focused_toplevel();
             }
         }
 
@@ -396,7 +396,7 @@ toplevel_handle_set_app_id(struct wl_listener *listener, void *data) {
             toplevel->xdg_toplevel->app_id);
 
     if(toplevel == server.focused_toplevel) {
-        ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+        ipc_send_focused_toplevel();
     }
 }
 
@@ -411,7 +411,7 @@ toplevel_handle_set_title(struct wl_listener *listener, void *data) {
             toplevel->xdg_toplevel->title);
 
     if(toplevel == server.focused_toplevel) {
-        ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+        ipc_send_focused_toplevel();
     }
 }
 
@@ -588,7 +588,7 @@ unfocus_focused_toplevel(void) {
     // clear all focus on the keyboard
     wlr_seat_keyboard_notify_clear_focus(server.seat);
 
-    ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+    ipc_send_focused_toplevel();
 }
 
 void
@@ -637,7 +637,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
         pointer_handle_focus(get_now_in_ms(), false);
     }
 
-    ipc_broadcast_message(IPC_ACTIVE_TOPLEVEL);
+    ipc_send_focused_toplevel();
 }
 
 struct toplevel *

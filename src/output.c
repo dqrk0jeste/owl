@@ -15,7 +15,6 @@
 #include "array.h"
 #include "config.h"
 #include "ipc.h"
-#include "keybinds.h"
 #include "layout.h"
 #include "mwc.h"
 #include "rendering.h"
@@ -80,19 +79,6 @@ workspace_create_for_output(struct output *output, uint32_t index) {
     workspace->index = index;
     workspace->master_ratio = server.config->master_ratio;
     workspace->original_output = strdup(output->wlr_output->name);
-
-    // we attach the keybinds that the config specified
-    for(struct keybind *iter = server.config->keybinds; iter <= array_last(server.config->keybinds); iter++) {
-        // we didnt have information about what workspace this is going to be, so we only kept an index. now we replace
-        // it with the actual workspace pointer
-        if(iter->action == keybind_change_workspace && (uintptr_t)iter->args == workspace->index) {
-            iter->args = workspace;
-            iter->initialized = true;
-        } else if(iter->action == keybind_move_to_workspace && (uintptr_t)iter->args == workspace->index) {
-            iter->args = workspace;
-            iter->initialized = true;
-        }
-    }
 
     wl_list_insert(&output->workspaces, &workspace->link);
 }
@@ -192,7 +178,6 @@ output_handle_destroy(struct wl_listener *listener, void *data) {
     }
 
     wl_list_remove(&output->frame.link);
-    wl_list_remove(&output->request_state.link);
     wl_list_remove(&output->destroy.link);
 
     wl_list_remove(&output->link);
@@ -385,7 +370,7 @@ void
 focus_output(struct output *output, enum direction direction) {
     struct workspace *workspace = output->active_workspace;
     server.active_workspace = workspace;
-    ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
+    ipc_send_active_workspace();
 
     if(server.mode == SERVER_MODE_LOCKED) {
         if(!wl_list_empty(&server.lock->surfaces)) {
