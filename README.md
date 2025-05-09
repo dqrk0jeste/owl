@@ -15,12 +15,12 @@ although `mwc` is aiming to be really simple in its behaviour, it does provide a
 ## features
 - tiling and floating toplevels
 - master layout with support for multiple masters, ideal for wide monitors
-- keyboard focused workflow
-- great multitasking with multimonitor and workspaces support
+- optimized for the keyboard focused workflow
+- great multitasking with multi-monitor and workspaces support
 - smooth and customizable animations
 - easy configuration with hot reloading on save
 - eye-candy (opacity, blur, rounded corners and shadows)
-- portals and an ipc for integrating with other apps
+- powerful ipc for integrating with your apps
 
 ## dependencies
 - meson *
@@ -31,8 +31,10 @@ although `mwc` is aiming to be really simple in its behaviour, it does provide a
 - libdrm
 - pixman
 - libxkbcommon
-- wlroots 18.0 
+- wlroots 18.0
 - scenefx 0.2
+- fcft
+- json-c
 
 > \* compile-time dependencies
 
