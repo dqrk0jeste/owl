@@ -46,6 +46,7 @@ watch(char **args, size_t arg_count) {
 
         buffer[len] = 0;
         printf("%s", buffer);
+        putchar('\0');
         fflush(stdout);
     }
 }
@@ -69,6 +70,7 @@ get(char **args, size_t arg_count) {
 
     buffer[len] = 0;
     printf("%s", buffer);
+    putchar('\0');
     fflush(stdout);
 }
 
@@ -81,7 +83,7 @@ send_request(char *predicate, char **args, size_t arg_count) {
     } else if(strcmp(predicate, "action") == 0) {
         action(args, arg_count);
     } else {
-        fprintf(stderr, "invalid predicate: %s", predicate);
+        fprintf(stderr, "invalid predicate: `%s`", predicate);
         return false;
     }
 
@@ -117,9 +119,9 @@ main(int argc, char *argv[]) {
     }
 
     // code here
-    send_request(argv[1], &argv[2], argc - 2);
+    bool valid = send_request(argv[1], &argv[2], argc - 2);
 
     close(server_fd);
 
-    return 0;
+    return valid;
 }

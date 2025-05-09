@@ -369,6 +369,10 @@ static void
 handle_request(int fd, char *buffer) {
     char **words = parse_string(buffer, '"', '/', 0);
 
+    for(size_t i = 0; i < array_len(words); i++) {
+        wlr_log(WLR_ERROR, "%zu: %s", i, words[i]);
+    }
+
     if(array_len(words) < 2) {
         close(fd);
     } else if(strcmp(words[0], "get") == 0) {
@@ -400,20 +404,14 @@ ipc_callback(int fd, uint32_t mask, void *data) {
         return 0;
     }
 
-    // wlr_log(WLR_INFO, "ipc: new client on fd %d", client_fd);
-
     char buffer[IPC_MESSAGE_LEN];
     ssize_t len = read(client_fd, buffer, sizeof(buffer) - 1);
     if(len < 0) {
-        wlr_log(WLR_ERROR, "ipc: failed read on fd %d", client_fd);
+        wlr_log(WLR_ERROR, "ipc: failed read on fd `%d`", client_fd);
         return 0;
     }
 
     buffer[len] = 0;
-
-    // handle request here
-    wlr_log(WLR_INFO, "ipc: new client message %s", buffer);
-
     handle_request(client_fd, buffer);
 
     return 0;
