@@ -212,13 +212,10 @@ handle_get(int fd, char *what) {
 
         struct output *iter_output;
         wl_list_for_each(iter_output, &server.outputs, link) {
-            struct workspace *iter_workspace;
-            wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
-                struct layer_surface *iter_layer;
-                for(size_t i = 0; i < 4; i++) {
-                    wl_list_for_each(iter_layer, &(&iter_output->layers.background)[i], link) {
-                        json_object_array_add(array, layer_json(iter_layer));
-                    }
+            struct layer_surface *iter_layer;
+            for(size_t i = 0; i < 4; i++) {
+                wl_list_for_each(iter_layer, &(&iter_output->layers.background)[i], link) {
+                    json_object_array_add(array, layer_json(iter_layer));
                 }
             }
         }
@@ -405,6 +402,10 @@ ipc_callback(int fd, uint32_t mask, void *data) {
     }
 
     char buffer[IPC_MESSAGE_LEN];
+    // this is not ideal since it may block for long, it would be better to add this into the loop as another source,
+    // but that would need more syncing, which i am lazy to do rn. anyway, if the ipc is used responsibly (throught
+    // `mwc-ipc`), this is not
+    // a problem
     ssize_t len = read(client_fd, buffer, sizeof(buffer) - 1);
     if(len < 0) {
         wlr_log(WLR_ERROR, "ipc: failed read on fd `%d`", client_fd);
