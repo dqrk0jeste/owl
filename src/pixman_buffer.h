@@ -6,10 +6,10 @@ struct pixman_buffer {
     struct wlr_buffer base;
     pixman_image_t *image;
 
-    uint32_t width, height;
+    int width, height;
 };
 
 // creates a new buffer backed by a pixman image. this buffer should not be destroyed manually, but by dropping the
 // appropriate wlr_buffer (`pixman_buffer->base`)
 struct pixman_buffer *
-pixman_buffer_create(uint32_t width, uint32_t height);
+pixman_buffer_create(int width, int height);

@@ -8,7 +8,7 @@ typedef void (*keybind_action_func_t)(void *);
 
 struct keybind {
     uint32_t modifiers;
-    uint32_t key;
+    int key;
 
     bool active;
     keybind_action_func_t action;
@@ -19,7 +19,7 @@ struct keybind {
 };
 
 bool
-server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state);
+handle_keybinds(struct keyboard *keyboard, int keycode, enum wl_keyboard_key_state state);
 
 bool
 handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count);

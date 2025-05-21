@@ -7,11 +7,12 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
-#include "layer_surface.h"
+#include "layer_shell.h"
 #include "mwc.h"
 #include "popup.h"
 #include "session_lock.h"
 #include "text_node.h"
+#include "toplevel.h"
 
 extern struct server server;
 

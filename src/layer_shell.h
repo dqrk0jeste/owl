@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 
-#include "output.h"
+#include "decoration.h"
 #include "view.h"
 
 struct layer_surface {
@@ -11,7 +11,8 @@ struct layer_surface {
     struct wlr_layer_surface_v1 *wlr_layer_surface;
     struct wlr_scene_layer_surface_v1 *scene;
 
-    bool has_blur, blur_ignore_transparent, blur_optimized;
+    enum blur blur;
+    bool blur_ignore_transparent;
 
     struct wl_listener map;
     struct wl_listener unmap;
@@ -20,8 +21,13 @@ struct layer_surface {
     struct wl_listener destroy;
 };
 
-void
-server_handle_new_layer_surface(struct wl_listener *listener, void *data);
+struct layer_shell {
+    struct wlr_layer_shell_v1 *base;
+
+    struct wl_listener new_layer_surface;
+};
+
+struct output;
 
 void
 layer_surfaces_configure(struct output *output);
@@ -34,3 +40,6 @@ layers_under_fullscreen_set_enabled(struct output *output, bool enable);
 
 bool
 try_focus_exclusive_layer_surface(void);
+
+void
+layer_shell_init(void);

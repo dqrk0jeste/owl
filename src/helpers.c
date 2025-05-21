@@ -1,5 +1,6 @@
 #include "helpers.h"
 
+#include <assert.h>
 #include <time.h>
 
 void
@@ -83,4 +84,26 @@ get_now_in_ms(void) {
     clock_gettime(CLOCK_MONOTONIC, &now);
 
     return timespec_to_ms(&now);
+}
+
+bool
+matches_relation(enum relation relation, int a, int b) {
+    switch(relation) {
+        case RELATION_EQUAL:
+            return a == b;
+        case RELATION_GREATER_THAN:
+            return a > b;
+        case RELATION_SMALLER_THAN:
+            return a < b;
+    }
+
+    assert(false && "unreachable");
+    return false;
+}
+
+void
+color_premultiply(struct color *color) {
+    color->r *= color->a / 255.0;
+    color->g *= color->a / 255.0;
+    color->b *= color->a / 255.0;
 }

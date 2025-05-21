@@ -10,15 +10,19 @@ struct workspace {
     struct wl_list link;
 
     struct output *output;
-    uint32_t index;
+    int index;
 
     // when this workspace is reparented by another output, we keep the name of the original output that created this
     // workspace so we can return it back later if that output is reenabled
     char *original_output;
 
     double master_ratio;
+    int inner_gaps, outer_gaps;
 
+    // we cache these values, as they are used fairly often, and are really easy to track manually
+    int master_count;
     struct wl_list masters;
+    int slave_count;
     struct wl_list slaves;
     struct wl_list floating;
     struct toplevel *fullscreen;
@@ -56,4 +60,4 @@ void
 workspace_set_master_ratio(struct workspace *workspace, double master_ratio);
 
 struct workspace *
-workspace_find_by_index(uint32_t index);
+workspace_find_by_index(int index);

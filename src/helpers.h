@@ -18,6 +18,12 @@ enum direction {
     DIRECTION_LEFT,
 };
 
+enum relation {
+    RELATION_EQUAL,
+    RELATION_GREATER_THAN,
+    RELATION_SMALLER_THAN,
+};
+
 struct color {
     uint8_t r, g, b, a;
 };
@@ -48,3 +54,9 @@ timespec_to_ms(struct timespec *ts);
 
 uint32_t
 get_now_in_ms(void);
+
+bool
+matches_relation(enum relation relation, int a, int b);
+
+void
+color_premultiply(struct color *color);

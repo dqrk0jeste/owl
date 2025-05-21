@@ -11,11 +11,7 @@
 #include <string.h>
 #include <uchar.h>
 
-#include "config.h"
 #include "helpers.h"
-#include "mwc.h"
-
-extern struct server server;
 
 static void
 handle_node_destroy(struct wl_listener *listener, void *data) {
@@ -31,10 +27,10 @@ handle_node_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct text_node *
-text_node_create(struct wlr_scene_tree *parent, char *text) {
-    assert(server.config->font);
-
+text_node_create(struct wlr_scene_tree *parent, struct fcft_font *font, struct color color, char *text) {
     struct text_node *node = calloc(1, sizeof(*node));
+    node->font = font;
+    node->color = color;
     node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
 
     node->node_destroy.notify = handle_node_destroy;
@@ -81,23 +77,24 @@ utf8_strlen(const char *str) {
 }
 
 static uint32_t
-render_text(struct pixman_buffer *buffer, const char32_t *text, size_t len, pixman_image_t *color) {
+render_text(struct pixman_buffer *buffer, struct fcft_font *font, const char32_t *text, size_t len,
+        pixman_image_t *color) {
     long x = 0;
     for(size_t i = 0; i < len; i++) {
-        const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(server.config->font, text[i], FCFT_SUBPIXEL_NONE);
+        const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(font, text[i], FCFT_SUBPIXEL_NONE);
         if(glyph == NULL)
             continue;
 
         // add the kerning
         if(i > 0) {
             long kern = 0;
-            fcft_kerning(server.config->font, text[i - 1], text[i], &kern, NULL);
+            fcft_kerning(font, text[i - 1], text[i], &kern, NULL);
             x += kern;
         }
 
         // composite the image into the buffer
         pixman_image_composite32(PIXMAN_OP_OVER, color, glyph->pix, buffer->image, 0, 0, 0, 0, x + glyph->x,
-                server.config->font->ascent - glyph->y, glyph->width, glyph->height);
+                font->ascent - glyph->y, glyph->width, glyph->height);
         // and advance the position for the next one
         x += glyph->advance.x;
     }
@@ -121,17 +118,17 @@ text_node_set_text(struct text_node *node, char *text) {
     }
 
     // we approximate the width of the text
-    uint32_t width = len * (server.config->font->max_advance.x);
-    uint32_t height = server.config->font->max_advance.y;
+    int width = len * (node->font->max_advance.x);
+    int height = node->font->max_advance.y;
 
     node->buffer = pixman_buffer_create(width, height);
     wlr_scene_buffer_set_buffer(node->scene_buffer, &node->buffer->base);
 
     // we first convert the string to utf32
     char32_t utf32[len];
-    size_t i = 0, j = 0;
+    int i = 0, j = 0;
     while(j < len) {
-        ssize_t move_forward = convert_utf8_to_utf32(&text[i], &utf32[j]);
+        int move_forward = convert_utf8_to_utf32(&text[i], &utf32[j]);
         // if its invalid utf8 then we quit
         if(move_forward == -1)
             return;
@@ -141,10 +138,10 @@ text_node_set_text(struct text_node *node, char *text) {
     }
 
     pixman_color_t color;
-    color_to_pixman_color(server.config->titlebar_title_color, &color);
+    color_to_pixman_color(node->color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
-    node->width = render_text(node->buffer, utf32, len, foreground_color);
+    node->width = render_text(node->buffer, node->font, utf32, len, foreground_color);
     node->height = height;
 
     pixman_image_unref(foreground_color);

@@ -27,8 +27,8 @@ typedef void (*fx_transform_animation_callback_func_t)(struct wlr_box current, b
 struct fx_transform_animation;
 
 struct fx_transform_animation *
-fx_transform_animation_create(struct wlr_box start, struct wlr_box end, uint32_t duration,
-        struct fx_animation_curve *curve, fx_transform_animation_callback_func_t callback, void *user_data);
+fx_transform_animation_create(struct wlr_box start, struct wlr_box end, int duration, struct fx_animation_curve *curve,
+        fx_transform_animation_callback_func_t callback, void *user_data);
 
 void
 fx_transform_animation_destroy(struct fx_transform_animation *animation);

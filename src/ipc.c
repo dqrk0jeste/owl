@@ -12,7 +12,7 @@
 #include <wlr/util/log.h>
 
 #include "array.h"
-#include "layer_surface.h"
+#include "layer_shell.h"
 #include "mwc.h"
 #include "output.h"
 #include "parser.h"
@@ -364,7 +364,7 @@ done:
 
 static void
 handle_request(int fd, char *buffer) {
-    char **words = parse_string(buffer, '"', '/', 0);
+    char **words = parser_into_words(buffer, 0);
 
     for(size_t i = 0; i < array_len(words); i++) {
         wlr_log(WLR_ERROR, "%zu: %s", i, words[i]);
@@ -404,8 +404,7 @@ ipc_callback(int fd, uint32_t mask, void *data) {
     char buffer[IPC_MESSAGE_LEN];
     // this is not ideal since it may block for long, it would be better to add this into the loop as another source,
     // but that would need more syncing, which i am lazy to do rn. anyway, if the ipc is used responsibly (throught
-    // `mwc-ipc`), this is not
-    // a problem
+    // `mwc-ipc`), this is not a problem
     ssize_t len = read(client_fd, buffer, sizeof(buffer) - 1);
     if(len < 0) {
         wlr_log(WLR_ERROR, "ipc: failed read on fd `%d`", client_fd);
@@ -447,7 +446,7 @@ ipc_init(void) {
     array_init(&server.ipc.watching_toplevel);
     array_init(&server.ipc.watching_layer);
 
-    server.ipc.source = wl_event_loop_add_fd(server.wl_event_loop, server.ipc.fd,
+    server.ipc.source = wl_event_loop_add_fd(server.event_loop, server.ipc.fd,
             WL_EVENT_READABLE | WL_EVENT_HANGUP | WL_EVENT_ERROR, ipc_callback, NULL);
 }
 

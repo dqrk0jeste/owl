@@ -37,7 +37,7 @@ static const struct wlr_buffer_impl pixman_buffer_impl = {
 };
 
 struct pixman_buffer *
-pixman_buffer_create(uint32_t width, uint32_t height) {
+pixman_buffer_create(int width, int height) {
     struct pixman_buffer *buffer = calloc(1, sizeof(*buffer));
 
     wlr_buffer_init(&buffer->base, &pixman_buffer_impl, width, height);

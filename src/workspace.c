@@ -6,10 +6,11 @@
 
 #include "helpers.h"
 #include "ipc.h"
-#include "layer_surface.h"
+#include "layer_shell.h"
 #include "layout.h"
 #include "mwc.h"
 #include "view.h"
+#include "wlr/util/log.h"
 
 extern struct server server;
 
@@ -117,7 +118,7 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
     }
 
     // and pointer focus
-    pointer_handle_focus(get_now_in_ms(), false);
+    cursor_handle_focus(get_now_in_ms(), false);
 }
 
 static void
@@ -153,8 +154,13 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         wl_list_remove(&toplevel->link);
 
         // if its master we try to find its replacement
-        if(toplevel->mode == TOPLEVEL_MODE_MASTER && has_slaves(old_workspace)) {
-            promote_last_slave(old_workspace);
+        if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
+            old_workspace->master_count--;
+            if(has_slaves(old_workspace)) {
+                promote_last_slave(old_workspace);
+            }
+        } else {
+            old_workspace->slave_count--;
         }
 
         layout_add(workspace, toplevel);
@@ -170,9 +176,13 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
         toplevel_set_state(toplevel, output_box);
 
-        // if the output changed then we enable the layers on the old output
         if(old_workspace->output != workspace->output) {
+            // if the output changed then we enable the layers and toplevels on the old output
             layers_under_fullscreen_set_enabled(old_workspace->output, true);
+            workspace_toplevels_set_enabled(old_workspace, true);
+            // and disable them on this one
+            layers_under_fullscreen_set_enabled(workspace->output, false);
+            workspace_toplevels_set_enabled(workspace, false);
         }
 
         if(toplevel->prev_mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
@@ -181,7 +191,7 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
             patch_relative_box_for_output(&toplevel->prev_deco_box, old_workspace->output, workspace->output);
         } else {
             // invalidate the index
-            toplevel->prev_index = -1U;
+            toplevel->prev_index = -1;
             layout_configure(old_workspace);
         }
     } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
@@ -190,7 +200,7 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         struct wlr_box box = toplevel->deco_box;
         patch_relative_box_for_output(&box, old_workspace->output, workspace->output);
         toplevel_set_state(toplevel, box);
-    } else if(toplevel->mode == TOPLEVEL_MODE_MASTER || toplevel->mode == TOPLEVEL_MODE_SLAVE) {
+    } else if(toplevel_is_tiled(toplevel)) {
         // and if tiled we just configure the layouts of both the old one and the new one
         layout_configure(old_workspace);
         layout_configure(workspace);
@@ -255,7 +265,7 @@ workspace_set_master_ratio(struct workspace *workspace, double master_ratio) {
 }
 
 struct workspace *
-workspace_find_by_index(uint32_t index) {
+workspace_find_by_index(int index) {
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
         struct workspace *iter_workspace;

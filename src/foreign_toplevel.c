@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 
+#include "mwc.h"
 #include "toplevel.h"
 
 extern struct server server;

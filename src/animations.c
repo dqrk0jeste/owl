@@ -71,8 +71,8 @@ struct fx_transform_animation {
     struct wl_event_source *timer;
 
     struct wlr_box start, end;
-    uint32_t time_started, duration;
-    uint32_t frame_duration;
+    uint32_t time_started;
+    int duration, frame_duration;
 
     struct wlr_box current;
     bool done;
@@ -88,7 +88,7 @@ timer_animation_update(void *data) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-    uint64_t passed_time = timespec_to_ms(&now) - animation->time_started;
+    uint32_t passed_time = timespec_to_ms(&now) - animation->time_started;
     double progress = (double)passed_time / animation->duration;
 
     bool done = progress >= 1.0;
@@ -99,13 +99,12 @@ timer_animation_update(void *data) {
     } else {
         double factor = find_animation_curve_at(animation->curve, progress);
 
-        uint32_t width = animation->start.width + (animation->end.width - animation->start.width) * factor;
-        uint32_t height = animation->start.height + (animation->end.height - animation->start.height) * factor;
-
-        int32_t x = animation->start.x + (animation->end.x - animation->start.x) * factor;
-        int32_t y = animation->start.y + (animation->end.y - animation->start.y) * factor;
-
-        animation->current = (struct wlr_box){x, y, width, height};
+        animation->current = (struct wlr_box){
+                animation->start.x + (animation->end.x - animation->start.x) * factor,
+                animation->start.y + (animation->end.y - animation->start.y) * factor,
+                animation->start.width + (animation->end.width - animation->start.width) * factor,
+                animation->start.height + (animation->end.height - animation->start.height) * factor,
+        };
     }
 
     animation->callback(animation->current, animation->done, animation->user_data);
@@ -117,10 +116,10 @@ timer_animation_update(void *data) {
     return 0;
 }
 
-static uint32_t
+static int
 get_fastest_output_refresh_ms(void) {
     struct wlr_scene_output *scene_output;
-    uint32_t max = 0;
+    int max = 0;
     wl_list_for_each(scene_output, &manager.scene->outputs, link) {
         struct wlr_output *output = scene_output->output;
         if(output->enabled && output->refresh > max) {
@@ -137,28 +136,23 @@ get_fastest_output_refresh_ms(void) {
 }
 
 struct fx_transform_animation *
-fx_transform_animation_create(struct wlr_box start, struct wlr_box end, uint32_t duration,
-        struct fx_animation_curve *curve, fx_transform_animation_callback_func_t callback, void *user_data) {
+fx_transform_animation_create(struct wlr_box start, struct wlr_box end, int duration, struct fx_animation_curve *curve,
+        fx_transform_animation_callback_func_t callback, void *user_data) {
     struct fx_transform_animation *animation = calloc(1, sizeof(*animation));
 
     animation->start = start;
     animation->end = end;
 
     animation->duration = duration;
-
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    animation->time_started = timespec_to_ms(&ts);
+    animation->time_started = get_now_in_ms();
+    animation->frame_duration = get_fastest_output_refresh_ms();
 
     animation->curve = curve;
 
     animation->callback = callback;
     animation->user_data = user_data;
 
-    animation->frame_duration = get_fastest_output_refresh_ms();
-
     animation->current = start;
-
     callback(animation->current, animation->done, user_data);
 
     animation->timer =

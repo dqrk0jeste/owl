@@ -14,7 +14,7 @@ struct keyboard {
 };
 
 void
-server_handle_new_keyboard(struct wlr_input_device *device);
+handle_new_keyboard(struct wlr_input_device *device);
 
-bool
+void
 keyboard_configure(struct keyboard *keyboard);

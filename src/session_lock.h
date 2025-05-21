@@ -28,11 +28,16 @@ struct lock_surface {
     struct wl_listener destroy;
 };
 
-void
-session_lock_manager_handle_new(struct wl_listener *listener, void *data);
+struct lock_manager {
+    struct wlr_session_lock_manager_v1 *base;
+    struct lock *current_lock;
 
-void
-session_lock_manager_handle_destroy(struct wl_listener *listener, void *data);
+    struct wl_listener destroy;
+    struct wl_listener new_lock;
+};
 
 void
 focus_lock_surface(struct lock_surface *lock_surface);
+
+void
+lock_manager_init(void);

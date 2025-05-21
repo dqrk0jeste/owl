@@ -5,65 +5,22 @@
 #include <wayland-util.h>
 
 #include "config.h"
+#include "layer_shell.h"
 #include "toplevel.h"
 
-struct toplevel_rule_regex {
-    bool has_app_id_regex;
-    regex_t app_id_regex;
-    bool has_title_regex;
-    regex_t title_regex;
-};
-
-// basic toplevel rule with no params
-struct toplevel_rule {
-    struct toplevel_rule_regex condition;
-};
-
-struct toplevel_rule_bool {
-    struct toplevel_rule_regex condition;
-    bool value;
-};
-
-struct toplevel_rule_size {
-    struct toplevel_rule_regex condition;
-    bool relative_width;
-    uint32_t width;
-    bool relative_height;
-    uint32_t height;
-};
-
-struct toplevel_rule_opacity {
-    struct toplevel_rule_regex condition;
-    double inactive_value;
-    double active_value;
-};
-
-struct layer_rule_regex {
-    bool has;
-    regex_t regex;
-};
-
-struct layer_rule {
-    struct layer_rule_regex condition;
-};
-
-struct layer_rule_blur {
-    struct layer_rule_regex condition;
-    enum blur_optimized optimized;
-    bool ignore_transparent;
-};
+bool
+toplevel_matches_rule(struct toplevel *toplevel, struct toplevel_config *config);
 
 bool
-toplevel_matches_toplevel_rule(struct toplevel *toplevel, struct toplevel_rule_regex *condition);
+layer_surface_matches_rule(struct layer_surface *layer_surface, struct layer_config *config);
 
-bool
-layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct layer_rule_regex *condition);
-
-// (re)check the toplevel rules for this toplevel
-// note: this function will only update the flags, but you need to handle the updating of the actual presentation
-// seperatelly, e.g. by calling decoration_set_types()
+// update the toplevel rules for this toplevel, applying the decorations and setting the appropriate params
 void
-toplevel_check_rules(struct toplevel *toplevel);
+rules_update_for_toplevel(struct toplevel *toplevel);
 
+// same, but for layer surfaces
 void
-layer_surface_check_rules(struct layer_surface *layer_surface);
+rules_update_for_layer_surface(struct layer_surface *layer_surface);
+
+enum toplevel_default_mode
+rules_get_toplevel_default_mode(struct toplevel *toplevel);

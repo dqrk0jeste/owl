@@ -1,4 +1,4 @@
-#include "layer_surface.h"
+#include "layer_shell.h"
 
 #include <assert.h>
 #include <math.h>
@@ -9,7 +9,6 @@
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_scene.h>
 
-#include "config.h"
 #include "layout.h"
 #include "mwc.h"
 #include "output.h"
@@ -23,7 +22,7 @@
 extern struct server server;
 
 static struct wlr_scene_tree *
-layer_get_scene(enum zwlr_layer_shell_v1_layer layer) {
+get_scene(enum zwlr_layer_shell_v1_layer layer) {
     switch(layer) {
         case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
             return server.background_tree;
@@ -37,7 +36,7 @@ layer_get_scene(enum zwlr_layer_shell_v1_layer layer) {
 }
 
 static struct wl_list *
-layer_get_list(struct output *output, enum zwlr_layer_shell_v1_layer layer) {
+get_list(struct output *output, enum zwlr_layer_shell_v1_layer layer) {
     switch(layer) {
         case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
             return &output->layers.background;
@@ -51,7 +50,7 @@ layer_get_list(struct output *output, enum zwlr_layer_shell_v1_layer layer) {
 }
 
 static void
-layer_surface_handle_commit(struct wl_listener *listener, void *data) {
+handle_commit(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, commit);
 
     if(!layer_surface->wlr_layer_surface->initialized)
@@ -72,10 +71,9 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
     if(committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) {
         // if the layer has been changed we respect it
         wl_list_remove(&layer_surface->link);
-        wl_list_insert(layer_get_list(output, layer), &layer_surface->link);
+        wl_list_insert(get_list(output, layer), &layer_surface->link);
 
-        struct wlr_scene_tree *scene = layer_get_scene(layer);
-        wlr_scene_node_reparent(&layer_surface->scene->tree->node, scene);
+        wlr_scene_node_reparent(&layer_surface->scene->tree->node, get_scene(layer));
     }
 
     // if something has changed we rearange all the surfaces
@@ -89,7 +87,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
 }
 
 static void
-layer_surface_handle_map(struct wl_listener *listener, void *data) {
+handle_map(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, map);
 
     // we reconfigure this outputs layer surfaces
@@ -125,7 +123,7 @@ try_focus_exclusive_layer_surface(void) {
 }
 
 static void
-layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
+handle_unmap(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, unmap);
 
     wl_list_remove(&layer_surface->link);
@@ -164,7 +162,7 @@ layer_surface_handle_unmap(struct wl_listener *listener, void *data) {
 }
 
 static void
-layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
+handle_destroy(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, destroy);
 
     wl_list_remove(&layer_surface->map.link);
@@ -175,11 +173,11 @@ layer_surface_handle_destroy(struct wl_listener *listener, void *data) {
 }
 
 static void
-layer_surface_handle_new_popup(struct wl_listener *listener, void *data) {
+layer_handle_new_popup(struct wl_listener *listener, void *data) {
     struct layer_surface *layer_surface = wl_container_of(listener, layer_surface, new_popup);
     struct wlr_xdg_popup *xdg_popup = data;
 
-    // see server_handle_new_popup()
+    // see `server_handle_new_popup()`
     struct popup *popup = xdg_popup->base->data;
 
     popup->scene_tree = wlr_scene_xdg_surface_create(layer_surface->scene->tree, xdg_popup->base);
@@ -213,16 +211,16 @@ focus_layer_surface(struct layer_surface *layer_surface) {
     server.exclusive = layer >= ZWLR_LAYER_SHELL_V1_LAYER_TOP &&
             keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE;
 
-    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat);
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server.seat.base);
     if(keyboard != NULL) {
-        wlr_seat_keyboard_notify_enter(server.seat, layer_surface->wlr_layer_surface->surface, keyboard->keycodes,
+        wlr_seat_keyboard_notify_enter(server.seat.base, layer_surface->wlr_layer_surface->surface, keyboard->keycodes,
                 keyboard->num_keycodes, &keyboard->modifiers);
     }
 }
 
 static void
-layer_surfaces_configure_layer(struct output *output, enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
-    struct wl_list *list = layer_get_list(output, layer);
+configure_layer(struct output *output, enum zwlr_layer_shell_v1_layer layer, bool exclusive) {
+    struct wl_list *list = get_list(output, layer);
 
     struct wlr_box full_area;
     wlr_output_layout_get_box(server.output_layout, output->wlr_output, &full_area);
@@ -245,12 +243,12 @@ layer_surfaces_configure(struct output *output) {
 
     // first configure all the exclusive ones
     for(size_t i = 0; i < 4; i++) {
-        layer_surfaces_configure_layer(output, i, true);
+        configure_layer(output, i, true);
     }
 
     // then the others
     for(size_t i = 0; i < 4; i++) {
-        layer_surfaces_configure_layer(output, i, false);
+        configure_layer(output, i, false);
     }
 
     struct workspace *iter;
@@ -271,8 +269,8 @@ layers_under_fullscreen_set_enabled(struct output *output, bool enable) {
     }
 }
 
-void
-server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
+static void
+handle_new_layer_surface(struct wl_listener *listener, void *data) {
     struct wlr_layer_surface_v1 *wlr_layer_surface = data;
 
     struct layer_surface *layer_surface = calloc(1, sizeof(*layer_surface));
@@ -290,10 +288,10 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
 
     // insert it into a list
     enum zwlr_layer_shell_v1_layer layer = wlr_layer_surface->pending.layer;
-    wl_list_insert(layer_get_list(output, layer), &layer_surface->link);
+    wl_list_insert(get_list(output, layer), &layer_surface->link);
 
     // and create a scene for it
-    layer_surface->scene = wlr_scene_layer_surface_v1_create(layer_get_scene(layer), wlr_layer_surface);
+    layer_surface->scene = wlr_scene_layer_surface_v1_create(get_scene(layer), wlr_layer_surface);
     view_create_for_node(&layer_surface->scene->tree->node, VIEW_LAYER_SURFACE, layer_surface);
 
     if(output->active_workspace->fullscreen != NULL &&
@@ -302,20 +300,28 @@ server_handle_new_layer_surface(struct wl_listener *listener, void *data) {
     }
 
     // check rules for bluring and stuff
-    layer_surface_check_rules(layer_surface);
+    rules_update_for_layer_surface(layer_surface);
 
-    layer_surface->commit.notify = layer_surface_handle_commit;
+    layer_surface->commit.notify = handle_commit;
     wl_signal_add(&wlr_layer_surface->surface->events.commit, &layer_surface->commit);
 
-    layer_surface->map.notify = layer_surface_handle_map;
+    layer_surface->map.notify = handle_map;
     wl_signal_add(&wlr_layer_surface->surface->events.map, &layer_surface->map);
 
-    layer_surface->unmap.notify = layer_surface_handle_unmap;
+    layer_surface->unmap.notify = handle_unmap;
     wl_signal_add(&wlr_layer_surface->surface->events.unmap, &layer_surface->unmap);
 
-    layer_surface->new_popup.notify = layer_surface_handle_new_popup;
+    layer_surface->new_popup.notify = layer_handle_new_popup;
     wl_signal_add(&wlr_layer_surface->events.new_popup, &layer_surface->new_popup);
 
-    layer_surface->destroy.notify = layer_surface_handle_destroy;
+    layer_surface->destroy.notify = handle_destroy;
     wl_signal_add(&wlr_layer_surface->surface->events.destroy, &layer_surface->destroy);
+}
+
+void
+layer_shell_init(void) {
+    // set up the layer shell
+    server.layer_shell.base = wlr_layer_shell_v1_create(server.display, 4);
+    server.layer_shell.new_layer_surface.notify = handle_new_layer_surface;
+    wl_signal_add(&server.layer_shell.base->events.new_surface, &server.layer_shell.new_layer_surface);
 }

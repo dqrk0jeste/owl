@@ -1,136 +1,195 @@
 #include "rules.h"
 
+#include <assert.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
+
 #include "array.h"
 #include "config.h"
-#include "layer_surface.h"
+#include "layer_shell.h"
+#include "mwc.h"
 #include "toplevel.h"
+#include "workspace.h"
 
 extern struct server server;
 
-bool
-toplevel_matches_toplevel_rule(struct toplevel *toplevel, struct toplevel_rule_regex *condition) {
-    char *app_id = toplevel->xdg_toplevel->app_id;
-    char *title = toplevel->xdg_toplevel->title;
+static inline bool
+satisfies_regex(char *s, regex_t *regex) {
+    return s != NULL && regexec(regex, s, 0, NULL, 0) == 0;
+}
 
-    bool matches_app_id = !condition->has_app_id_regex ||
-            (app_id != NULL && regexec(&condition->app_id_regex, app_id, 0, NULL, 0) == 0);
-
-    bool matches_title =
-            !condition->has_title_regex || (title != NULL && regexec(&condition->title_regex, title, 0, NULL, 0) == 0);
-
-    return matches_app_id && matches_title;
+static inline enum toplevel_mode_ext
+get_extended_mode(struct toplevel *toplevel) {
+    return toplevel == server.grabbed_toplevel           ? TOPLEVEL_MODE_EXT_GRABBED
+            : toplevel->mode == TOPLEVEL_MODE_FULLSCREEN ? TOPLEVEL_MODE_EXT_FULLSCREEN
+            : toplevel->mode == TOPLEVEL_MODE_FLOATING   ? TOPLEVEL_MODE_EXT_FLOATING
+            : toplevel->mode == TOPLEVEL_MODE_MASTER     ? TOPLEVEL_MODE_EXT_MASTER
+                                                         : TOPLEVEL_MODE_EXT_SLAVE;
 }
 
 bool
-layer_surface_matches_layer_rule(struct layer_surface *layer_surface, struct layer_rule_regex *condition) {
-    if(!condition->has)
-        return true;
+toplevel_matches_rule(struct toplevel *toplevel, struct toplevel_config *config) {
+    if((config->specified & TOPLEVEL_FIELD_MATCH_STATE) && (toplevel == server.focused_toplevel) != config->focused)
+        return false;
 
-    char *namespace = layer_surface->wlr_layer_surface->namespace;
-    return namespace != NULL && regexec(&condition->regex, namespace, 0, NULL, 0) == 0;
+    enum toplevel_mode_ext mode = get_extended_mode(toplevel);
+    if((config->specified & TOPLEVEL_FIELD_MATCH_MODE) && !(mode & config->mode))
+        return false;
+
+    if((config->specified & TOPLEVEL_FIELD_MATCH_APP_ID) &&
+            !satisfies_regex(toplevel->xdg_toplevel->app_id, &config->app_id))
+        return false;
+
+    if((config->specified & TOPLEVEL_FIELD_MATCH_TITLE) &&
+            !satisfies_regex(toplevel->xdg_toplevel->title, &config->title))
+        return false;
+
+    if(((config->specified & TOPLEVEL_FIELD_MATCH_LAYOUT_SIZE) &&
+               (!toplevel_is_tiled(toplevel) ||
+                       !matches_relation(config->relation,
+                               toplevel->workspace->master_count + toplevel->workspace->slave_count,
+                               config->layout_size))))
+        return false;
+
+    return true;
 }
 
-// note: we go backwards when checking for rules, so the later rules 'override' the previous ones
-static void
-set_opacity(struct toplevel *toplevel) {
-    for(struct toplevel_rule_opacity *iter = array_last(server.config->toplevel_rules.opacity);
-            iter >= server.config->toplevel_rules.opacity; iter--) {
-        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
-            toplevel->active_opacity = iter->active_value;
-            toplevel->inactive_opacity = iter->inactive_value;
-            return;
-        }
-    }
+// it is intentionally written like this so we can more easily expand it, dont judge
+bool
+layer_surface_matches_rule(struct layer_surface *layer_surface, struct layer_config *config) {
+    if((config->specified & LAYER_FIELD_MATCH_NAMESPACE) &&
+            !satisfies_regex(layer_surface->wlr_layer_surface->namespace, &config->namespace))
+        return false;
 
-    toplevel->active_opacity = server.config->opacity.active;
-    toplevel->inactive_opacity = server.config->opacity.inactive;
+    return true;
 }
-
-static void
-set_blur(struct toplevel *toplevel) {
-    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.blur);
-            iter >= server.config->toplevel_rules.blur; iter--) {
-        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
-            toplevel->has_blur = iter->value;
-            return;
-        }
-    }
-
-    toplevel->has_blur = server.config->blur;
-}
-
-static bool
-should_have_shadow(struct toplevel *toplevel) {
-    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.shadow);
-            iter >= server.config->toplevel_rules.shadow; iter--) {
-        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
-            return iter->value;
-        }
-    }
-
-    return server.config->shadows;
-}
-
-static bool
-should_have_border(struct toplevel *toplevel) {
-    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.border);
-            iter >= server.config->toplevel_rules.border; iter--) {
-        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
-            return iter->value;
-        }
-    }
-
-    return server.config->borders;
-}
-
-static bool
-should_have_titlebar(struct toplevel *toplevel) {
-    for(struct toplevel_rule_bool *iter = array_last(server.config->toplevel_rules.titlebar);
-            iter >= server.config->toplevel_rules.titlebar; iter--) {
-        if(toplevel_matches_toplevel_rule(toplevel, &iter->condition)) {
-            return iter->value;
-        }
-    }
-
-    return server.config->titlebars;
-}
-
 void
-toplevel_check_rules(struct toplevel *toplevel) {
-    set_opacity(toplevel);
-    set_blur(toplevel);
+rules_update_for_toplevel(struct toplevel *toplevel) {
+    uint32_t found = 0, types = 0;
+    bool apply_opacity_to_decorations = false;
+    for(struct toplevel_config *iter = array_last(server.config->toplevels); iter >= server.config->toplevels; iter--) {
+        if(!toplevel_matches_rule(toplevel, iter))
+            continue;
 
-    uint32_t types = 0;
-    if(should_have_shadow(toplevel)) {
-        types |= DECORATION_SHADOW;
+        if(!(found & TOPLEVEL_FIELD_CORNER_RADIUS) && (iter->specified & TOPLEVEL_FIELD_CORNER_RADIUS)) {
+            toplevel->corner_radius = iter->corner_radius;
+            found |= TOPLEVEL_FIELD_CORNER_RADIUS;
+        }
+        if(!(found & TOPLEVEL_FIELD_CORNER_LOCATION) && (iter->specified & TOPLEVEL_FIELD_CORNER_LOCATION)) {
+            toplevel->corner_location = iter->corner_location;
+            found |= TOPLEVEL_FIELD_CORNER_LOCATION;
+        }
+        if(!(found & TOPLEVEL_FIELD_OPACITY) && (iter->specified & TOPLEVEL_FIELD_OPACITY)) {
+            toplevel->opacity = iter->opacity;
+            found |= TOPLEVEL_FIELD_OPACITY;
+        }
+        if(!(found & TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS) &&
+                (iter->specified & TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS)) {
+            apply_opacity_to_decorations = iter->apply_opacity_to_decorations;
+            found |= TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS;
+        }
+        if(!(found & TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS) &&
+                (iter->specified & TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS)) {
+            if(!!iter->client_side_decorations != !!toplevel->client_side_decorations) {
+                // if this thing changes the mode
+                toplevel->client_side_decorations = iter->client_side_decorations;
+                if(toplevel->xdg_decoration != NULL) {
+                    wlr_xdg_toplevel_decoration_v1_set_mode(toplevel->xdg_decoration,
+                            toplevel->client_side_decorations ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                                              : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+                }
+            }
+            found |= TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS;
+        }
+        if(!(found & TOPLEVEL_FIELD_BLUR) && (iter->specified & TOPLEVEL_FIELD_BLUR)) {
+            toplevel->blur = iter->blur;
+            found |= TOPLEVEL_FIELD_BLUR;
+        }
+        if(!(found & TOPLEVEL_FIELD_SHADOW) && (iter->specified & TOPLEVEL_FIELD_SHADOW)) {
+            if(iter->shadow) {
+                types |= DECORATION_SHADOW;
+            }
+            found |= TOPLEVEL_FIELD_SHADOW;
+        }
+        if(!(found & TOPLEVEL_FIELD_BORDER) && (iter->specified & TOPLEVEL_FIELD_BORDER)) {
+            if(iter->border) {
+                types |= DECORATION_BORDER;
+            }
+            found |= TOPLEVEL_FIELD_BORDER;
+        }
+        if(!(found & TOPLEVEL_FIELD_TITLEBAR) && (iter->specified & TOPLEVEL_FIELD_TITLEBAR)) {
+            if(iter->titlebar) {
+                types |= DECORATION_TITLEBAR;
+            }
+            found |= TOPLEVEL_FIELD_TITLEBAR;
+        }
+        if(!(found & TOPLEVEL_FIELD_DEFAULT_SIZE) && (iter->specified & TOPLEVEL_FIELD_DEFAULT_SIZE)) {
+            toplevel->default_width = iter->default_width;
+            toplevel->default_height = iter->default_height;
+            toplevel->width_is_relative = iter->width_is_relative;
+            toplevel->height_is_relative = iter->height_is_relative;
+            found |= TOPLEVEL_FIELD_DEFAULT_SIZE;
+        }
     }
-    if(should_have_border(toplevel)) {
-        types |= DECORATION_BORDER;
-    }
-    if(should_have_titlebar(toplevel)) {
-        types |= DECORATION_TITLEBAR;
+
+    // update the decorations
+    decoration_set_blur(&toplevel->decoration, toplevel->blur);
+    decoration_set_corner_radius(&toplevel->decoration, toplevel->corner_radius, toplevel->corner_location);
+    if(apply_opacity_to_decorations) {
+        decoration_set_opacity(&toplevel->decoration, toplevel->opacity);
+    } else {
+        decoration_set_opacity(&toplevel->decoration, 1.0);
     }
     decoration_set_types(&toplevel->decoration, types);
-
-    decoration_set_blur(&toplevel->decoration, toplevel->has_blur, toplevel_should_have_optimized_blur(toplevel));
-}
-
-static void
-set_blur_layer(struct layer_surface *layer_surface) {
-    for(struct layer_rule_blur *iter = server.config->layer_rules.blur;
-            iter <= array_last(server.config->layer_rules.blur); iter++) {
-        if(layer_surface_matches_layer_rule(layer_surface, &iter->condition)) {
-            layer_surface->has_blur = true;
-            layer_surface->blur_optimized = iter->optimized;
-            layer_surface->blur_ignore_transparent = iter->ignore_transparent;
-            return;
-        }
-    }
-
-    layer_surface->has_blur = false;
 }
 
 void
-layer_surface_check_rules(struct layer_surface *layer_surface) {
-    set_blur_layer(layer_surface);
+rules_update_for_layer_surface(struct layer_surface *layer_surface) {
+    uint32_t found = 0;
+    for(struct layer_config *iter = array_last(server.config->layers); iter >= server.config->layers; iter--) {
+        if(!layer_surface_matches_rule(layer_surface, iter))
+            continue;
+
+        if(!(found & LAYER_FIELD_BLUR) && (iter->specified & LAYER_FIELD_BLUR)) {
+            layer_surface->blur = iter->blur;
+            found |= LAYER_FIELD_BLUR;
+        }
+        if(!(found & LAYER_FIELD_BLUR_IGNORE_TRANSPARENT) && (iter->specified & LAYER_FIELD_BLUR_IGNORE_TRANSPARENT)) {
+            layer_surface->blur_ignore_transparent = iter->blur_ignore_transparent;
+            found |= LAYER_FIELD_BLUR_IGNORE_TRANSPARENT;
+        }
+    }
+}
+
+// if(iter->relative_width) {
+//     *width = toplevel->workspace->output->usable_area.width * iter->width / 100;
+// } else {
+//     *width = iter->width;
+// }
+//
+// if(iter->relative_height) {
+//     *height = toplevel->workspace->output->usable_area.height * iter->height / 100;
+// } else {
+//     *height = iter->height;
+// }
+//
+// return true;
+
+enum toplevel_default_mode
+rules_get_toplevel_default_mode(struct toplevel *toplevel) {
+    // we make toplevels float if they have fixed size or are children of another toplevel
+    if((toplevel->xdg_toplevel->current.max_height &&
+               toplevel->xdg_toplevel->current.max_height == toplevel->xdg_toplevel->current.min_height) ||
+            (toplevel->xdg_toplevel->current.max_width &&
+                    toplevel->xdg_toplevel->current.max_width == toplevel->xdg_toplevel->current.min_width) ||
+            toplevel->xdg_toplevel->parent != NULL)
+        return TOPLEVEL_DEFAULT_MODE_FLOATING;
+
+    for(struct toplevel_config *iter = array_last(server.config->toplevels); iter >= server.config->toplevels; iter--) {
+        if((iter->specified & TOPLEVEL_FIELD_DEFAULT_MODE) && toplevel_matches_rule(toplevel, iter))
+            return iter->default_mode;
+    }
+
+    // since we always have the default config in place
+    assert(false && "unreachable");
+    return 0;
 }

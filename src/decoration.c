@@ -13,33 +13,30 @@ extern struct server server;
 
 static void
 create_shadow(struct decoration *decoration) {
-    assert(decoration->shadow == NULL);
-
     float wlr_color[4];
-    color_to_wlr_color(server.config->shadow_color, wlr_color);
-    decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, server.config->border_radius,
-            server.config->shadow_blur, wlr_color);
+    color_to_wlr_color(server.config->shadow.color, wlr_color);
+    decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, 0, server.config->shadow.blur, wlr_color);
+
+    // disable it initially
+    wlr_scene_node_set_enabled(&decoration->shadow->node, false);
 
     // we set the position here since its always going to be the same
-    wlr_scene_node_set_position(&decoration->shadow->node, server.config->shadow_position.x,
-            server.config->shadow_position.y);
+    wlr_scene_node_set_position(&decoration->shadow->node, server.config->shadow.x, server.config->shadow.y);
 }
 
 static void
 update_shadow(struct decoration *decoration, struct wlr_box *box) {
-    assert(decoration->shadow != NULL);
-
     struct wlr_box shadow_box = {
             0,
             0,
-            box->width + server.config->shadow_size,
-            box->height + server.config->shadow_size,
+            box->width + server.config->shadow.size,
+            box->height + server.config->shadow.size,
     };
 
-    // in shadow relative coords
+    // toplevel box in relative shadow coords
     struct wlr_box relative_box = {
-            -server.config->shadow_position.x,
-            -server.config->shadow_position.y,
+            -server.config->shadow.x,
+            -server.config->shadow.y,
             box->width,
             box->height,
     };
@@ -51,38 +48,26 @@ update_shadow(struct decoration *decoration, struct wlr_box *box) {
     wlr_scene_shadow_set_clipped_region(decoration->shadow,
             (struct clipped_region){
                     .area = intersection_box,
-                    .corner_radius = server.config->border_radius,
-                    .corners = server.config->border_radius_location,
+                    .corner_radius = decoration->corner_radius,
+                    .corners = decoration->corner_location,
             });
 }
 
 static void
-destroy_shadow(struct decoration *decoration) {
-    assert(decoration->shadow != NULL);
-
-    wlr_scene_node_destroy(&decoration->shadow->node);
-    decoration->shadow = NULL;
-}
-
-static void
 create_border(struct decoration *decoration) {
-    assert(decoration->border == NULL);
-
     // its automatically placed at the container start
     decoration->border = wlr_scene_rect_create(decoration->tree, 0, 0, (float[4]){0});
-    wlr_scene_rect_set_corner_radius(decoration->border, server.config->border_radius,
-            server.config->border_radius_location);
-
     view_create_for_node(&decoration->border->node, VIEW_BORDER, decoration->border);
+
+    // disable it initially
+    wlr_scene_node_set_enabled(&decoration->border->node, false);
 }
 
 static void
 update_border(struct decoration *decoration, struct wlr_box *box) {
-    assert(decoration->border != NULL);
-
-    uint32_t border_width = server.config->border_width;
-    uint32_t border_radius = server.config->border_radius;
-    enum corner_location border_radius_location = server.config->border_radius_location;
+    int border_width = server.config->border.width;
+    int corner_radius = decoration->corner_radius;
+    enum corner_location corner_location = decoration->corner_location;
 
     wlr_scene_rect_set_size(decoration->border, box->width, box->height);
 
@@ -94,106 +79,89 @@ update_border(struct decoration *decoration, struct wlr_box *box) {
     wlr_scene_rect_set_clipped_region(decoration->border,
             (struct clipped_region){
                     .area = *box,
-                    .corner_radius = max((int32_t)border_radius - (int32_t)border_width, 0),
-                    .corners = border_radius_location,
+                    .corner_radius = max(corner_radius - border_width, 0),
+                    .corners = corner_location,
             });
 }
 
 static void
-destroy_border(struct decoration *decoration) {
-    assert(decoration->border != NULL);
-
-    wlr_scene_node_destroy(&decoration->border->node);
-    decoration->border = NULL;
-}
-
-static void
 create_titlebar(struct decoration *decoration) {
-    assert(decoration->titlebar.tree == NULL);
-
-    // create a new tree so we can work in titlebar relative coords
-    // note: we dont place it anywhere since it depends on wheather there is a border or not
+    // create a new tree so we can work in titlebar relative coords. note: we dont place it anywhere since it depends on
+    // wheather there is a border or not
     decoration->titlebar.tree = wlr_scene_tree_create(decoration->tree);
 
-    decoration->titlebar.base = wlr_scene_rect_create(decoration->titlebar.tree, 0, 0, (float[4]){0});
+    // disable it initially
+    wlr_scene_node_set_enabled(&decoration->titlebar.tree->node, false);
 
+    decoration->titlebar.base = wlr_scene_rect_create(decoration->titlebar.tree, 0, 0, (float[4]){0});
     view_create_for_node(&decoration->titlebar.base->node, VIEW_TITLEBAR_BASE, decoration->titlebar.base);
 
-    if(server.config->titlebar_include_close_button) {
-        uint32_t size = server.config->titlebar_close_button_size;
+    if(server.config->titlebar.close_button.enabled) {
+        int size = server.config->titlebar.close_button.size;
         decoration->titlebar.close_button = wlr_scene_rect_create(decoration->titlebar.tree, size, size, (float[4]){0});
-
-        if(server.config->titlebar_close_button_shape == TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE) {
-            wlr_scene_rect_set_corner_radius(decoration->titlebar.close_button, size / 2 + 1, CORNER_LOCATION_ALL);
-        }
-
         view_create_for_node(&decoration->titlebar.close_button->node, VIEW_TITLEBAR_CLOSE_BUTTON,
                 decoration->titlebar.close_button);
+
+        if(server.config->titlebar.close_button.shape == TITLEBAR_CLOSE_BUTTON_SHAPE_CIRCLE) {
+            wlr_scene_rect_set_corner_radius(decoration->titlebar.close_button, size / 2 + 1, CORNER_LOCATION_ALL);
+        }
+    } else {
+        // when recreating the decorations, this may be set to the previous pointer, which is now invalid
+        decoration->titlebar.close_button = NULL;
     }
 
-    if(server.config->titlebar_include_title && server.config->font != NULL) {
-        decoration->titlebar.title = text_node_create(decoration->titlebar.tree, decoration->title);
-
+    if(server.config->titlebar.title.enabled && server.config->titlebar.title.font != NULL) {
+        decoration->titlebar.title = text_node_create(decoration->titlebar.tree, server.config->titlebar.title.font,
+                server.config->titlebar.title.color, decoration->title);
         view_create_for_node(&decoration->titlebar.title->scene_buffer->node, VIEW_TITLEBAR_TITLE,
                 decoration->titlebar.title);
+    } else {
+        // same as above
+        decoration->titlebar.title = NULL;
     }
 }
 
 static void
 update_titlebar(struct decoration *decoration, struct wlr_box *box) {
-    assert(decoration->titlebar.tree != NULL);
-
     wlr_scene_node_set_position(&decoration->titlebar.tree->node, box->x, box->y);
 
     // set the size of the titlebar base
-    wlr_scene_rect_set_size(decoration->titlebar.base, box->width, server.config->titlebar_height);
-
-    // set the rounding; note: this needs to happen here because of this scenario: there is border -> border is
-    // destroyed -> we need to update the rounding of the titlebar
-    wlr_scene_rect_set_corner_radius(decoration->titlebar.base,
-            decoration_has_border(decoration)
-                    ? max((int32_t)server.config->border_radius - (int32_t)server.config->border_width, 0)
-                    : server.config->border_radius,
-            CORNER_LOCATION_TOP & server.config->border_radius_location);
+    wlr_scene_rect_set_size(decoration->titlebar.base, box->width, server.config->titlebar.height);
 
     if(decoration->titlebar.close_button != NULL) {
-        int32_t x = server.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT
-                ? server.config->titlebar_close_button_padding.left
-                : (int32_t)box->width - (int32_t)server.config->titlebar_close_button_padding.right -
-                        (int32_t)server.config->titlebar_close_button_size;
-        int32_t y = ((int32_t)server.config->titlebar_height - (int32_t)server.config->titlebar_close_button_size) / 2;
+        int x = server.config->titlebar.close_button.position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT
+                ? server.config->titlebar.close_button.padding.left
+                : box->width - server.config->titlebar.close_button.padding.right -
+                        server.config->titlebar.close_button.size;
+        int y = (server.config->titlebar.height - server.config->titlebar.close_button.size) / 2;
 
         wlr_scene_node_set_position(&decoration->titlebar.close_button->node, x, y);
     }
 
     if(decoration->titlebar.title != NULL) {
-        uint32_t left_pad = server.config->titlebar_title_padding.left;
-        if(server.config->titlebar_include_close_button &&
-                server.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT) {
-            left_pad += server.config->titlebar_close_button_padding.left + server.config->titlebar_close_button_size +
-                    server.config->titlebar_close_button_padding.right;
+        int left_pad = server.config->titlebar.title.padding.left;
+        if(server.config->titlebar.close_button.enabled &&
+                server.config->titlebar.close_button.position == TITLEBAR_CLOSE_BUTTON_POSITION_LEFT) {
+            left_pad += server.config->titlebar.close_button.padding.left + server.config->titlebar.close_button.size +
+                    server.config->titlebar.close_button.padding.right;
         }
 
-        int32_t x, y;
-        if(server.config->titlebar_center_title) {
-            // we try to center it
-            x = ((int32_t)box->width - (int32_t)decoration->titlebar.title->width) / 2;
-            // but we dont want it placed before `left_pad`
-            x = max(x, (int32_t)left_pad);
-        } else {
-            x = left_pad;
+        int x = left_pad;
+        // we try to center it, but we dont want it placed before `left_pad`
+        if(server.config->titlebar.title.position == TITLEBAR_TITLE_POSITION_CENTER &&
+                (box->width - decoration->titlebar.title->width) / 2 > left_pad) {
+            x = (box->width - decoration->titlebar.title->width) / 2;
         }
-
-        y = ((int32_t)server.config->titlebar_height - (int32_t)decoration->titlebar.title->height) / 2;
+        int y = (server.config->titlebar.height - decoration->titlebar.title->height) / 2;
 
         wlr_scene_node_set_position(&decoration->titlebar.title->scene_buffer->node, x, y);
 
-        int32_t free_width = (int32_t)box->width - x - (int32_t)server.config->titlebar_title_padding.right;
-        if(server.config->titlebar_include_close_button &&
-                server.config->titlebar_close_button_position == TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT) {
-            free_width -= (int32_t)server.config->titlebar_close_button_size +
-                    (int32_t)server.config->titlebar_close_button_padding.left +
-                    (int32_t)server.config->titlebar_close_button_padding.right;
+        int free_width = box->width - x - server.config->titlebar.title.padding.right;
+        if(server.config->titlebar.close_button.enabled &&
+                server.config->titlebar.close_button.position == TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT) {
+            free_width -= server.config->titlebar.close_button.size +
+                    server.config->titlebar.close_button.padding.left +
+                    server.config->titlebar.close_button.padding.right;
         }
 
         wlr_scene_node_set_enabled(&decoration->titlebar.title->scene_buffer->node, free_width > 0);
@@ -204,37 +172,24 @@ update_titlebar(struct decoration *decoration, struct wlr_box *box) {
                 .height = decoration->titlebar.title->height,
         };
         wlr_scene_buffer_set_source_box(decoration->titlebar.title->scene_buffer, &clip_box);
-        wlr_scene_buffer_set_dest_size(decoration->titlebar.title->scene_buffer,
-                min(free_width, decoration->titlebar.title->width), decoration->titlebar.title->height);
+        wlr_scene_buffer_set_dest_size(decoration->titlebar.title->scene_buffer, clip_box.width, clip_box.height);
     }
-}
-
-static void
-destroy_titlebar(struct decoration *decoration) {
-    assert(decoration->titlebar.tree != NULL);
-
-    wlr_scene_node_destroy(&decoration->titlebar.tree->node);
-    decoration->titlebar.tree = NULL;
-    decoration->titlebar.base = NULL;
-    decoration->titlebar.close_button = NULL;
-    decoration->titlebar.title = NULL;
 }
 
 static void
 set_min_size(struct decoration *decoration) {
-    uint32_t width = 0, height = 0;
+    int width = 0, height = 0;
 
     if(decoration_has_border(decoration)) {
-        width += 2 * server.config->border_width;
-        height += 2 * server.config->border_width;
+        width += 2 * server.config->border.width;
+        height += 2 * server.config->border.width;
     }
 
     if(decoration_has_titlebar(decoration)) {
-        height += server.config->titlebar_height;
-
-        if(server.config->titlebar_include_close_button) {
-            width += server.config->titlebar_close_button_size + server.config->titlebar_close_button_padding.left +
-                    server.config->titlebar_close_button_padding.right;
+        height += server.config->titlebar.height;
+        if(server.config->titlebar.close_button.enabled) {
+            width += server.config->titlebar.close_button.size + server.config->titlebar.close_button.padding.left +
+                    server.config->titlebar.close_button.padding.right;
         }
     }
 
@@ -246,33 +201,37 @@ void
 decoration_init(struct decoration *decoration, struct wlr_scene_tree *content_tree) {
     // create a base tree for the decorations
     decoration->content_tree = content_tree;
+    decoration->opacity = 1.0;
     decoration->tree = wlr_scene_tree_create(content_tree->node.parent);
     wlr_scene_node_lower_to_bottom(&decoration->tree->node);
+
+    // create the decorations. note: they are going to be hidden until the first call to `decoration_set_types()`
+    create_shadow(decoration);
+    create_border(decoration);
+    create_titlebar(decoration);
 }
 
 void
-decoration_destroy_all(struct decoration *decoration) {
-    if(decoration_has_border(decoration)) {
-        destroy_border(decoration);
-    }
+decoration_recreate(struct decoration *decoration) {
+    wlr_scene_node_destroy(&decoration->titlebar.tree->node);
+    wlr_scene_node_destroy(&decoration->border->node);
+    wlr_scene_node_destroy(&decoration->shadow->node);
 
-    if(decoration_has_shadow(decoration)) {
-        destroy_shadow(decoration);
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        destroy_titlebar(decoration);
-    }
+    create_shadow(decoration);
+    create_border(decoration);
+    create_titlebar(decoration);
 
     decoration->types = 0;
-    // we reset its position to 0, 0; note: this is needed because `decoration_set_types()` might not reset it if the
-    // `types` passed are 0.
     wlr_scene_node_set_position(&decoration->content_tree->node, 0, 0);
+
+    decoration_set_blur(decoration, decoration->blur);
+    decoration_set_active(decoration, decoration->active);
+    decoration_set_corner_radius(decoration, decoration->corner_radius, decoration->corner_location);
 }
 
 void
 decoration_destroy(struct decoration *decoration) {
-    decoration_destroy_all(decoration);
+    wlr_scene_node_destroy(&decoration->tree->node);
 
     if(decoration->title != NULL) {
         free(decoration->title);
@@ -282,15 +241,14 @@ decoration_destroy(struct decoration *decoration) {
 static inline void
 get_content_coords(struct decoration *decoration, int *x, int *y) {
     *x = *y = 0;
-    if(!decoration_is_enabled(decoration))
-        return;
 
     if(decoration_has_border(decoration)) {
-        *x += server.config->border_width;
-        *y += server.config->border_width;
+        *x += server.config->border.width;
+        *y += server.config->border.width;
     }
+
     if(decoration_has_titlebar(decoration)) {
-        *y += server.config->titlebar_height;
+        *y += server.config->titlebar.height;
     }
 }
 
@@ -307,52 +265,20 @@ decoration_set_types(struct decoration *decoration, uint32_t types) {
     if(types == decoration->types)
         return;
 
-    // we compare to see what has changed and create/destroy the needed
-    if(decoration_has_shadow(decoration) && !(types & DECORATION_SHADOW)) {
-        destroy_shadow(decoration);
-    } else if(!decoration_has_shadow(decoration) && (types & DECORATION_SHADOW)) {
-        create_shadow(decoration);
-    }
-
-    if(decoration_has_border(decoration) && !(types & DECORATION_BORDER)) {
-        destroy_border(decoration);
-    } else if(!decoration_has_border(decoration) && (types & DECORATION_BORDER)) {
-        create_border(decoration);
-    }
-
-    if(decoration_has_titlebar(decoration) && !(types & DECORATION_TITLEBAR)) {
-        destroy_titlebar(decoration);
-    } else if(!decoration_has_titlebar(decoration) && (types & DECORATION_TITLEBAR)) {
-        create_titlebar(decoration);
-    }
-
     decoration->types = types;
+    wlr_scene_node_set_enabled(&decoration->shadow->node, decoration_has_shadow(decoration));
+    wlr_scene_node_set_enabled(&decoration->border->node, decoration_has_border(decoration));
+    wlr_scene_node_set_enabled(&decoration->titlebar.tree->node, decoration_has_titlebar(decoration));
 
     // we update the content tree position
     update_content_tree(decoration);
-
-    // we restack them in the right order since they might not be
-    if(decoration_has_border(decoration)) {
-        wlr_scene_node_lower_to_bottom(&decoration->border->node);
-    }
-    if(decoration_has_shadow(decoration)) {
-        wlr_scene_node_lower_to_bottom(&decoration->shadow->node);
-    }
-
     set_min_size(decoration);
 
     // and then configure them with the current decoration state
     decoration_configure(decoration, decoration->width, decoration->height);
-    decoration_set_active(decoration, decoration->active);
-    decoration_set_blur(decoration, decoration->blur, decoration->blur_optimized);
-
-    return;
-}
-
-void
-decoration_set_enabled(struct decoration *decoration, bool enabled) {
-    wlr_scene_node_set_enabled(&decoration->tree->node, enabled);
-    update_content_tree(decoration);
+    // we also need to update the corner radius, since the border might be turned off in this call, so titlebar border
+    // should be changed
+    decoration_set_corner_radius(decoration, decoration->corner_radius, decoration->corner_location);
 }
 
 void
@@ -360,36 +286,42 @@ decoration_set_active(struct decoration *decoration, bool active) {
     decoration->active = active;
 
     // we set things to their active/inactive colors
-    if(decoration_has_border(decoration)) {
-        float border_color[4];
-        color_to_wlr_color(active ? server.config->border_color.active : server.config->border_color.inactive,
-                border_color);
-        wlr_scene_rect_set_color(decoration->border, border_color);
-    }
+    float wlr_color[4];
+    struct color color = active ? server.config->border.color.active : server.config->border.color.inactive;
+    color.a *= decoration->opacity;
+    color_premultiply(&color);
 
-    if(decoration_has_titlebar(decoration)) {
-        float titlebar_color[4];
-        color_to_wlr_color(active ? server.config->titlebar_color.active : server.config->titlebar_color.inactive,
-                titlebar_color);
-        wlr_scene_rect_set_color(decoration->titlebar.base, titlebar_color);
+    color_to_wlr_color(color, wlr_color);
+    wlr_scene_rect_set_color(decoration->border, wlr_color);
 
-        if(decoration->titlebar.close_button != NULL) {
-            color_to_wlr_color(active ? server.config->titlebar_close_button_color.active
-                                      : server.config->titlebar_close_button_color.inactive,
-                    titlebar_color);
-            wlr_scene_rect_set_color(decoration->titlebar.close_button, titlebar_color);
-        }
+    color = active ? server.config->titlebar.color.active : server.config->titlebar.color.inactive;
+    color.a *= decoration->opacity;
+    color_premultiply(&color);
+
+    color_to_wlr_color(color, wlr_color);
+    wlr_scene_rect_set_color(decoration->titlebar.base, wlr_color);
+
+    if(decoration->titlebar.close_button != NULL) {
+        color = active ? server.config->titlebar.close_button.color.active
+                       : server.config->titlebar.close_button.color.inactive;
+        color.a *= decoration->opacity;
+        color_premultiply(&color);
+
+        color_to_wlr_color(color, wlr_color);
+        wlr_scene_rect_set_color(decoration->titlebar.close_button, wlr_color);
     }
 }
 
 void
-decoration_configure(struct decoration *decoration, uint32_t width, uint32_t height) {
+decoration_configure(struct decoration *decoration, int width, int height) {
     decoration->width = width;
     decoration->height = height;
 
     struct wlr_box decoration_box = {0, 0, width, height};
 
-    // update_* functions will crop the `decoration_box`, so we can pass them to the next one
+    // update_* functions will crop the `decoration_box`, so we can pass them to the next one. note: unlike other
+    // functions, this one only updates the shown decorations, since this may be more computationally intensive,
+    // like when resizing the toplevel
     if(decoration_has_shadow(decoration)) {
         update_shadow(decoration, &decoration_box);
     }
@@ -404,7 +336,7 @@ decoration_configure(struct decoration *decoration, uint32_t width, uint32_t hei
 }
 
 void
-decoration_titlebar_set_title(struct decoration *decoration, char *title) {
+decoration_set_title(struct decoration *decoration, char *title) {
     // if the title is the same we do nothing
     if(decoration->title != NULL && strcmp(decoration->title, title) == 0)
         return;
@@ -414,69 +346,74 @@ decoration_titlebar_set_title(struct decoration *decoration, char *title) {
     }
     decoration->title = strdup(title);
 
-    if(decoration->titlebar.title != NULL) {
+    // if the title is there update it
+    if(decoration->titlebar.title) {
         text_node_set_text(decoration->titlebar.title, title);
         decoration_configure(decoration, decoration->width, decoration->height);
     }
 }
 
 void
-decoration_get_decoration_size(struct decoration *decoration, uint32_t *width, uint32_t *height) {
-    if(!decoration_is_enabled(decoration))
-        return;
-
-    if(decoration_has_border(decoration)) {
-        *width += 2 * server.config->border_width;
-        *height += 2 * server.config->border_width;
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        *height += server.config->titlebar_height;
-    }
-}
-
-void
-decoration_get_content_size(struct decoration *decoration, uint32_t *width, uint32_t *height) {
-    if(!decoration_is_enabled(decoration))
-        return;
-
-    uint32_t deco_width = *width, deco_height = *height;
-
-    if(decoration_has_border(decoration)) {
-        *width -= 2 * server.config->border_width;
-        *height -= 2 * server.config->border_width;
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        *height -= server.config->titlebar_height;
-    }
-
-    // check for overflow
-    if(*width > deco_width)
-        *width = 1;
-    if(*height > deco_height)
-        *height = 1;
-}
-
-void
-decoration_set_blur(struct decoration *decoration, bool blur, bool blur_optimized) {
-    if(decoration_has_border(decoration)) {
-        wlr_scene_rect_set_backdrop_blur(decoration->border, blur);
-        wlr_scene_rect_set_backdrop_blur_optimized(decoration->border, blur_optimized);
-    }
-
-    if(decoration_has_titlebar(decoration)) {
-        wlr_scene_rect_set_backdrop_blur(decoration->titlebar.base, blur);
-        wlr_scene_rect_set_backdrop_blur_optimized(decoration->titlebar.base, blur_optimized);
-    }
-
+decoration_set_blur(struct decoration *decoration, enum blur blur) {
     decoration->blur = blur;
-    decoration->blur_optimized = blur_optimized;
+
+    wlr_scene_rect_set_backdrop_blur(decoration->border, blur != BLUR_NONE);
+    wlr_scene_rect_set_backdrop_blur(decoration->titlebar.base, blur != BLUR_NONE);
+
+    wlr_scene_rect_set_backdrop_blur_optimized(decoration->border, blur == BLUR_OPTIMIZED);
+    wlr_scene_rect_set_backdrop_blur_optimized(decoration->titlebar.base, blur == BLUR_OPTIMIZED);
 }
 
-bool
-decoration_is_enabled(struct decoration *decoration) {
-    return decoration->tree->node.enabled;
+void
+decoration_set_opacity(struct decoration *decoration, double opacity) {
+    decoration->opacity = opacity;
+
+    // this will repaint the colors
+    decoration_set_active(decoration, decoration->active);
+
+    if(decoration->titlebar.title != NULL) {
+        wlr_scene_buffer_set_opacity(decoration->titlebar.title->scene_buffer, opacity);
+    }
+}
+
+void
+decoration_set_corner_radius(struct decoration *decoration, int corner_radius, enum corner_location corner_location) {
+    decoration->corner_radius = corner_radius;
+    decoration->corner_location = corner_location;
+
+    wlr_scene_shadow_set_corner_radius(decoration->shadow, corner_radius);
+    wlr_scene_rect_set_corner_radius(decoration->border, corner_radius, corner_location);
+    wlr_scene_rect_set_corner_radius(decoration->titlebar.base,
+            decoration_has_border(decoration) ? max(corner_radius - server.config->border.width, 0)
+                                              : decoration->corner_radius,
+            CORNER_LOCATION_TOP & decoration->corner_location);
+}
+
+void
+decoration_get_decoration_size(struct decoration *decoration, int *width, int *height) {
+    if(decoration_has_border(decoration)) {
+        *width += 2 * server.config->border.width;
+        *height += 2 * server.config->border.width;
+    }
+
+    if(decoration_has_titlebar(decoration)) {
+        *height += server.config->titlebar.height;
+    }
+}
+
+void
+decoration_get_content_size(struct decoration *decoration, int *width, int *height) {
+    if(decoration_has_border(decoration)) {
+        *width -= 2 * server.config->border.width;
+        *height -= 2 * server.config->border.width;
+    }
+
+    if(decoration_has_titlebar(decoration)) {
+        *height -= server.config->titlebar.height;
+    }
+
+    *width = max(*width, 1);
+    *height = max(*height, 1);
 }
 
 bool

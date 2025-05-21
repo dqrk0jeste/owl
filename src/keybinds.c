@@ -14,8 +14,9 @@
 #include "helpers.h"
 #include "layout.h"
 #include "mwc.h"
-#include "pointer.h"
+#include "rules.h"
 #include "toplevel.h"
+#include "wlr/util/log.h"
 #include "workspace.h"
 
 extern struct server server;
@@ -23,7 +24,7 @@ extern struct server server;
 void
 keybind_stop_server(void *data) {
     server.mode = SERVER_MODE_SHUTTING;
-    wl_display_terminate(server.wl_display);
+    wl_display_terminate(server.display);
 }
 
 void
@@ -33,7 +34,7 @@ keybind_run(void *data) {
 
 void
 keybind_change_workspace(void *data) {
-    struct workspace *workspace = workspace_find_by_index((uintptr_t)data);
+    struct workspace *workspace = workspace_find_by_index((intptr_t)data);
 
     if(workspace != NULL) {
         change_workspace(workspace, server.grabbed_toplevel != NULL);
@@ -68,7 +69,7 @@ keybind_move_to_workspace(void *data) {
     if(toplevel == NULL || toplevel == server.grabbed_toplevel)
         return;
 
-    struct workspace *workspace = workspace_find_by_index((uintptr_t)data);
+    struct workspace *workspace = workspace_find_by_index((intptr_t)data);
 
     if(workspace != NULL) {
         toplevel_move_to_workspace(toplevel, workspace);
@@ -78,23 +79,49 @@ keybind_move_to_workspace(void *data) {
 static void
 try_start_master_ratio_resize(void) {
     if(!has_slaves(server.active_workspace) ||
-            !wlr_box_contains_point(&server.active_workspace->output->usable_area, server.cursor->x, server.cursor->y))
+            !wlr_box_contains_point(&server.active_workspace->output->usable_area, server.cursor.base->x,
+                    server.cursor.base->y))
         return;
 
     server.grabbed_toplevel = NULL;
     server.mode = SERVER_MODE_RESIZING_MASTER_RATIO;
 
-    server.grab_x = server.cursor->x;
-    server.grab_y = server.cursor->y;
+    server.grab_x = server.cursor.base->x;
+    server.grab_y = server.cursor.base->y;
 
     server.initial_master_ratio = server.active_workspace->master_ratio;
 
     if(server.grab_x <= server.active_workspace->output->usable_area.x +
                     server.active_workspace->master_ratio * server.active_workspace->output->usable_area.width) {
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "right_side");
+        cursor_set_image("right_side");
     } else {
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "left_side");
+        cursor_set_image("left_side");
     }
+}
+
+static uint32_t
+get_closest_corner(struct toplevel *toplevel) {
+    struct wlr_box current = toplevel_get_current_display_deco_box(toplevel);
+
+    int32_t left_dist = server.cursor.base->x - current.x;
+    int32_t right_dist = current.width - left_dist;
+    int32_t top_dist = server.cursor.base->y - current.y;
+    int32_t bottom_dist = current.height - top_dist;
+
+    uint32_t edges = 0;
+    if(left_dist <= right_dist) {
+        edges |= WLR_EDGE_LEFT;
+    } else {
+        edges |= WLR_EDGE_RIGHT;
+    }
+
+    if(top_dist <= bottom_dist) {
+        edges |= WLR_EDGE_TOP;
+    } else {
+        edges |= WLR_EDGE_BOTTOM;
+    }
+
+    return edges;
 }
 
 void
@@ -102,12 +129,12 @@ keybind_start_resize(void *data) {
     if(server.mode != SERVER_MODE_NORMAL)
         return;
 
-    struct toplevel *toplevel = get_toplevel_under_cursor();
+    struct toplevel *toplevel = cursor_get_toplevel();
 
     if(toplevel != NULL && toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         // if a floating toplevel is under the cursor then start the resize
-        uint32_t edges = toplevel_get_closest_corner(server.cursor, toplevel);
-        wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, wlr_xcursor_get_resize_name(edges));
+        uint32_t edges = get_closest_corner(toplevel);
+        cursor_set_image(wlr_xcursor_get_resize_name(edges));
 
         toplevel_start_resize(toplevel, edges, true);
     } else {
@@ -129,11 +156,11 @@ keybind_start_move(void *data) {
     if(server.mode != SERVER_MODE_NORMAL)
         return;
 
-    struct toplevel *toplevel = get_toplevel_under_cursor();
+    struct toplevel *toplevel = cursor_get_toplevel();
     if(toplevel == NULL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
         return;
 
-    wlr_cursor_set_xcursor(server.cursor, server.cursor_mgr, "hand1");
+    cursor_set_image("hand1");
     toplevel_start_move(toplevel, true);
 }
 
@@ -243,7 +270,7 @@ try_move_relative_output(struct output *output, enum direction direction, struct
 }
 void
 keybind_move(void *data) {
-    uint64_t direction = (uint64_t)data;
+    enum direction direction = (uintptr_t)data;
 
     struct toplevel *toplevel = server.focused_toplevel;
     if(toplevel == NULL || toplevel == server.grabbed_toplevel)
@@ -312,17 +339,29 @@ keybind_toggle_floating(void *data) {
         layout_add(workspace, toplevel);
         layout_configure(workspace);
     } else {
-        if(toplevel->mode == TOPLEVEL_MODE_MASTER && has_slaves(workspace)) {
-            promote_last_slave(workspace);
+        if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
+            workspace->master_count--;
+            if(has_slaves(workspace)) {
+                promote_last_slave(workspace);
+            }
+        } else {
+            workspace->slave_count--;
         }
+
         wl_list_remove(&toplevel->link);
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
 
         toplevel->mode = TOPLEVEL_MODE_FLOATING;
         wl_list_insert(&toplevel->workspace->floating, &toplevel->link);
 
-        uint32_t width, height;
-        if(toplevel_get_floating_deco_size(toplevel, &width, &height)) {
+        rules_update_for_toplevel(toplevel);
+        if(toplevel->default_width != 0 && toplevel->default_height != 0) {
+            int width = toplevel->default_width, height = toplevel->default_height;
+            if(toplevel->width_is_relative)
+                width *= toplevel->workspace->output->usable_area.width / 100.0;
+            if(toplevel->height_is_relative)
+                height *= toplevel->workspace->output->usable_area.height / 100.0;
+
             struct wlr_box centered = output_create_centered_box(workspace->output, width, height);
             toplevel_set_state(toplevel, centered);
         } else {
@@ -364,19 +403,17 @@ keybind_decrease_master_ratio(void *data) {
 }
 
 bool
-server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyboard_key_state state) {
-    if(server.lock != NULL)
+handle_keybinds(struct keyboard *keyboard, int keycode, enum wl_keyboard_key_state state) {
+    if(server.mode == SERVER_MODE_LOCKED)
         return false;
 
     uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-    // we use empty state so we can get raw, unmodified key.
-    // this is used becuase we already handle modifiers explicitly,
-    // and dont want them to interfere. for example, shift would make it
-    // harder to specify the right key e.g. we would have to write
-    //     keybind alt+shift # <do_something>
+    // we use empty state so we can get raw, unmodified key. this is used becuase we already handle modifiers
+    // explicitly, and dont want them to interfere. for example, shift would make it harder to specify the right key
+    // e.g. we would have to write
+    //      keybind alt+shift # <do_something>
     // instead of
     //     alt+shift 3 <do_something> */
-
     const xkb_keysym_t *syms;
     int count = xkb_state_key_get_syms(keyboard->empty, keycode, &syms);
 
@@ -401,12 +438,13 @@ server_handle_keybinds(struct keyboard *keyboard, uint32_t keycode, enum wl_keyb
 
 bool
 handle_change_vt_key(const xkb_keysym_t *keysyms, size_t count) {
-    for(int i = 0; i < count; i++) {
-        uint32_t vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
+    for(size_t i = 0; i < count; i++) {
+        int vt = keysyms[i] - XKB_KEY_XF86Switch_VT_1 + 1;
         if(vt >= 1 && vt <= 12) {
             wlr_session_change_vt(server.session, vt);
             return true;
         }
     }
+
     return false;
 }

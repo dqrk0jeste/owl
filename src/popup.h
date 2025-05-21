@@ -14,7 +14,7 @@ struct popup {
 };
 
 void
-server_handle_new_popup(struct wl_listener *listener, void *data);
+handle_new_popup(struct wl_listener *listener, void *data);
 
 struct view *
 popup_get_root_parent(struct popup *popup);

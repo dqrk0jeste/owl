@@ -6,10 +6,11 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
-#include "layer_surface.h"
+#include "layer_shell.h"
 #include "mwc.h"
 #include "toplevel.h"
 #include "view.h"
+#include "workspace.h"
 
 extern struct server server;
 
@@ -62,7 +63,7 @@ popup_handle_destroy(struct wl_listener *listener, void *data) {
 }
 
 void
-server_handle_new_popup(struct wl_listener *listener, void *data) {
+handle_new_popup(struct wl_listener *listener, void *data) {
     // this event is raised when a client creates a new popup
     struct wlr_xdg_popup *xdg_popup = data;
 
@@ -70,7 +71,7 @@ server_handle_new_popup(struct wl_listener *listener, void *data) {
     popup->xdg_popup = xdg_popup;
     xdg_popup->base->data = popup;
 
-    // if there is no parent, then this popup may be reparented later; see layer_surface_handle_new_popup()
+    // if there is no parent, then this popup may be reparented later; see `layer_surface_handle_new_popup()`
     if(xdg_popup->parent != NULL) {
         struct wlr_xdg_surface *parent_xdg_surface = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
 

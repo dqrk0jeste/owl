@@ -1,62 +1,79 @@
 #include "layout.h"
 
-#include <stdint.h>
+#include <assert.h>
+#include <string.h>
 #include <wayland-util.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/util/box.h>
 
+#include "array.h"
 #include "config.h"
 #include "mwc.h"
+#include "rules.h"
 #include "toplevel.h"
-#include "wlr/util/box.h"
 
 extern struct server server;
 
-void
-layout_get_masters_container_size(struct workspace *workspace, uint32_t master_count, uint32_t slave_count,
-        uint32_t *width, uint32_t *height) {
-    uint32_t outer_gaps = server.config->outer_gaps;
-    uint32_t inner_gaps = server.config->inner_gaps;
-    double master_ratio = workspace->master_ratio;
+static void
+get_gaps(int layout_size, char *output, int *inner, int *outer) {
+    uint32_t found = 0;
+    for(struct gaps_config *iter = array_last(server.config->gaps); iter >= server.config->gaps; iter--) {
+        if((!(iter->specified & GAPS_FIELD_MATCH_OUTPUT) || strcmp(iter->output, output) == 0) &&
+                (!(iter->specified & GAPS_FIELD_MATCH_LAYOUT_SIZE) ||
+                        matches_relation(iter->relation, layout_size, iter->layout_size))) {
+            if(!(found & GAPS_FIELD_INNER) && (iter->specified & GAPS_FIELD_INNER)) {
+                *inner = iter->inner;
+                found |= GAPS_FIELD_INNER;
+            }
+            if(!(found & GAPS_FIELD_OUTER) && (iter->specified & GAPS_FIELD_OUTER)) {
+                *outer = iter->outer;
+                found |= GAPS_FIELD_OUTER;
+            }
+        }
+    }
 
-    struct wlr_box output_box = workspace->output->usable_area;
-
-    uint32_t total_width = slave_count > 0 ? output_box.width * master_ratio : output_box.width;
-
-    uint32_t total_gaps = slave_count > 0 ? outer_gaps  // left outer gaps
-                    + (master_count - 1) * 2 * inner_gaps  // inner gaps between masters
-                    + inner_gaps  // right inner gaps
-                                          : outer_gaps  // left outer gaps
-                    + (master_count - 1) * 2 * inner_gaps  // inner gaps between masters
-                    + outer_gaps;  // right outer gaps
-
-    *width = (total_width - total_gaps) / master_count;
-    *height = output_box.height - 2 * outer_gaps;
+    assert(found & GAPS_FIELD_INNER);
+    assert(found & GAPS_FIELD_OUTER);
 }
 
 void
-layout_get_slaves_container_size(struct workspace *workspace, uint32_t slave_count, uint32_t *width, uint32_t *height) {
-    uint32_t outer_gaps = server.config->outer_gaps;
-    uint32_t inner_gaps = server.config->inner_gaps;
+layout_get_masters_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
+        int *height) {
+    int inner_gaps, outer_gaps;
+    get_gaps(master_count + slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
+
     double master_ratio = workspace->master_ratio;
 
     struct wlr_box output_box = workspace->output->usable_area;
 
-    uint32_t total_gaps = outer_gaps  // top outer gaps
-            + (slave_count - 1) * 2 * inner_gaps  // inner gaps between slaves
-            + outer_gaps;  // bottom outer gaps
+    int total_width =
+            slave_count > 0 ? output_box.width * master_ratio - outer_gaps : output_box.width - 2 * outer_gaps;
 
-    *width = output_box.width * (1 - master_ratio) - outer_gaps - inner_gaps;
-    *height = (output_box.height - total_gaps) / slave_count;
+    *width = total_width / master_count - 2 * inner_gaps;
+    *height = output_box.height - 2 * outer_gaps - 2 * inner_gaps;
+}
+
+void
+layout_get_slaves_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
+        int *height) {
+    int inner_gaps, outer_gaps;
+    get_gaps(master_count + slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
+    double master_ratio = workspace->master_ratio;
+
+    struct wlr_box output_box = workspace->output->usable_area;
+
+    *width = output_box.width * (1 - master_ratio) - outer_gaps - 2 * inner_gaps;
+    *height = output_box.height / slave_count - 2 * inner_gaps;
 }
 
 bool
 has_masters(struct workspace *workspace) {
-    return !wl_list_empty(&workspace->masters);
+    return workspace->master_count > 0;
 }
 
 bool
 has_slaves(struct workspace *workspace) {
-    return !wl_list_empty(&workspace->slaves);
+    return workspace->slave_count > 0;
 }
 
 struct toplevel *
@@ -137,6 +154,8 @@ demote_last_master(struct workspace *workspace) {
     wl_list_remove(&last->link);
     wl_list_insert(workspace->slaves.prev, &last->link);
     last->mode = TOPLEVEL_MODE_SLAVE;
+    workspace->master_count--;
+    workspace->slave_count++;
 }
 
 void
@@ -145,17 +164,21 @@ promote_last_slave(struct workspace *workspace) {
     wl_list_remove(&last->link);
     wl_list_insert(workspace->masters.prev, &last->link);
     last->mode = TOPLEVEL_MODE_MASTER;
+    workspace->master_count++;
+    workspace->slave_count--;
 }
 
 void
 layout_add(struct workspace *workspace, struct toplevel *toplevel) {
     toplevel->workspace = workspace;
-    if(wl_list_length(&workspace->masters) < server.config->master_count) {
+    if(workspace->master_count < workspace->output->master_count) {
         wl_list_insert(workspace->masters.prev, &toplevel->link);
         toplevel->mode = TOPLEVEL_MODE_MASTER;
+        workspace->master_count++;
     } else {
         wl_list_insert(workspace->slaves.prev, &toplevel->link);
         toplevel->mode = TOPLEVEL_MODE_SLAVE;
+        workspace->slave_count++;
     }
 }
 
@@ -167,40 +190,55 @@ layout_configure(struct workspace *workspace) {
 
     struct output *output = workspace->output;
 
-    uint32_t outer_gaps = server.config->outer_gaps;
-    uint32_t inner_gaps = server.config->inner_gaps;
+    int inner_gaps, outer_gaps;
+    get_gaps(workspace->master_count + workspace->slave_count, workspace->output->wlr_output->name, &inner_gaps,
+            &outer_gaps);
+    workspace->inner_gaps = inner_gaps;
+    workspace->outer_gaps = outer_gaps;
 
-    uint32_t slave_count = wl_list_length(&workspace->slaves);
-    uint32_t master_count = wl_list_length(&workspace->masters);
+    // remove the outer gaps from the area
+    struct wlr_box layout_area = output->usable_area;
+    layout_area.x += outer_gaps;
+    layout_area.y += outer_gaps;
+    layout_area.width -= 2 * outer_gaps;
+    layout_area.height -= 2 * outer_gaps;
 
-    uint32_t width, height;
-    layout_get_masters_container_size(workspace, master_count, slave_count, &width, &height);
+    // calculate master width and height (including inner gaps)
+    int width = workspace->slave_count > 0 ? layout_area.width * workspace->master_ratio : layout_area.width;
+    width /= workspace->master_count;
+    int height = layout_area.height;
 
-    struct wlr_box box = {.width = width, .height = height};
-
-    size_t i = 0;
+    int i = 0;
     struct toplevel *toplevel;
     wl_list_for_each(toplevel, &workspace->masters, link) {
-        box.x = output->usable_area.x + outer_gaps + box.width * i + inner_gaps * 2 * i;
-        box.y = output->usable_area.y + outer_gaps;
+        struct wlr_box box = {
+                layout_area.x + i * width + inner_gaps,
+                layout_area.y + inner_gaps,
+                width - 2 * inner_gaps,
+                height - 2 * inner_gaps,
+        };
 
+        rules_update_for_toplevel(toplevel);
         toplevel_set_state(toplevel, box);
         i++;
     }
 
-    if(slave_count == 0)
+    if(workspace->slave_count == 0)
         return;
 
-    layout_get_slaves_container_size(workspace, slave_count, &width, &height);
-
-    box.width = width;
-    box.height = height;
+    width = layout_area.width * (1 - workspace->master_ratio);
+    height = layout_area.height / workspace->slave_count;
 
     i = 0;
     wl_list_for_each(toplevel, &workspace->slaves, link) {
-        box.x = output->usable_area.x + output->usable_area.width * workspace->master_ratio + inner_gaps;
-        box.y = output->usable_area.y + outer_gaps + height * i + inner_gaps * 2 * i;
+        struct wlr_box box = {
+                layout_area.x + layout_area.width * workspace->master_ratio + inner_gaps,
+                layout_area.y + i * height + inner_gaps,
+                width - 2 * inner_gaps,
+                height - 2 * inner_gaps,
+        };
 
+        rules_update_for_toplevel(toplevel);
         toplevel_set_state(toplevel, box);
         i++;
     }
@@ -223,74 +261,15 @@ layout_swap(struct toplevel *t1, struct toplevel *t2) {
     layout_configure(t1->workspace);
 }
 
-// struct toplevel *
-// layout_find_closest_toplevel(struct workspace *workspace, bool master, enum direction side) {
-//     // this means there are no tiled toplevels
-//     if(wl_list_empty(&workspace->masters))
-//         return NULL;
-//
-//     // struct toplevel *first_master = wl_container_of(workspace->masters.next, first_master, link);
-//     // struct toplevel *last_master = wl_container_of(workspace->masters.prev, last_master, link);
-//     //
-//     // struct toplevel *first_slave = NULL;
-//     // struct toplevel *last_slave = NULL;
-//     // if(!wl_list_empty(&workspace->slaves)) {
-//     //     first_slave = wl_container_of(workspace->slaves.next, first_slave, link);
-//     //     last_slave = wl_container_of(workspace->slaves.prev, last_slave, link);
-//     // }
-//
-//     switch(side) {
-//         case DIRECTION_UP: {
-//             if(master || first_slave == NULL)
-//                 return first_master;
-//             return first_slave;
-//         }
-//         case DIRECTION_DOWN: {
-//             if(master || last_slave == NULL)
-//                 return first_master;
-//             return last_slave;
-//         }
-//         case DIRECTION_LEFT: {
-//             return first_master;
-//         }
-//         case DIRECTION_RIGHT: {
-//             if(last_slave != NULL)
-//                 return last_slave;
-//             return last_master;
-//         }
-//     }
-// }
-
 static struct toplevel *
-layout_toplevel_at(struct workspace *workspace, int32_t x, int32_t y) {
+layout_toplevel_at(struct workspace *workspace, int x, int y) {
     struct toplevel *iter;
     wl_list_for_each(iter, &workspace->masters, link) {
         struct wlr_box box = iter->deco_box;
-        int32_t rx = 0, ry = 0;
-
-        if(iter == first_master(workspace)) {
-            rx -= server.config->outer_gaps;
-            ry -= server.config->outer_gaps;
-            if(iter == last_master(workspace)) {
-                box.width += 2 * server.config->outer_gaps;
-            } else {
-                box.width += server.config->outer_gaps + server.config->inner_gaps;
-            }
-            box.height += 2 * server.config->outer_gaps;
-        } else if(iter == last_master(workspace) && !has_slaves(workspace)) {
-            rx -= server.config->inner_gaps;
-            ry -= server.config->outer_gaps;
-            box.width += server.config->inner_gaps + server.config->outer_gaps;
-            box.height += 2 * server.config->outer_gaps;
-        } else {
-            rx -= server.config->inner_gaps;
-            ry -= server.config->outer_gaps;
-            box.width += 2 * server.config->inner_gaps;
-            box.height += 2 * server.config->outer_gaps;
-        }
-
-        box.x += rx;
-        box.y += ry;
+        box.x -= workspace->inner_gaps;
+        box.y -= workspace->inner_gaps;
+        box.width += 2 * workspace->inner_gaps;
+        box.height += 2 * workspace->inner_gaps;
 
         if(wlr_box_contains_point(&box, x, y)) {
             return iter;
@@ -299,31 +278,10 @@ layout_toplevel_at(struct workspace *workspace, int32_t x, int32_t y) {
 
     wl_list_for_each(iter, &workspace->slaves, link) {
         struct wlr_box box = iter->deco_box;
-        int32_t rx = 0, ry = 0;
-
-        if(iter == first_slave(workspace)) {
-            rx -= server.config->inner_gaps;
-            ry -= server.config->outer_gaps;
-            box.width += server.config->inner_gaps + server.config->outer_gaps;
-            if(iter == last_slave(workspace)) {
-                box.height += 2 * server.config->outer_gaps;
-            } else {
-                box.height += server.config->inner_gaps + server.config->outer_gaps;
-            }
-        } else if(iter == last_slave(workspace)) {
-            rx -= server.config->inner_gaps;
-            ry -= server.config->inner_gaps;
-            box.width += server.config->inner_gaps + server.config->outer_gaps;
-            box.height += server.config->inner_gaps + server.config->outer_gaps;
-        } else {
-            rx -= server.config->inner_gaps;
-            ry -= server.config->inner_gaps;
-            box.width += server.config->inner_gaps + server.config->outer_gaps;
-            box.height += 2 * server.config->inner_gaps;
-        }
-
-        box.x += rx;
-        box.y += ry;
+        box.x -= workspace->inner_gaps;
+        box.y -= workspace->inner_gaps;
+        box.width += 2 * workspace->inner_gaps;
+        box.height += 2 * workspace->inner_gaps;
 
         if(wlr_box_contains_point(&box, x, y)) {
             return iter;
@@ -334,7 +292,7 @@ layout_toplevel_at(struct workspace *workspace, int32_t x, int32_t y) {
 }
 
 void
-layout_insert_toplevel_at(struct toplevel *toplevel, uint32_t x, uint32_t y) {
+layout_insert_toplevel_at(struct toplevel *toplevel, int x, int y) {
     struct workspace *workspace = server.active_workspace;
 
     toplevel->workspace = workspace;
@@ -343,27 +301,32 @@ layout_insert_toplevel_at(struct toplevel *toplevel, uint32_t x, uint32_t y) {
 
     if(under_cursor == NULL) {
         layout_add(workspace, toplevel);
-    } else {
-        bool on_left_side = x <= under_cursor->deco_box.x + under_cursor->deco_box.width / 2;
-        bool on_top_side = y <= under_cursor->deco_box.y + under_cursor->deco_box.height / 2;
-        bool under_cursor_is_master = under_cursor->mode == TOPLEVEL_MODE_MASTER;
-
-        // we insert it before under_cursor if either:
-        // - its last master and there are some slaves
-        // - cursor is on left (top)
-        if((under_cursor_is_master && under_cursor == last_master(workspace) && has_slaves(workspace)) ||
-                (under_cursor_is_master && on_left_side) || (!under_cursor_is_master && on_top_side)) {
+    } else if(under_cursor->mode == TOPLEVEL_MODE_MASTER) {
+        if((under_cursor == last_master(workspace) && has_slaves(workspace)) ||
+                x <= under_cursor->deco_box.x + under_cursor->deco_box.width / 2) {
             wl_list_insert(under_cursor->link.prev, &toplevel->link);
         } else {
+            // else insert after
             wl_list_insert(&under_cursor->link, &toplevel->link);
         }
 
-        toplevel->mode = under_cursor->mode;
-
-        // if there are more masters than needed, we demote one of them
-        if(wl_list_length(&workspace->masters) > server.config->master_count) {
+        toplevel->mode = TOPLEVEL_MODE_MASTER;
+        workspace->master_count++;
+        if(workspace->master_count > workspace->output->master_count) {
+            // if there are more masters than needed, we demote one of them
             demote_last_master(workspace);
         }
+    } else {
+        if(y <= under_cursor->deco_box.y + under_cursor->deco_box.height / 2) {
+            // if on top insert before
+            wl_list_insert(under_cursor->link.prev, &toplevel->link);
+        } else {
+            // else insert after
+            wl_list_insert(&under_cursor->link, &toplevel->link);
+        }
+
+        toplevel->mode = TOPLEVEL_MODE_SLAVE;
+        workspace->slave_count++;
     }
 
     // finally, we set this as a new state

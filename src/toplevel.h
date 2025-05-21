@@ -9,15 +9,13 @@
 #include "decoration.h"
 #include "foreign_toplevel.h"
 #include "helpers.h"
-#include "mwc.h"
-#include "rendering.h"
 
 enum toplevel_mode {
     TOPLEVEL_MODE_NONE = 0,
-    TOPLEVEL_MODE_FLOATING,
-    TOPLEVEL_MODE_MASTER,
-    TOPLEVEL_MODE_SLAVE,
-    TOPLEVEL_MODE_FULLSCREEN,
+    TOPLEVEL_MODE_FLOATING = 1 << 0,
+    TOPLEVEL_MODE_MASTER = 1 << 1,
+    TOPLEVEL_MODE_SLAVE = 1 << 2,
+    TOPLEVEL_MODE_FULLSCREEN = 1 << 3,
 };
 
 struct toplevel {
@@ -33,13 +31,14 @@ struct toplevel {
     enum toplevel_mode mode;
 
     struct decoration decoration;
+    struct wlr_xdg_toplevel_decoration_v1 *xdg_decoration;  // may be null
 
     // if a floating toplevel becomes fullscreen, we keep its previous state
     enum toplevel_mode prev_mode;
     union {
         // when it was tiled we keep its index in the layout. this index should be used as a hint to where to place the
         // toplevel after exiting fullscreen
-        uint32_t prev_index;
+        int prev_index;
         // if it was floating than we keep its previous position in the layout
         struct wlr_box prev_deco_box;
     };
@@ -51,8 +50,14 @@ struct toplevel {
     // toplevel size and position in the layout
     struct wlr_box deco_box;
 
-    // cached values for toplevels opacity and blur, since they are needed every frame
-    double inactive_opacity, active_opacity, has_blur;
+    // derived from rules
+    bool client_side_decorations;
+    double opacity;
+    enum blur blur;
+    int corner_radius;
+    enum corner_location corner_location;
+    int default_width, default_height;
+    bool width_is_relative, height_is_relative;
 
     struct fx_transform_animation *animation;
 
@@ -73,10 +78,6 @@ struct toplevel {
 bool
 toplevel_is_tiled(struct toplevel *toplevel);
 
-// looks up window rules and returns true if found, with the size in `*width` and `*height`, else return false
-bool
-toplevel_get_floating_deco_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height);
-
 // send the configure of 0, 0 and set things up for patching later using `toplevel_handle_own_size()`
 void
 toplevel_floating_set_own_size(struct toplevel *toplevel);
@@ -92,14 +93,14 @@ toplevel_get_geometry(struct toplevel *toplevel);
 
 // get currently displayed toplevel content box; caused by running animation
 void
-toplevel_get_current_display_content_size(struct toplevel *toplevel, uint32_t *width, uint32_t *height);
+toplevel_get_current_display_content_size(struct toplevel *toplevel, int *width, int *height);
 
 // get currently displayed toplevel box with decorations; caused by running animation
 struct wlr_box
 toplevel_get_current_display_deco_box(struct toplevel *toplevel);
 
 void
-server_handle_new_toplevel(struct wl_listener *listener, void *data);
+handle_new_toplevel(struct wl_listener *listener, void *data);
 
 void
 toplevel_start_move(struct toplevel *toplevel, bool by_keybind);
@@ -122,26 +123,6 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor);
 
 struct toplevel *
 toplevel_find_closest_floating_on_workspace(struct toplevel *toplevel, enum direction direction);
-
-// get the output where the most of this toplevel is drawn on
-struct output *
-toplevel_get_primary_output(struct toplevel *toplevel);
-
-// get the corner closest to the cursor; FIXME: this should take the x, y coords instead
-uint32_t
-toplevel_get_closest_corner(struct wlr_cursor *cursor, struct toplevel *toplevel);
-
-// shorthand to check if the toplevel should have optimized blur or not
-bool
-toplevel_should_have_optimized_blur(struct toplevel *toplevel);
-
 // raise this toplevel and its parents/children to the top of its scene graph
-// note: toplevel must be floating
 void
 toplevel_raise_to_top(struct toplevel *toplevel);
-
-void
-xdg_activation_handle_request(struct wl_listener *listener, void *data);
-
-void
-server_handle_request_xdg_decoration(struct wl_listener *listener, void *data);
