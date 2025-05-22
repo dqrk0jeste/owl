@@ -1,6 +1,7 @@
 #include "workspace.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <scenefx/types/wlr_scene.h>
 #include <stdint.h>
 
@@ -10,7 +11,6 @@
 #include "layout.h"
 #include "mwc.h"
 #include "view.h"
-#include "wlr/util/log.h"
 
 extern struct server server;
 
@@ -121,20 +121,6 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
     cursor_handle_focus(get_now_in_ms(), false);
 }
 
-static void
-patch_relative_box_for_output(struct wlr_box *box, struct output *old, struct output *new) {
-    // calculate where the toplevel should be placed after exiting fullscreen; we use the same relative
-    // place on this output as is was on the last one
-    int32_t old_relative_x = box->x - old->usable_area.x;
-    double relative_x = (double)old_relative_x / old->usable_area.width;
-
-    int32_t old_relative_y = box->y - old->usable_area.y;
-    double relative_y = (double)old_relative_y / old->usable_area.height;
-
-    box->x = new->usable_area.x + relative_x *new->usable_area.width;
-    box->y = new->usable_area.y + relative_y *new->usable_area.height;
-}
-
 void
 toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspace) {
     if(toplevel == server.grabbed_toplevel || toplevel->workspace == workspace || workspace->fullscreen != NULL)
@@ -186,9 +172,10 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         }
 
         if(toplevel->prev_mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
-            // calculate where the toplevel should be placed after exiting fullscreen
-            // we use the same relative place on this output as is was on the last one
-            patch_relative_box_for_output(&toplevel->prev_deco_box, old_workspace->output, workspace->output);
+            // calculate where the toplevel should be placed after exiting fullscreen; we use the same relative place on
+            // this output as is was on the last one
+            get_same_relative_coords(&toplevel->prev_deco_box.x, &toplevel->prev_deco_box.y,
+                    &old_workspace->output->usable_area, &workspace->output->usable_area);
         } else {
             // invalidate the index
             toplevel->prev_index = -1;
@@ -196,9 +183,10 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         }
     } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
         // if the toplevel is moved between workspaces on the same output we dont do anything about the presentation;
-        // else we place it at the same relative coords on the new output
+        // else we place it at the same relative coords on the new output; here we copy the box, since this state should
+        // not be changed directly
         struct wlr_box box = toplevel->deco_box;
-        patch_relative_box_for_output(&box, old_workspace->output, workspace->output);
+        get_same_relative_coords(&box.x, &box.y, &old_workspace->output->usable_area, &workspace->output->usable_area);
         toplevel_set_state(toplevel, box);
     } else if(toplevel_is_tiled(toplevel)) {
         // and if tiled we just configure the layouts of both the old one and the new one
@@ -212,33 +200,69 @@ workspace_find_closest_floating(struct workspace *workspace, enum direction side
     if(!has_floating(workspace))
         return NULL;
 
-    struct toplevel *first = first_floating(workspace);
-    struct toplevel *min_x = first, *max_x = first, *min_y = first, *max_y = first;
+    if(side == DIRECTION_UP) {
+        struct toplevel *min = NULL;
+        int min_val = INT_MAX;
 
-    struct toplevel *iter;
-    wl_list_for_each(iter, &workspace->floating, link) {
-        if(iter->deco_box.x < min_x->deco_box.x) {
-            min_x = iter;
-        } else if(iter->deco_box.x > max_x->deco_box.x) {
-            max_x = iter;
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int y = iter->deco_box.y + iter->deco_box.height / 2;
+
+            if(y < min_val) {
+                min = iter;
+                min_val = y;
+            }
         }
-        if(iter->deco_box.y < min_y->deco_box.y) {
-            min_y = iter;
-        } else if(iter->deco_box.y > max_y->deco_box.y) {
-            max_y = iter;
+
+        return min;
+    } else if(side == DIRECTION_DOWN) {
+        struct toplevel *max = NULL;
+        int max_val = INT_MIN;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int y = iter->deco_box.y + iter->deco_box.height / 2;
+
+            if(y > max_val) {
+                max = iter;
+                max_val = y;
+            }
         }
+
+        return max;
+    } else if(side == DIRECTION_LEFT) {
+        struct toplevel *min = NULL;
+        int min_val = INT_MAX;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int x = iter->deco_box.x + iter->deco_box.width / 2;
+
+            if(x < min_val) {
+                min = iter;
+                min_val = x;
+            }
+        }
+
+        return min;
+    } else if(side == DIRECTION_RIGHT) {
+        struct toplevel *max = NULL;
+        int max_val = INT_MIN;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int x = iter->deco_box.x + iter->deco_box.width / 2;
+
+            if(x > max_val) {
+                max = iter;
+                max_val = x;
+            }
+        }
+
+        return max;
     }
 
-    switch(side) {
-        case DIRECTION_UP:
-            return min_y;
-        case DIRECTION_DOWN:
-            return max_y;
-        case DIRECTION_LEFT:
-            return min_x;
-        case DIRECTION_RIGHT:
-            return max_x;
-    }
+    assert(false && "unreachable");
 }
 
 void

@@ -1243,6 +1243,9 @@ config_reload(void) {
     // we reconfigure the outputs
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
+        // before configuring the output we save its original usable area, so the floating toplevels can later be
+        // placed at the same place on the output
+        struct wlr_box old_usable_area = iter_output->usable_area;
         output_configure(iter_output, false);
 
         // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
@@ -1268,7 +1271,9 @@ config_reload(void) {
                 decoration_recreate(&iter_toplevel->decoration);
 
                 rules_update_for_toplevel(iter_toplevel);
-                toplevel_set_state(iter_toplevel, iter_toplevel->deco_box);
+                struct wlr_box box = iter_toplevel->deco_box;
+                get_same_relative_coords(&box.x, &box.y, &old_usable_area, &iter_output->usable_area);
+                toplevel_set_state(iter_toplevel, box);
             }
 
             if(iter_workspace->fullscreen != NULL) {

@@ -39,7 +39,7 @@ void
 output_configure(struct output *output, bool initial);
 
 struct output *
-output_get_relative(struct output *output, enum direction direction);
+output_get_relative(struct output *output, enum direction direction, int x, int y);
 
 void
 jump_cursor_to_output(struct output *output);

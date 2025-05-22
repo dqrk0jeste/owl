@@ -60,3 +60,9 @@ matches_relation(enum relation relation, int a, int b);
 
 void
 color_premultiply(struct color *color);
+
+void
+box_midpoint(const struct wlr_box *box, int *x, int *y);
+
+void
+get_same_relative_coords(int *x, int *y, const struct wlr_box *old, const struct wlr_box *new);

@@ -619,54 +619,77 @@ toplevel_find_closest_floating_on_workspace(struct toplevel *toplevel, enum dire
     struct toplevel *min = NULL;
     int min_val = INT_MAX;
 
-    struct toplevel *t;
     if(direction == DIRECTION_UP) {
-        wl_list_for_each(t, &workspace->floating, link) {
-            if(t == toplevel || t->deco_box.y > toplevel->deco_box.y)
+        int my = toplevel->deco_box.y + toplevel->deco_box.height / 2;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            if(iter == toplevel)
                 continue;
 
-            int dy = abs(toplevel->deco_box.y - t->deco_box.y);
-            if(dy < min_val) {
-                min = t;
+            int y = iter->deco_box.y + iter->deco_box.height / 2;
+
+            int dy = my - y;
+            if(dy > 0 && dy < min_val) {
+                min = iter;
                 min_val = dy;
             }
         }
+
         return min;
     } else if(direction == DIRECTION_DOWN) {
-        wl_list_for_each(t, &workspace->floating, link) {
-            if(t == toplevel || t->deco_box.y < toplevel->deco_box.y)
+        int my = toplevel->deco_box.y + toplevel->deco_box.height / 2;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            if(iter == toplevel)
                 continue;
 
-            int dy = abs(toplevel->deco_box.y - t->deco_box.y);
-            if(dy < min_val) {
-                min = t;
+            int y = iter->deco_box.y + iter->deco_box.height / 2;
+
+            int dy = y - my;
+            if(dy > 0 && dy < min_val) {
+                min = iter;
                 min_val = dy;
             }
         }
+
         return min;
     } else if(direction == DIRECTION_LEFT) {
-        wl_list_for_each(t, &workspace->floating, link) {
-            if(t == toplevel || t->deco_box.x > toplevel->deco_box.x)
+        int mx = toplevel->deco_box.x + toplevel->deco_box.width / 2;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            if(iter == toplevel)
                 continue;
 
-            int dx = abs(toplevel->deco_box.x - t->deco_box.x);
-            if(dx < min_val) {
-                min = t;
+            int x = iter->deco_box.x + iter->deco_box.width / 2;
+
+            int dx = mx - x;
+            if(dx > 0 && dx < min_val) {
+                min = iter;
                 min_val = dx;
             }
         }
+
         return min;
     } else if(direction == DIRECTION_RIGHT) {
-        wl_list_for_each(t, &workspace->floating, link) {
-            if(t == toplevel || t->deco_box.x < toplevel->deco_box.x)
+        int mx = toplevel->deco_box.x + toplevel->deco_box.width / 2;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            if(iter == toplevel)
                 continue;
 
-            int dx = abs(toplevel->deco_box.x - t->deco_box.x);
-            if(dx < min_val) {
-                min = t;
+            int x = iter->deco_box.x + iter->deco_box.width / 2;
+
+            int dx = x - mx;
+            if(dx > 0 && dx < min_val) {
+                min = iter;
                 min_val = dx;
             }
         }
+
         return min;
     }
 

@@ -183,7 +183,13 @@ keybind_close(void *data) {
 
 static void
 try_focus_relative_output(struct output *output, enum direction direction) {
-    struct output *relative_output = output_get_relative(output, direction);
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+
+    int x, y;
+    box_midpoint(&output_box, &x, &y);
+
+    struct output *relative_output = output_get_relative(output, direction, x, y);
     if(relative_output != NULL) {
         focus_output(relative_output, direction);
     }
@@ -263,7 +269,10 @@ keybind_move_focus(void *data) {
 
 static void
 try_move_relative_output(struct output *output, enum direction direction, struct toplevel *toplevel) {
-    struct output *relative_output = output_get_relative(output, direction);
+    int x, y;
+    box_midpoint(&toplevel->deco_box, &x, &y);
+    struct output *relative_output = output_get_relative(output, direction, x, y);
+
     if(relative_output != NULL && relative_output->active_workspace->fullscreen == NULL) {
         toplevel_move_to_workspace(toplevel, relative_output->active_workspace);
     }

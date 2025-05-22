@@ -107,3 +107,18 @@ color_premultiply(struct color *color) {
     color->g *= color->a / 255.0;
     color->b *= color->a / 255.0;
 }
+
+void
+box_midpoint(const struct wlr_box *box, int *x, int *y) {
+    *x = box->x + box->width / 2;
+    *y = box->y + box->height / 2;
+}
+
+void
+get_same_relative_coords(int *x, int *y, const struct wlr_box *old, const struct wlr_box *new) {
+    double relative_x = (double)(*x - old->x) / old->width;
+    double relative_y = (double)(*y - old->y) / old->height;
+
+    *x = new->x + relative_x *new->width;
+    *y = new->y + relative_y *new->height;
+}

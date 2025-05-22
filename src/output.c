@@ -395,45 +395,21 @@ focus_output(struct output *output, enum direction direction) {
     }
 }
 
-// todo: may replace this function with the wlroots alternative, as this one is quite hacky
+static int wlr_direction_from[] = {
+        [DIRECTION_UP] = WLR_DIRECTION_UP,
+        [DIRECTION_RIGHT] = WLR_DIRECTION_RIGHT,
+        [DIRECTION_DOWN] = WLR_DIRECTION_DOWN,
+        [DIRECTION_LEFT] = WLR_DIRECTION_LEFT,
+};
+
 struct output *
-output_get_relative(struct output *output, enum direction direction) {
-    struct wlr_box original_output_box;
-    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &original_output_box);
+output_get_relative(struct output *output, enum direction direction, int x, int y) {
+    struct wlr_output *wlr_output = wlr_output_layout_adjacent_output(server.output_layout,
+            wlr_direction_from[direction], output->wlr_output, x, y);
+    if(wlr_output == NULL)
+        return NULL;
 
-    original_output_box.width *= output->wlr_output->scale;
-    original_output_box.height *= output->wlr_output->scale;
-
-    uint32_t original_output_midpoint_x = original_output_box.x + original_output_box.width / 2;
-    uint32_t original_output_midpoint_y = original_output_box.y + original_output_box.height / 2;
-
-    struct output *o;
-    wl_list_for_each(o, &server.outputs, link) {
-        struct wlr_box output_box;
-        wlr_output_layout_get_box(server.output_layout, o->wlr_output, &output_box);
-        output_box.width *= o->wlr_output->scale;
-        output_box.height *= o->wlr_output->scale;
-
-        if(direction == DIRECTION_LEFT && original_output_box.x == output_box.x + output_box.width &&
-                original_output_midpoint_y > output_box.y &&
-                original_output_midpoint_y < output_box.y + output_box.height) {
-            return o;
-        } else if(direction == DIRECTION_RIGHT && original_output_box.x + original_output_box.width == output_box.x &&
-                original_output_midpoint_y > output_box.y &&
-                original_output_midpoint_y < output_box.y + output_box.height) {
-            return o;
-        } else if(direction == DIRECTION_UP && original_output_box.y == output_box.y + output_box.height &&
-                original_output_midpoint_x > output_box.x &&
-                original_output_midpoint_x < output_box.x + output_box.width) {
-            return o;
-        } else if(direction == DIRECTION_DOWN && original_output_box.y + original_output_box.height == output_box.y &&
-                original_output_midpoint_x > output_box.x &&
-                original_output_midpoint_x < output_box.x + output_box.width) {
-            return o;
-        }
-    }
-
-    return NULL;
+    return wlr_output->data;
 }
 
 struct wlr_box

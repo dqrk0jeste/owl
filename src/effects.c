@@ -61,11 +61,11 @@ static void
 iter_toplevel_apply_effects(struct wlr_scene_buffer *buffer, int lx, int ly, void *data) {
     struct iter_toplevel_apply_effects_args *args = data;
 
-    wlr_scene_buffer_set_opacity(buffer, args->opacity);
-
     struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(buffer);
     if(scene_surface == NULL)
         return;
+
+    wlr_scene_buffer_set_opacity(buffer, args->opacity);
 
     struct wlr_surface *surface = scene_surface->surface;
 
