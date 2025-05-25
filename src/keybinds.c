@@ -396,6 +396,16 @@ keybind_toggle_fullscreen(void *data) {
 }
 
 void
+keybind_toggle_fake_fullscreen(void *data) {
+    struct toplevel *toplevel = server.focused_toplevel;
+    if(toplevel == NULL || toplevel->mode == TOPLEVEL_MODE_FULLSCREEN)
+        return;
+
+    toplevel->is_fake_fullscreen = !toplevel->is_fake_fullscreen;
+    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, toplevel->is_fake_fullscreen);
+}
+
+void
 keybind_increase_master_ratio(void *data) {
     double delta = (uintptr_t)data / 100.0;
     struct workspace *workspace = server.active_workspace;

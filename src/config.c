@@ -31,6 +31,8 @@
 #define PARSER_IMPLEMENTATION
 #include "parser.h"
 
+extern struct server server;
+
 // this is a helper for logging the config errors
 int line_number;
 #define ERROR(msg, ...) wlr_log(WLR_ERROR, "config: line %d: " msg, line_number, ##__VA_ARGS__)
@@ -331,6 +333,8 @@ add_keybind(struct config *c, char *modifiers, char *key, char *action, char **a
         keybind.action = keybind_prev_workspace;
     } else if(strcmp(action, "toggle_fullscreen") == 0) {
         keybind.action = keybind_toggle_fullscreen;
+    } else if(strcmp(action, "toggle_fake_fullscreen") == 0) {
+        keybind.action = keybind_toggle_fake_fullscreen;
     } else if(strcmp(action, "increase_master_ratio") == 0) {
         NEED_ARGUMENTS(1);
 
@@ -361,8 +365,16 @@ patch(struct config *c) {
         wlr_log(WLR_INFO, "config: animations: `curve` not specified. using linear");
     }
 
-    // todo: calculate this
-    c->needs_optimized_blur = true;
+    if(c->titlebar.title.enabled && c->titlebar.title.font_name != NULL) {
+        // create the font
+        char size[32];
+        snprintf(size, sizeof(size), "pixelsize=%d", (int)(c->largest_scale * c->titlebar.title.size));
+        c->titlebar.title.font = fcft_from_name(1, (const char **)&c->titlebar.title.font_name, size);
+
+        if(c->titlebar.title.font == NULL) {
+            wlr_log(WLR_ERROR, "config: failed creating the title font");
+        }
+    }
 }
 
 static struct config *
@@ -447,6 +459,8 @@ create_default_config(void) {
     // also check titlebars and shadows with null values
 
     c->animations.duration = 500;
+    c->needs_optimized_blur = false;
+    c->largest_scale = 1.0;
 
     return c;
 }
@@ -542,6 +556,7 @@ handle_value(struct config *c, char **words, enum config_section section) {
             NEED_ARGUMENTS(1);
 
             output->scale = max(atof(words[1]), 1.0);
+            c->largest_scale = max(c->largest_scale, output->scale);
             output->specified |= OUTPUT_FIELD_SCALE;
         } else if(strcmp(words[0], "master_count") == 0) {
             NEED_ARGUMENTS(1);
@@ -758,6 +773,10 @@ handle_value(struct config *c, char **words, enum config_section section) {
             NEED_ARGUMENTS(1);
 
             c->titlebar.title.enabled = atoi(words[1]);
+        } else if(strcmp(words[0], "size") == 0) {
+            NEED_ARGUMENTS(1);
+
+            c->titlebar.title.size = max(atoi(words[1]), 0);
         } else if(strcmp(words[0], "position") == 0) {
             NEED_ARGUMENTS(1);
 
@@ -780,10 +799,7 @@ handle_value(struct config *c, char **words, enum config_section section) {
         } else if(strcmp(words[0], "font") == 0) {
             NEED_ARGUMENTS(1);
 
-            c->titlebar.title.font = fcft_from_name(1, (const char **)&words[1], NULL);
-            if(c->titlebar.title.font == NULL) {
-                ERROR("error while loading the font `%s`, titles wont be drawn", words[1]);
-            }
+            c->titlebar.title.font_name = strdup(words[1]);
         } else {
             ERROR("unknown keyword `%s` for section `titlebar:title`", words[0]);
         }
@@ -1007,6 +1023,7 @@ handle_value(struct config *c, char **words, enum config_section section) {
                 toplevel->blur = BLUR_NORMAL;
             } else if(strcmp(words[1], "optimized") == 0) {
                 toplevel->blur = BLUR_OPTIMIZED;
+                c->needs_optimized_blur = true;
             } else {
                 ERROR("invalid option `%s`", words[1]);
                 return;
@@ -1083,6 +1100,7 @@ handle_value(struct config *c, char **words, enum config_section section) {
                 layer->blur = BLUR_NORMAL;
             } else if(strcmp(words[1], "optimized") == 0) {
                 layer->blur = BLUR_OPTIMIZED;
+                c->needs_optimized_blur = true;
             } else {
                 ERROR("invalid option `%s`", words[1]);
                 return;
@@ -1179,6 +1197,13 @@ config_destroy(struct config *c) {
     }
     array_destroy(c->gaps);
 
+    if(c->titlebar.title.font_name != NULL) {
+        free(c->titlebar.title.font_name);
+    }
+    if(c->titlebar.title.font != NULL) {
+        fcft_destroy(c->titlebar.title.font);
+    }
+
     fx_animation_curve_destroy(c->animations.curve);
 
     for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
@@ -1208,8 +1233,6 @@ config_destroy(struct config *c) {
 
     free(c);
 }
-
-extern struct server server;
 
 static void
 layout_reorganize(struct workspace *workspace) {
@@ -1278,7 +1301,7 @@ config_reload(void) {
 
             if(iter_workspace->fullscreen != NULL) {
                 decoration_recreate(&iter_workspace->fullscreen->decoration);
-                rules_update_for_toplevel(iter_toplevel);
+                rules_update_for_toplevel(iter_workspace->fullscreen);
 
                 struct wlr_box output_box;
                 wlr_output_layout_get_box(server.output_layout, iter_output->wlr_output, &output_box);

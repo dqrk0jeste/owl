@@ -149,10 +149,10 @@ update_titlebar(struct decoration *decoration, struct wlr_box *box) {
         int x = left_pad;
         // we try to center it, but we dont want it placed before `left_pad`
         if(server.config->titlebar.title.position == TITLEBAR_TITLE_POSITION_CENTER &&
-                (box->width - decoration->titlebar.title->width) / 2 > left_pad) {
-            x = (box->width - decoration->titlebar.title->width) / 2;
+                (box->width - decoration->titlebar.title->width / server.config->largest_scale) / 2 > left_pad) {
+            x = (box->width - decoration->titlebar.title->width / server.config->largest_scale) / 2;
         }
-        int y = (server.config->titlebar.height - decoration->titlebar.title->height) / 2;
+        int y = (server.config->titlebar.height - server.config->titlebar.title.size) / 2;
 
         wlr_scene_node_set_position(&decoration->titlebar.title->scene_buffer->node, x, y);
 
@@ -168,11 +168,13 @@ update_titlebar(struct decoration *decoration, struct wlr_box *box) {
         struct wlr_fbox clip_box = {
                 .x = 0.0,
                 .y = 0.0,
-                .width = min(free_width, decoration->titlebar.title->width),
+                .width = min(free_width * server.config->largest_scale, decoration->titlebar.title->width),
                 .height = decoration->titlebar.title->height,
         };
         wlr_scene_buffer_set_source_box(decoration->titlebar.title->scene_buffer, &clip_box);
-        wlr_scene_buffer_set_dest_size(decoration->titlebar.title->scene_buffer, clip_box.width, clip_box.height);
+        wlr_scene_buffer_set_dest_size(decoration->titlebar.title->scene_buffer,
+                min(free_width, decoration->titlebar.title->width / server.config->largest_scale),
+                server.config->titlebar.title.size);
     }
 }
 
@@ -387,6 +389,11 @@ decoration_set_corner_radius(struct decoration *decoration, int corner_radius, e
             decoration_has_border(decoration) ? max(corner_radius - server.config->border.width, 0)
                                               : decoration->corner_radius,
             CORNER_LOCATION_TOP & decoration->corner_location);
+}
+
+void
+decoration_set_scale(struct decoration *decoration, double scale) {
+    decoration->scale = scale;
 }
 
 void

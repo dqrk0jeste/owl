@@ -29,6 +29,7 @@ struct toplevel {
 
     struct workspace *workspace;
     enum toplevel_mode mode;
+    bool is_fake_fullscreen;
 
     struct decoration decoration;
     struct wlr_xdg_toplevel_decoration_v1 *xdg_decoration;  // may be null

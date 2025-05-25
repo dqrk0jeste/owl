@@ -16,12 +16,7 @@ handle_set_gamma(struct wl_listener *listener, void *data) {
     struct wlr_gamma_control_v1 *gamma_control =
             wlr_gamma_control_manager_v1_get_control(server.gamma_manager.base, event->output);
 
-    if(!wlr_gamma_control_v1_apply(gamma_control, &state)) {
-        wlr_output_state_finish(&state);
-        return;
-    }
-
-    if(!wlr_output_commit_state(event->output, &state)) {
+    if(!wlr_gamma_control_v1_apply(gamma_control, &state) || !wlr_output_commit_state(event->output, &state)) {
         wlr_gamma_control_v1_send_failed_and_destroy(gamma_control);
     }
 
@@ -31,6 +26,7 @@ handle_set_gamma(struct wl_listener *listener, void *data) {
 void
 gamma_manager_init(void) {
     server.gamma_manager.base = wlr_gamma_control_manager_v1_create(server.display);
+
     server.gamma_manager.set_gamma.notify = handle_set_gamma;
     wl_signal_add(&server.gamma_manager.base->events.set_gamma, &server.gamma_manager.set_gamma);
 }

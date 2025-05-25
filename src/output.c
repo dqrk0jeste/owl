@@ -37,16 +37,6 @@ transfer_existing_workspaces(struct output *output) {
 
         wl_list_for_each_safe(iter_workspace, tmp, &iter_output->workspaces, link) {
             if(strcmp(iter_workspace->original_output, output->wlr_output->name) == 0) {
-                // note: this should have been done, keeping it for reference
-                // fix that outputs state. todo: optimize this by moving it to the bottom, when the only
-                // workspaces that are left should be either owned by this output or evacuated from some
-                // other output, but, anyhow, changing to this workspace must be valid if(iter_workspace
-                // == iter_output->active_workspace) {
-                //     struct workspace *owned_workspace = output_find_owned_workspace(iter_output);
-                //     // it should have had its own workspace
-                //     assert(owned_workspace != NULL);
-                //     change_workspace(owned_workspace, false);
-                // }
                 // transfer it to this output
                 iter_workspace->output = output;
                 wl_list_remove(&iter_workspace->link);
@@ -135,6 +125,10 @@ evacuate_workspaces(struct output *output) {
         workspace_toplevels_set_enabled(iter, false);
         if(iter->fullscreen != NULL) {
             wlr_scene_node_set_enabled(&iter->fullscreen->scene_tree->node, false);
+            // also move this output
+            struct wlr_box output_box;
+            wlr_output_layout_get_box(server.output_layout, new->wlr_output, &output_box);
+            toplevel_set_state(iter->fullscreen, output_box);
         }
 
         iter->output = new;

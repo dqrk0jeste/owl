@@ -75,6 +75,7 @@ struct trackpad_config {
 };
 
 struct cursor_config {
+    // todo: check null values
     char *theme;
     int size;
 };
@@ -117,11 +118,14 @@ struct titlebar_config {
 
     struct {
         bool enabled;
+        int size;
         enum titlebar_title_position position;
         struct {
             int left, right;
         } padding;
         struct color color;
+        char *font_name;
+        // this will be generated from the font name and size
         struct fcft_font *font;
     } title;
 };
@@ -263,9 +267,11 @@ struct config {
     struct toplevel_config *toplevels;  // array
     struct layer_config *layers;  // array
 
-    // a calulated value that tells if we should or should not have blur nodes enabled. we do this to minimize the
+    // a value that tells if we should or should not have blur nodes enabled. we do this to minimize the
     // load if the user does not want any blur, so that the blur is not recalculated at all.
     bool needs_optimized_blur;
+    // a value we track so we can later create the font at the right size
+    double largest_scale;
 };
 
 struct config *

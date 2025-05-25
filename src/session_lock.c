@@ -83,7 +83,9 @@ restore_focus(void) {
     if(output == NULL)
         return;
 
-    if(has_floating(server.active_workspace)) {
+    if(server.active_workspace->fullscreen != NULL) {
+        focus_toplevel(server.active_workspace->fullscreen, false);
+    } else if(has_floating(server.active_workspace)) {
         focus_toplevel(first_floating(server.active_workspace), false);
     } else if(has_masters(server.active_workspace)) {
         focus_toplevel(first_master(server.active_workspace), false);

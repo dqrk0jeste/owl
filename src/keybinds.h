@@ -70,6 +70,9 @@ void
 keybind_toggle_fullscreen(void *data);
 
 void
+keybind_toggle_fake_fullscreen(void *data);
+
+void
 keybind_increase_master_ratio(void *data);
 
 void

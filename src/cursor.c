@@ -11,6 +11,7 @@
 #include "output.h"
 #include "rules.h"
 #include "seat.h"
+#include "wlr/util/log.h"
 
 extern struct server server;
 
@@ -112,11 +113,14 @@ grabbed_toplevel_resize(void) {
     min_width = max(min_width, toplevel->decoration.min_width);
 
     int max_width = toplevel->xdg_toplevel->current.max_width;
-    if(max_width == 0)
+    // client might not report the max size, or it might report some really big number for it. since `wlr_box` uses
+    // platfom dependent `int` for storing such values, it might overflow (so it is a negative value) or it might be set
+    // to `INT_MAX` for example, so our calucalations overflow. we patch it to 10000 in either case then
+    if(max_width <= 0 || max_width > 10000)
         max_width = 10000;
 
     int max_height = toplevel->xdg_toplevel->current.max_height;
-    if(max_height == 0)
+    if(max_height <= 0 || max_height > 10000)
         max_height = 10000;
 
     decoration_get_decoration_size(&toplevel->decoration, &max_width, &max_height);

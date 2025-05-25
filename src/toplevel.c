@@ -398,6 +398,7 @@ handle_destroy(struct wl_listener *listener, void *data) {
 
 static void
 toplevel_raise_children_above(struct toplevel *toplevel) {
+    // todo: optimize this by actually keeping a list of children
     struct toplevel *iter;
     wl_list_for_each(iter, &toplevel->workspace->floating, link) {
         if(iter->xdg_toplevel->parent == toplevel->xdg_toplevel) {
@@ -436,7 +437,7 @@ toplevel_raise_to_top(struct toplevel *toplevel) {
 
 void
 toplevel_set_fullscreen(struct toplevel *toplevel) {
-    if(toplevel->workspace->fullscreen != NULL || toplevel == server.grabbed_toplevel)
+    if(toplevel->workspace->fullscreen != NULL || toplevel == server.grabbed_toplevel || toplevel->is_fake_fullscreen)
         return;
 
     struct workspace *workspace = toplevel->workspace;
@@ -494,7 +495,10 @@ toplevel_unset_fullscreen(struct toplevel *toplevel) {
     workspace->fullscreen = NULL;
     toplevel->mode = toplevel->prev_mode;
 
-    wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
+    if(!toplevel->is_fake_fullscreen) {
+        // if the toplevel is fake fullscreened we dont want to send this configure
+        wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, false);
+    }
     wlr_foreign_toplevel_handle_v1_set_fullscreen(toplevel->foreign_toplevel_handle->wlr_handle, false);
 
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {

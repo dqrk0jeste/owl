@@ -79,7 +79,7 @@ output_json(struct output *output) {
 
     json_object_object_add(object, "name", json_object_new_string(output->wlr_output->name));
     json_object_object_add(object, "description",
-            output->wlr_output->description == NULL ? NULL : json_object_new_string(output->wlr_output->name));
+            output->wlr_output->description == NULL ? NULL : json_object_new_string(output->wlr_output->description));
 
     struct wlr_output_mode *mode = output->wlr_output->current_mode;
     char mode_string[64];
@@ -192,7 +192,7 @@ handle_get(int fd, char *what) {
                 }
 
                 if(iter_workspace->fullscreen != NULL) {
-                    json_object_array_add(array, toplevel_json(iter_toplevel));
+                    json_object_array_add(array, toplevel_json(iter_workspace->fullscreen));
                 }
             }
         }
@@ -365,10 +365,6 @@ done:
 static void
 handle_request(int fd, char *buffer) {
     char **words = parser_into_words(buffer, 0);
-
-    for(size_t i = 0; i < array_len(words); i++) {
-        wlr_log(WLR_ERROR, "%zu: %s", i, words[i]);
-    }
 
     if(array_len(words) < 2) {
         close(fd);
