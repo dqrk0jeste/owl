@@ -43,12 +43,16 @@ toplevel_matches_rule(struct toplevel *toplevel, struct toplevel_config *config)
             !satisfies_regex(toplevel->xdg_toplevel->title, &config->title))
         return false;
 
-    if(((config->specified & TOPLEVEL_FIELD_MATCH_LAYOUT_SIZE) &&
-               (!toplevel_is_tiled(toplevel) ||
-                       !matches_relation(config->relation,
-                               toplevel->workspace->master_count + toplevel->workspace->slave_count,
-                               config->layout_size))))
-        return false;
+    if(toplevel_is_tiled(toplevel)) {
+        // we only check these layout related for tiled toplevels
+        if((config->specified & TOPLEVEL_FIELD_MATCH_MASTER_COUNT) &&
+                !matches_relation(config->master_relation, toplevel->workspace->master_count, config->master_count))
+            return false;
+
+        if((config->specified & TOPLEVEL_FIELD_MATCH_SLAVE_COUNT) &&
+                !matches_relation(config->slave_relation, toplevel->workspace->slave_count, config->slave_count))
+            return false;
+    }
 
     return true;
 }

@@ -15,20 +15,23 @@
 extern struct server server;
 
 static void
-get_gaps(int layout_size, char *output, int *inner, int *outer) {
+get_gaps(int master_count, int slave_count, char *output, int *inner, int *outer) {
     uint32_t found = 0;
     for(struct gaps_config *iter = array_last(server.config->gaps); iter >= server.config->gaps; iter--) {
-        if((!(iter->specified & GAPS_FIELD_MATCH_OUTPUT) || strcmp(iter->output, output) == 0) &&
-                (!(iter->specified & GAPS_FIELD_MATCH_LAYOUT_SIZE) ||
-                        matches_relation(iter->relation, layout_size, iter->layout_size))) {
-            if(!(found & GAPS_FIELD_INNER) && (iter->specified & GAPS_FIELD_INNER)) {
-                *inner = iter->inner;
-                found |= GAPS_FIELD_INNER;
-            }
-            if(!(found & GAPS_FIELD_OUTER) && (iter->specified & GAPS_FIELD_OUTER)) {
-                *outer = iter->outer;
-                found |= GAPS_FIELD_OUTER;
-            }
+        if(((iter->specified & GAPS_FIELD_MATCH_OUTPUT) && strcmp(iter->output, output) != 0) ||
+                ((iter->specified & GAPS_FIELD_MATCH_MASTER_COUNT) &&
+                        !matches_relation(iter->master_relation, master_count, iter->master_count)) ||
+                ((iter->specified & GAPS_FIELD_MATCH_SLAVE_COUNT) &&
+                        !matches_relation(iter->slave_relation, slave_count, iter->slave_count)))
+            continue;
+
+        if(!(found & GAPS_FIELD_INNER) && (iter->specified & GAPS_FIELD_INNER)) {
+            *inner = iter->inner;
+            found |= GAPS_FIELD_INNER;
+        }
+        if(!(found & GAPS_FIELD_OUTER) && (iter->specified & GAPS_FIELD_OUTER)) {
+            *outer = iter->outer;
+            found |= GAPS_FIELD_OUTER;
         }
     }
 
@@ -40,7 +43,7 @@ void
 layout_get_masters_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
         int *height) {
     int inner_gaps, outer_gaps;
-    get_gaps(master_count + slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
+    get_gaps(master_count, slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
 
     double master_ratio = workspace->master_ratio;
 
@@ -57,7 +60,7 @@ void
 layout_get_slaves_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
         int *height) {
     int inner_gaps, outer_gaps;
-    get_gaps(master_count + slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
+    get_gaps(master_count, slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
     double master_ratio = workspace->master_ratio;
 
     struct wlr_box output_box = workspace->output->usable_area;
@@ -191,7 +194,7 @@ layout_configure(struct workspace *workspace) {
     struct output *output = workspace->output;
 
     int inner_gaps, outer_gaps;
-    get_gaps(workspace->master_count + workspace->slave_count, workspace->output->wlr_output->name, &inner_gaps,
+    get_gaps(workspace->master_count, workspace->slave_count, workspace->output->wlr_output->name, &inner_gaps,
             &outer_gaps);
     workspace->inner_gaps = inner_gaps;
     workspace->outer_gaps = outer_gaps;

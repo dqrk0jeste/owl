@@ -82,17 +82,20 @@ struct cursor_config {
 
 enum gaps_field {
     GAPS_FIELD_MATCH_OUTPUT = 1 << 0,
-    GAPS_FIELD_MATCH_LAYOUT_SIZE = 1 << 1,
+    GAPS_FIELD_MATCH_MASTER_COUNT = 1 << 1,
+    GAPS_FIELD_MATCH_SLAVE_COUNT = 1 << 2,
 
-    GAPS_FIELD_OUTER = 1 << 2,
-    GAPS_FIELD_INNER = 1 << 3,
+    GAPS_FIELD_OUTER = 1 << 3,
+    GAPS_FIELD_INNER = 1 << 4,
 };
 
 struct gaps_config {
     uint32_t specified;  // bitmask of `layout_field`
     char *output;
-    enum relation relation;
-    int layout_size;
+    enum relation master_relation;
+    int master_count;
+    enum relation slave_relation;
+    int slave_count;
 
     int outer, inner;
 };
@@ -159,19 +162,20 @@ enum toplevel_field {
     TOPLEVEL_FIELD_MATCH_TITLE = 1 << 1,
     TOPLEVEL_FIELD_MATCH_MODE = 1 << 2,
     TOPLEVEL_FIELD_MATCH_STATE = 1 << 3,
-    TOPLEVEL_FIELD_MATCH_LAYOUT_SIZE = 1 << 4,
+    TOPLEVEL_FIELD_MATCH_MASTER_COUNT = 1 << 4,
+    TOPLEVEL_FIELD_MATCH_SLAVE_COUNT = 1 << 5,
 
-    TOPLEVEL_FIELD_CORNER_RADIUS = 1 << 5,
-    TOPLEVEL_FIELD_CORNER_LOCATION = 1 << 6,
-    TOPLEVEL_FIELD_OPACITY = 1 << 7,
-    TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS = 1 << 8,
-    TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS = 1 << 9,
-    TOPLEVEL_FIELD_BLUR = 1 << 10,
-    TOPLEVEL_FIELD_SHADOW = 1 << 11,
-    TOPLEVEL_FIELD_BORDER = 1 << 12,
-    TOPLEVEL_FIELD_TITLEBAR = 1 << 13,
-    TOPLEVEL_FIELD_DEFAULT_MODE = 1 << 14,
-    TOPLEVEL_FIELD_DEFAULT_SIZE = 1 << 15,
+    TOPLEVEL_FIELD_CORNER_RADIUS = 1 << 6,
+    TOPLEVEL_FIELD_CORNER_LOCATION = 1 << 7,
+    TOPLEVEL_FIELD_OPACITY = 1 << 8,
+    TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS = 1 << 9,
+    TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS = 1 << 10,
+    TOPLEVEL_FIELD_BLUR = 1 << 11,
+    TOPLEVEL_FIELD_SHADOW = 1 << 12,
+    TOPLEVEL_FIELD_BORDER = 1 << 13,
+    TOPLEVEL_FIELD_TITLEBAR = 1 << 14,
+    TOPLEVEL_FIELD_DEFAULT_MODE = 1 << 15,
+    TOPLEVEL_FIELD_DEFAULT_SIZE = 1 << 16,
 };
 
 enum toplevel_default_mode {
@@ -194,8 +198,10 @@ struct toplevel_config {
     // these fields will be matched on
     regex_t app_id, title;
     enum toplevel_mode_ext mode;
-    enum relation relation;
-    int layout_size;
+    enum relation master_relation;
+    int master_count;
+    enum relation slave_relation;
+    int slave_count;
     bool focused;
 
     // these will be applied if matching

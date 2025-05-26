@@ -688,22 +688,38 @@ handle_value(struct config *c, char **words, enum config_section section) {
 
             gaps->output = strdup(words[1]);
             gaps->specified |= GAPS_FIELD_MATCH_OUTPUT;
-        } else if(strcmp(words[0], "layout_size") == 0) {
+        } else if(strcmp(words[0], "master_count") == 0) {
             NEED_ARGUMENTS(2);
 
             if(strcmp(words[1], "<") == 0) {
-                gaps->relation = RELATION_SMALLER_THAN;
+                gaps->master_relation = RELATION_SMALLER_THAN;
             } else if(strcmp(words[1], ">") == 0) {
-                gaps->relation = RELATION_GREATER_THAN;
+                gaps->master_relation = RELATION_GREATER_THAN;
             } else if(strcmp(words[1], "=") == 0) {
-                gaps->relation = RELATION_EQUAL;
+                gaps->master_relation = RELATION_EQUAL;
             } else {
                 ERROR("invalid relation `%s`", words[1]);
                 return;
             }
 
-            gaps->layout_size = max(atoi(words[2]), 1);
-            gaps->specified |= GAPS_FIELD_MATCH_LAYOUT_SIZE;
+            gaps->master_count = max(atoi(words[2]), 0);
+            gaps->specified |= GAPS_FIELD_MATCH_MASTER_COUNT;
+        } else if(strcmp(words[0], "slave_count") == 0) {
+            NEED_ARGUMENTS(2);
+
+            if(strcmp(words[1], "<") == 0) {
+                gaps->slave_relation = RELATION_SMALLER_THAN;
+            } else if(strcmp(words[1], ">") == 0) {
+                gaps->slave_relation = RELATION_GREATER_THAN;
+            } else if(strcmp(words[1], "=") == 0) {
+                gaps->slave_relation = RELATION_EQUAL;
+            } else {
+                ERROR("invalid relation `%s`", words[1]);
+                return;
+            }
+
+            gaps->slave_count = max(atoi(words[2]), 0);
+            gaps->specified |= GAPS_FIELD_MATCH_SLAVE_COUNT;
         } else if(strcmp(words[0], "outer") == 0) {
             NEED_ARGUMENTS(1);
 
@@ -956,22 +972,38 @@ handle_value(struct config *c, char **words, enum config_section section) {
             }
 
             toplevel->specified |= TOPLEVEL_FIELD_MATCH_STATE;
-        } else if(strcmp(words[0], "layout_size") == 0) {
+        } else if(strcmp(words[0], "master_count") == 0) {
             NEED_ARGUMENTS(2);
 
             if(strcmp(words[1], "<") == 0) {
-                toplevel->relation = RELATION_SMALLER_THAN;
+                toplevel->master_relation = RELATION_SMALLER_THAN;
             } else if(strcmp(words[1], ">") == 0) {
-                toplevel->relation = RELATION_GREATER_THAN;
+                toplevel->master_relation = RELATION_GREATER_THAN;
             } else if(strcmp(words[1], "=") == 0) {
-                toplevel->relation = RELATION_EQUAL;
+                toplevel->master_relation = RELATION_EQUAL;
             } else {
                 ERROR("invalid relation `%s`", words[1]);
                 return;
             }
 
-            toplevel->layout_size = max(atoi(words[2]), 0);
-            toplevel->specified |= TOPLEVEL_FIELD_MATCH_LAYOUT_SIZE;
+            toplevel->master_count = max(atoi(words[2]), 0);
+            toplevel->specified |= TOPLEVEL_FIELD_MATCH_MASTER_COUNT;
+        } else if(strcmp(words[0], "slave_count") == 0) {
+            NEED_ARGUMENTS(2);
+
+            if(strcmp(words[1], "<") == 0) {
+                toplevel->slave_relation = RELATION_SMALLER_THAN;
+            } else if(strcmp(words[1], ">") == 0) {
+                toplevel->slave_relation = RELATION_GREATER_THAN;
+            } else if(strcmp(words[1], "=") == 0) {
+                toplevel->slave_relation = RELATION_EQUAL;
+            } else {
+                ERROR("invalid relation `%s`", words[1]);
+                return;
+            }
+
+            toplevel->slave_count = max(atoi(words[2]), 0);
+            toplevel->specified |= TOPLEVEL_FIELD_MATCH_SLAVE_COUNT;
         } else if(strcmp(words[0], "client_side_decorations") == 0) {
             NEED_ARGUMENTS(1);
 
