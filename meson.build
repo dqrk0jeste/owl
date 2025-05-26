@@ -44,6 +44,7 @@ src = [
     'src/cursor_shape.c',
     'src/decoration.c',
     'src/effects.c',
+    'src/font.c',
     'src/foreign_toplevel.c',
     'src/gamma_control.c',
     'src/helpers.c',

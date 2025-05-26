@@ -430,6 +430,13 @@ create_default_config(void) {
                     .left_handed = false,
             }));
 
+    array_push(&c->gaps,
+            ((struct gaps_config){
+                    .specified = GAPS_FIELD_INNER | GAPS_FIELD_OUTER,
+                    .inner = 0,
+                    .outer = 0,
+            }));
+
     array_push(&c->toplevels,
             ((struct toplevel_config){
                     .specified = TOPLEVEL_FIELD_CORNER_RADIUS | TOPLEVEL_FIELD_CORNER_LOCATION |

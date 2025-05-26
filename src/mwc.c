@@ -1,7 +1,6 @@
 #include "mwc.h"
 
 #include <assert.h>
-#include <fcft/fcft.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <scenefx/render/fx_renderer/fx_renderer.h>
@@ -44,12 +43,12 @@
 #include "cursor.h"
 #define STRING_IMPLEMENTATION
 #include "dyn_string.h"
+#include "font.h"
 #include "gamma_control.h"
 #include "helpers.h"
 #include "ipc.h"
 #include "output.h"
 #include "session_lock.h"
-#include "toplevel.h"
 
 // we initialize an instance of our global state
 struct server server = {0};
@@ -117,7 +116,7 @@ get_default_config_path(void) {
 
     if(path == NULL) {
         path = "/usr/share/mwc/default.conf";
-        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, using the default `%s`", path);
+        wlr_log(WLR_INFO, "no env DEFAULT_CONFIG_PATH set, assuming `%s`", path);
     } else {
         wlr_log(WLR_INFO, "env DEFAULT_CONFIG_PATH set to `%s`, using it", path);
     }
@@ -142,10 +141,12 @@ int
 main(int argc, char *argv[]) {
     enum wlr_log_importance log_level = WLR_INFO;
 
+    // todo: do arg parsing the unix way
     if(argc > 1) {
         if(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
             printf("usage: mwc [-d]\n\n"
-                   "\t-d (--debug) - enable debug level logging");
+                   "\t-d, --debug       enable debug level logging"
+                   "\t-v, --version     get the current version and quit");
 
             return 0;
         } else if(strcmp(argv[1], "-d") == 0 || strcmp(argv[1], "--debug") == 0) {
@@ -160,7 +161,7 @@ main(int argc, char *argv[]) {
     init_logs(log_level);
 
     // initialize the font library before parsing the initial config file
-    fcft_init(FCFT_LOG_COLORIZE_AUTO, false, FCFT_LOG_CLASS_INFO);
+    font_manager_init();
 
     server.config_path = get_config_path();
     if(server.config_path == NULL || (server.config = config_load(server.config_path)) == NULL) {
@@ -169,7 +170,7 @@ main(int argc, char *argv[]) {
         if(server.config == NULL) {
             wlr_log(WLR_ERROR, "couldn't open the default config file, quitting");
             ret = 1;
-            goto fcft;
+            goto font;
         }
     }
 
@@ -344,8 +345,8 @@ config:
     if(server.config_path != NULL) {
         string_destroy(server.config_path);
     }
-fcft:
-    fcft_fini();
+font:
+    font_manager_deinit();
 
     return ret;
 }
