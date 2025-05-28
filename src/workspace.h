@@ -3,6 +3,7 @@
 #include <scenefx/types/wlr_scene.h>
 #include <wayland-server-protocol.h>
 
+#include "config.h"
 #include "output.h"
 #include "toplevel.h"
 
@@ -17,7 +18,7 @@ struct workspace {
     char *original_output;
 
     double master_ratio;
-    int inner_gaps, outer_gaps;
+    struct gaps inner_gaps, outer_gaps;
 
     // we cache these values, as they are used fairly often, and are really easy to track manually
     int master_count;

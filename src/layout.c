@@ -15,7 +15,7 @@
 extern struct server server;
 
 static void
-get_gaps(int master_count, int slave_count, char *output, int *inner, int *outer) {
+get_gaps(int master_count, int slave_count, char *output, struct gaps *inner, struct gaps *outer) {
     uint32_t found = 0;
     for(struct gaps_config *iter = array_last(server.config->gaps); iter >= server.config->gaps; iter--) {
         if(((iter->specified & GAPS_FIELD_MATCH_OUTPUT) && strcmp(iter->output, output) != 0) ||
@@ -42,31 +42,32 @@ get_gaps(int master_count, int slave_count, char *output, int *inner, int *outer
 void
 layout_get_masters_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
         int *height) {
-    int inner_gaps, outer_gaps;
+    struct gaps inner_gaps, outer_gaps;
     get_gaps(master_count, slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
 
     double master_ratio = workspace->master_ratio;
 
     struct wlr_box output_box = workspace->output->usable_area;
 
-    int total_width =
-            slave_count > 0 ? output_box.width * master_ratio - outer_gaps : output_box.width - 2 * outer_gaps;
+    int total_width = slave_count > 0 ? output_box.width * master_ratio - outer_gaps.left
+                                      : output_box.width - outer_gaps.left - outer_gaps.right;
 
-    *width = total_width / master_count - 2 * inner_gaps;
-    *height = output_box.height - 2 * outer_gaps - 2 * inner_gaps;
+    *width = total_width / master_count - inner_gaps.right - inner_gaps.left;
+    *height = output_box.height - outer_gaps.top - outer_gaps.bottom - inner_gaps.top - outer_gaps.bottom;
 }
 
 void
 layout_get_slaves_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
         int *height) {
-    int inner_gaps, outer_gaps;
+    struct gaps inner_gaps, outer_gaps;
     get_gaps(master_count, slave_count, workspace->output->wlr_output->name, &inner_gaps, &outer_gaps);
     double master_ratio = workspace->master_ratio;
 
     struct wlr_box output_box = workspace->output->usable_area;
 
-    *width = output_box.width * (1 - master_ratio) - outer_gaps - 2 * inner_gaps;
-    *height = output_box.height / slave_count - 2 * inner_gaps;
+    *width = output_box.width * (1 - master_ratio) - outer_gaps.left - inner_gaps.right - inner_gaps.left;
+    *height =
+            (output_box.height - outer_gaps.top - outer_gaps.bottom) / slave_count - inner_gaps.top - inner_gaps.bottom;
 }
 
 bool
@@ -193,7 +194,7 @@ layout_configure(struct workspace *workspace) {
 
     struct output *output = workspace->output;
 
-    int inner_gaps, outer_gaps;
+    struct gaps inner_gaps, outer_gaps;
     get_gaps(workspace->master_count, workspace->slave_count, workspace->output->wlr_output->name, &inner_gaps,
             &outer_gaps);
     workspace->inner_gaps = inner_gaps;
@@ -201,10 +202,10 @@ layout_configure(struct workspace *workspace) {
 
     // remove the outer gaps from the area
     struct wlr_box layout_area = output->usable_area;
-    layout_area.x += outer_gaps;
-    layout_area.y += outer_gaps;
-    layout_area.width -= 2 * outer_gaps;
-    layout_area.height -= 2 * outer_gaps;
+    layout_area.x += outer_gaps.left;
+    layout_area.y += outer_gaps.top;
+    layout_area.width -= outer_gaps.left + outer_gaps.right;
+    layout_area.height -= outer_gaps.top + outer_gaps.bottom;
 
     // calculate master width and height (including inner gaps)
     int width = workspace->slave_count > 0 ? layout_area.width * workspace->master_ratio : layout_area.width;
@@ -215,10 +216,10 @@ layout_configure(struct workspace *workspace) {
     struct toplevel *toplevel;
     wl_list_for_each(toplevel, &workspace->masters, link) {
         struct wlr_box box = {
-                layout_area.x + i * width + inner_gaps,
-                layout_area.y + inner_gaps,
-                width - 2 * inner_gaps,
-                height - 2 * inner_gaps,
+                layout_area.x + i * width + inner_gaps.left,
+                layout_area.y + inner_gaps.top,
+                width - inner_gaps.left - inner_gaps.right,
+                height - inner_gaps.top - inner_gaps.bottom,
         };
 
         rules_update_for_toplevel(toplevel);
@@ -235,10 +236,10 @@ layout_configure(struct workspace *workspace) {
     i = 0;
     wl_list_for_each(toplevel, &workspace->slaves, link) {
         struct wlr_box box = {
-                layout_area.x + layout_area.width * workspace->master_ratio + inner_gaps,
-                layout_area.y + i * height + inner_gaps,
-                width - 2 * inner_gaps,
-                height - 2 * inner_gaps,
+                layout_area.x + layout_area.width * workspace->master_ratio + inner_gaps.left,
+                layout_area.y + i * height + inner_gaps.top,
+                width - inner_gaps.left - inner_gaps.right,
+                height - inner_gaps.top - inner_gaps.bottom,
         };
 
         rules_update_for_toplevel(toplevel);
@@ -269,10 +270,10 @@ layout_toplevel_at(struct workspace *workspace, int x, int y) {
     struct toplevel *iter;
     wl_list_for_each(iter, &workspace->masters, link) {
         struct wlr_box box = iter->deco_box;
-        box.x -= workspace->inner_gaps;
-        box.y -= workspace->inner_gaps;
-        box.width += 2 * workspace->inner_gaps;
-        box.height += 2 * workspace->inner_gaps;
+        box.x -= workspace->inner_gaps.left;
+        box.y -= workspace->inner_gaps.top;
+        box.width += workspace->inner_gaps.left + workspace->inner_gaps.right;
+        box.height += workspace->inner_gaps.top + workspace->inner_gaps.bottom;
 
         if(wlr_box_contains_point(&box, x, y)) {
             return iter;
@@ -281,10 +282,10 @@ layout_toplevel_at(struct workspace *workspace, int x, int y) {
 
     wl_list_for_each(iter, &workspace->slaves, link) {
         struct wlr_box box = iter->deco_box;
-        box.x -= workspace->inner_gaps;
-        box.y -= workspace->inner_gaps;
-        box.width += 2 * workspace->inner_gaps;
-        box.height += 2 * workspace->inner_gaps;
+        box.x -= workspace->inner_gaps.left;
+        box.y -= workspace->inner_gaps.top;
+        box.width += workspace->inner_gaps.left + workspace->inner_gaps.right;
+        box.height += workspace->inner_gaps.top + workspace->inner_gaps.bottom;
 
         if(wlr_box_contains_point(&box, x, y)) {
             return iter;

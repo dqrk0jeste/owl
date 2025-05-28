@@ -715,14 +715,38 @@ handle_value(struct config *c, char **words, enum config_section section) {
             gaps->slave_count = max(atoi(words[2]), 0);
             gaps->specified |= GAPS_FIELD_MATCH_SLAVE_COUNT;
         } else if(strcmp(words[0], "outer") == 0) {
-            NEED_ARGUMENTS(1);
+            if(arg_count == 1) {
+                gaps->outer.top = gaps->outer.right = gaps->outer.bottom = gaps->outer.left = max(atoi(words[1]), 0);
+            } else if(arg_count == 2) {
+                gaps->outer.top = gaps->outer.bottom = max(atoi(words[1]), 0);
+                gaps->outer.left = gaps->outer.right = max(atoi(words[2]), 0);
+            } else if(arg_count == 4) {
+                gaps->outer.top = max(atoi(words[1]), 0);
+                gaps->outer.right = max(atoi(words[2]), 0);
+                gaps->outer.bottom = max(atoi(words[3]), 0);
+                gaps->outer.left = max(atoi(words[4]), 0);
+            } else {
+                ERROR("expected 1, 2 or 4 arguments, but got %zu", arg_count);
+                return;
+            }
 
-            gaps->outer = max(atoi(words[1]), 0);
             gaps->specified |= GAPS_FIELD_OUTER;
         } else if(strcmp(words[0], "inner") == 0) {
-            NEED_ARGUMENTS(1);
+            if(arg_count == 1) {
+                gaps->inner.top = gaps->inner.right = gaps->inner.bottom = gaps->inner.left = max(atoi(words[1]), 0);
+            } else if(arg_count == 2) {
+                gaps->inner.top = gaps->inner.bottom = max(atoi(words[1]), 0);
+                gaps->inner.left = gaps->inner.right = max(atoi(words[2]), 0);
+            } else if(arg_count == 4) {
+                gaps->inner.top = max(atoi(words[1]), 0);
+                gaps->inner.right = max(atoi(words[2]), 0);
+                gaps->inner.bottom = max(atoi(words[3]), 0);
+                gaps->inner.left = max(atoi(words[4]), 0);
+            } else {
+                ERROR("expected 1, 2 or 4 arguments, but got %zu", arg_count);
+                return;
+            }
 
-            gaps->inner = max(atoi(words[1]), 0);
             gaps->specified |= GAPS_FIELD_INNER;
         } else {
             ERROR("unknown keyword `%s` for section `gaps`", words[0]);

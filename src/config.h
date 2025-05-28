@@ -88,6 +88,10 @@ enum gaps_field {
     GAPS_FIELD_INNER = 1 << 4,
 };
 
+struct gaps {
+    int top, right, bottom, left;
+};
+
 struct gaps_config {
     uint32_t specified;  // bitmask of `layout_field`
     char *output;
@@ -96,7 +100,7 @@ struct gaps_config {
     enum relation slave_relation;
     int slave_count;
 
-    int outer, inner;
+    struct gaps inner, outer;
 };
 
 struct titlebar_config {

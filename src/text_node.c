@@ -43,7 +43,7 @@ handle_output_update(struct wl_listener *listener, void *data) {
 }
 
 struct text_node *
-text_node_create(struct wlr_scene_tree *parent, struct font *font, double scale, struct color color, char *text) {
+text_node_create(struct wlr_scene_tree *parent, struct font *font, float scale, struct color color, char *text) {
     struct text_node *node = calloc(1, sizeof(*node));
     node->font = font;
     node->color = color;
@@ -63,8 +63,7 @@ text_node_create(struct wlr_scene_tree *parent, struct font *font, double scale,
     return node;
 }
 
-// function to decode a single utf8 character into a utf32 code point. assumes valid utf-8 string (for our usecase,
-// wlroots check this, so we dont have to do it).
+// function to decode a single utf8 character into a utf32 code point
 static ssize_t
 convert_utf8_to_utf32(char *utf8, char32_t *codepoint) {
     if((utf8[0] & 0x80) == 0x00) {
@@ -80,7 +79,7 @@ convert_utf8_to_utf32(char *utf8, char32_t *codepoint) {
         *codepoint = ((utf8[0] & 0x07) << 18) | ((utf8[1] & 0x3F) << 12) | ((utf8[2] & 0x3F) << 6) | (utf8[3] & 0x3F);
         return 4;
     } else {
-        // invalid UTF-8
+        // invalid utf8
         return -1;
     }
 }
@@ -135,7 +134,6 @@ render_current_text(struct text_node *node) {
     if(node->current_font == NULL || node->text == NULL || (len = utf8_strlen(node->text)) == 0) {
         // we attach the empty buffer and return
         node->buffer = NULL;
-        node->text = NULL;
         wlr_scene_buffer_set_buffer(node->scene_buffer, NULL);
         return;
     }
@@ -143,7 +141,7 @@ render_current_text(struct text_node *node) {
     // we approximate the width of the text
     int width = len * (node->current_font->max_advance.x);
     // todo: test with font->height
-    int height = node->current_font->max_advance.y;
+    int height = node->current_font->height;
 
     node->buffer = pixman_buffer_create(width, height);
     wlr_scene_buffer_set_buffer(node->scene_buffer, &node->buffer->base);
@@ -183,11 +181,16 @@ text_node_set_text(struct text_node *node, char *text) {
 }
 
 void
-text_node_set_scale(struct text_node *node, double scale) {
+text_node_set_scale(struct text_node *node, float scale) {
     if(scale == node->scale)
         return;
 
     node->current_font = font_get_at_scale(node->font, scale);
     // rerender the text for the new scale
     render_current_text(node);
+    // why the fuck this works ???
+    wlr_scene_buffer_set_dest_size(node->scene_buffer, node->width, node->height / scale);
+    // todo: test this when at setup against moving between outputs
+    node->width /= scale;
+    node->height /= scale;
 }

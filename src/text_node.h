@@ -11,7 +11,7 @@ struct text_node {
     struct wlr_scene_buffer *scene_buffer;
     struct font *font;
     struct color color;
-    double scale;
+    float scale;
 
     char *text;  // utf8 encoded text
 
@@ -26,11 +26,11 @@ struct text_node {
 
 // create a new text node. this node should be destroyed by destroying its underlying scene node
 struct text_node *
-text_node_create(struct wlr_scene_tree *parent, struct font *font, double scale, struct color color, char *text);
+text_node_create(struct wlr_scene_tree *parent, struct font *font, float scale, struct color color, char *text);
 
 // update the text
 void
 text_node_set_text(struct text_node *node, char *text);
 
 void
-text_node_set_scale(struct text_node *node, double scale);
+text_node_set_scale(struct text_node *node, float scale);
