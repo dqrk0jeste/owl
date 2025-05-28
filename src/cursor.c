@@ -286,7 +286,7 @@ cursor_handle_focus(uint32_t time, bool handle_keyboard_focus) {
     if(view->type == VIEW_TITLEBAR_CLOSE_BUTTON) {
         cursor_set_image("pointer");
         wlr_seat_pointer_clear_focus(server.seat.base);
-    } else if(view->type == VIEW_TITLEBAR_BASE) {
+    } else if(view->type == VIEW_TITLEBAR_BASE || view->type == VIEW_TITLEBAR_TITLE) {
         cursor_set_image("default");
         wlr_seat_pointer_clear_focus(server.seat.base);
     }

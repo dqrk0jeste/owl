@@ -1326,6 +1326,12 @@ config_reload(void) {
         return;
     }
 
+    if(server.mode == SERVER_MODE_MOVING || server.mode == SERVER_MODE_RESIZING ||
+            server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
+        // stop resizing before reloading becuase the toplevel might go into abyss if the scene coords are changed
+        cursor_stop_move_resize();
+    }
+
     // we destroy the old config and set the new one
     config_destroy(server.config);
     server.config = c;
@@ -1351,13 +1357,12 @@ config_reload(void) {
     // we reconfigure the outputs
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
-        // before configuring the output we save its original usable area, so the floating toplevels can later be
-        // placed at the same place on the output
+        // before configuring the output we save its original usable area, so the floating toplevels can later be placed
+        // at the same place on the output
         struct wlr_box old_usable_area = iter_output->usable_area;
         output_configure(iter_output, false);
 
-        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable
-        // area
+        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
         layer_surfaces_configure(iter_output);
         // recheck layer rules
         struct layer_surface *iter_layer_surface;
@@ -1401,11 +1406,18 @@ config_reload(void) {
         }
     }
 
-    if(server.grabbed_toplevel != NULL) {
-        decoration_recreate(&server.grabbed_toplevel->decoration);
+    if(server.mode == SERVER_MODE_LOCKED) {
+        // configure the lock screens if any
+        struct lock_surface *iter;
+        wl_list_for_each(iter, &server.lock_manager.current_lock->surfaces, link) {
+            struct output *output = iter->wlr_lock_surface->output->data;
 
-        rules_update_for_toplevel(server.grabbed_toplevel);
-        toplevel_set_state(server.grabbed_toplevel, server.grabbed_toplevel->deco_box);
+            struct wlr_box output_box;
+            wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+
+            wlr_scene_node_set_position(&iter->scene_tree->node, output_box.x, output_box.y);
+            wlr_session_lock_surface_v1_configure(iter->wlr_lock_surface, output_box.width, output_box.height);
+        }
     }
 
     struct keyboard *keyboard;

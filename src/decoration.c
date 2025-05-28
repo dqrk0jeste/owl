@@ -94,6 +94,16 @@ create_titlebar(struct decoration *decoration) {
     decoration->titlebar.base = wlr_scene_rect_create(decoration->titlebar.tree, 0, 0, (float[4]){0});
     view_create_for_node(&decoration->titlebar.base->node, VIEW_TITLEBAR_BASE, decoration->titlebar.base);
 
+    if(server.config->titlebar.title.enabled && server.title_font != NULL) {
+        decoration->titlebar.title = text_node_create(decoration->titlebar.tree, server.title_font, 1.0,
+                server.config->titlebar.title.color, decoration->title);
+        view_create_for_node(&decoration->titlebar.title->scene_buffer->node, VIEW_TITLEBAR_TITLE,
+                decoration->titlebar.title);
+    } else {
+        // when recreating the decorations, this may be set to the previous pointer, which is now invalid
+        decoration->titlebar.title = NULL;
+    }
+
     if(server.config->titlebar.close_button.enabled) {
         int size = server.config->titlebar.close_button.size;
         decoration->titlebar.close_button = wlr_scene_rect_create(decoration->titlebar.tree, size, size, (float[4]){0});
@@ -104,18 +114,8 @@ create_titlebar(struct decoration *decoration) {
             wlr_scene_rect_set_corner_radius(decoration->titlebar.close_button, size / 2 + 1, CORNER_LOCATION_ALL);
         }
     } else {
-        // when recreating the decorations, this may be set to the previous pointer, which is now invalid
-        decoration->titlebar.close_button = NULL;
-    }
-
-    if(server.config->titlebar.title.enabled && server.title_font != NULL) {
-        decoration->titlebar.title = text_node_create(decoration->titlebar.tree, server.title_font, 1.0,
-                server.config->titlebar.title.color, decoration->title);
-        view_create_for_node(&decoration->titlebar.title->scene_buffer->node, VIEW_TITLEBAR_TITLE,
-                decoration->titlebar.title);
-    } else {
         // same as above
-        decoration->titlebar.title = NULL;
+        decoration->titlebar.close_button = NULL;
     }
 }
 

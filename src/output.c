@@ -37,6 +37,15 @@ transfer_existing_workspaces(struct output *output) {
 
         wl_list_for_each_safe(iter_workspace, tmp, &iter_output->workspaces, link) {
             if(strcmp(iter_workspace->original_output, output->wlr_output->name) == 0) {
+                struct toplevel *iter_toplevel;
+                wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
+                    // place floating at the same relative coords. do this before changing `iter->workspace->output`
+                    struct wlr_box box = iter_toplevel->deco_box;
+                    get_same_relative_coords(&box.x, &box.y, &iter_workspace->output->usable_area,
+                            &output->usable_area);
+                    toplevel_set_state(iter_toplevel, box);
+                }
+
                 // transfer it to this output
                 iter_workspace->output = output;
                 wl_list_remove(&iter_workspace->link);
@@ -119,23 +128,31 @@ evacuate_workspaces(struct output *output) {
         focus_output(new, DIRECTION_LEFT);
     }
 
-    struct workspace *iter, *tmp;
-    wl_list_for_each_safe(iter, tmp, &output->workspaces, link) {
-        // we reparent those workspaces, but before that we disable all the toplevels on that workspace
-        workspace_toplevels_set_enabled(iter, false);
-        if(iter->fullscreen != NULL) {
-            wlr_scene_node_set_enabled(&iter->fullscreen->scene_tree->node, false);
-            // also move this output
-            struct wlr_box output_box;
-            wlr_output_layout_get_box(server.output_layout, new->wlr_output, &output_box);
-            toplevel_set_state(iter->fullscreen, output_box);
+    struct workspace *iter_workspace, *tmp_workspace;
+    wl_list_for_each_safe(iter_workspace, tmp_workspace, &output->workspaces, link) {
+        // disable all the toplevels on that workspace
+        workspace_toplevels_set_enabled(iter_workspace, false);
+
+        struct toplevel *iter_toplevel;
+        wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
+            // place floating at the same relative coords
+            struct wlr_box box = iter_toplevel->deco_box;
+            get_same_relative_coords(&box.x, &box.y, &iter_workspace->output->usable_area, &new->usable_area);
+            toplevel_set_state(iter_toplevel, box);
         }
 
-        iter->output = new;
-        wl_list_remove(&iter->link);
-        wl_list_insert(&new->workspaces, &iter->link);
+        iter_workspace->output = new;
+        wl_list_remove(&iter_workspace->link);
+        wl_list_insert(&new->workspaces, &iter_workspace->link);
 
-        layout_configure(iter);
+        if(iter_workspace->fullscreen != NULL) {
+            wlr_scene_node_set_enabled(&iter_workspace->fullscreen->scene_tree->node, false);
+            struct wlr_box output_box;
+            wlr_output_layout_get_box(server.output_layout, new->wlr_output, &output_box);
+            toplevel_set_state(iter_workspace->fullscreen, output_box);
+        }
+
+        layout_configure(iter_workspace);
     }
 }
 
@@ -395,14 +412,4 @@ output_get_relative(struct output *output, enum direction direction, int x, int 
         return NULL;
 
     return wlr_output->data;
-}
-
-struct wlr_box
-output_create_centered_box(struct output *output, int width, int height) {
-    return (struct wlr_box){
-            .x = output->usable_area.x + (output->usable_area.width - width) / 2,
-            .y = output->usable_area.y + (output->usable_area.height - height) / 2,
-            .width = width,
-            .height = height,
-    };
 }

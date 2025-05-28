@@ -50,7 +50,14 @@ toplevel_handle_own_size(struct toplevel *toplevel) {
     int width = geometry.width, height = geometry.height;
     decoration_get_decoration_size(&toplevel->decoration, &width, &height);
 
-    toplevel_set_state(toplevel, output_create_centered_box(toplevel->workspace->output, width, height));
+    // we center it on top of parent or output if none
+    if(toplevel->xdg_toplevel->parent != NULL) {
+        struct toplevel *parent = toplevel->xdg_toplevel->parent->base->data;
+        toplevel_set_state(toplevel, create_centered_box_for_box(&parent->deco_box, width, height));
+    } else {
+        toplevel_set_state(toplevel,
+                create_centered_box_for_box(&toplevel->workspace->output->usable_area, width, height));
+    }
 }
 
 static void

@@ -370,8 +370,7 @@ keybind_toggle_floating(void *data) {
             if(toplevel->height_is_relative)
                 height *= toplevel->workspace->output->usable_area.height / 100.0;
 
-            struct wlr_box centered = output_create_centered_box(workspace->output, width, height);
-            toplevel_set_state(toplevel, centered);
+            toplevel_set_state(toplevel, create_centered_box_for_box(&workspace->output->usable_area, width, height));
         } else {
             toplevel_floating_set_own_size(toplevel);
         }

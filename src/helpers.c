@@ -122,3 +122,13 @@ get_same_relative_coords(int *x, int *y, const struct wlr_box *old, const struct
     *x = new->x + relative_x *new->width;
     *y = new->y + relative_y *new->height;
 }
+
+struct wlr_box
+create_centered_box_for_box(struct wlr_box *box, int width, int height) {
+    return (struct wlr_box){
+            .x = box->x + (box->width - width) / 2,
+            .y = box->y + (box->height - height) / 2,
+            .width = width,
+            .height = height,
+    };
+}

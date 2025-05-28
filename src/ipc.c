@@ -23,7 +23,7 @@ extern struct server server;
 // {
 //      "title": string,
 //      "app_id": string,
-//      "workspace": uint,
+//      "workspace": int,
 //      "mode": "floating" | "master" | "slave" | "fullscreen",
 // }
 static json_object *
@@ -35,7 +35,7 @@ toplevel_json(struct toplevel *toplevel) {
     json_object_object_add(object, "app_id",
             toplevel->xdg_toplevel->app_id == NULL ? NULL : json_object_new_string(toplevel->xdg_toplevel->app_id));
 
-    json_object_object_add(object, "workspace", json_object_new_uint64(toplevel->workspace->index));
+    json_object_object_add(object, "workspace", json_object_new_int(toplevel->workspace->index));
 
     char *mode;
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING)
@@ -55,14 +55,14 @@ toplevel_json(struct toplevel *toplevel) {
 }
 
 // {
-//      "index": uint,,
+//      "index": int,,
 //      "output": string,
 // }
 static json_object *
 workspace_json(struct workspace *workspace) {
     struct json_object *object = json_object_new_object();
 
-    json_object_object_add(object, "index", json_object_new_uint64(workspace->index));
+    json_object_object_add(object, "index", json_object_new_int(workspace->index));
     json_object_object_add(object, "output", json_object_new_string(workspace->output->wlr_output->name));
 
     return object;

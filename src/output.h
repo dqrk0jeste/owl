@@ -43,6 +43,3 @@ output_get_relative(struct output *output, enum direction direction, int x, int 
 
 void
 focus_output(struct output *output, enum direction direction);
-
-struct wlr_box
-output_create_centered_box(struct output *output, int width, int height);
