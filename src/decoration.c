@@ -13,9 +13,7 @@ extern struct server server;
 
 static void
 create_shadow(struct decoration *decoration) {
-    float wlr_color[4];
-    color_to_wlr_color(server.config->shadow.color, wlr_color);
-    decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, 0, server.config->shadow.blur, wlr_color);
+    decoration->shadow = wlr_scene_shadow_create(decoration->tree, 0, 0, 0, server.config->shadow.blur, (float[4]){0});
 
     // disable it initially
     wlr_scene_node_set_enabled(&decoration->shadow->node, false);
@@ -294,6 +292,13 @@ decoration_set_active(struct decoration *decoration, bool active) {
 
     color_to_wlr_color(color, wlr_color);
     wlr_scene_rect_set_color(decoration->border, wlr_color);
+
+    color = active ? server.config->shadow.color.active : server.config->shadow.color.inactive;
+    color.a *= decoration->opacity;
+    color_premultiply(&color);
+
+    color_to_wlr_color(color, wlr_color);
+    wlr_scene_shadow_set_color(decoration->shadow, wlr_color);
 
     color = active ? server.config->titlebar.color.active : server.config->titlebar.color.inactive;
     color.a *= decoration->opacity;

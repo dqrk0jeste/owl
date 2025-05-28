@@ -874,7 +874,8 @@ handle_value(struct config *c, char **words, enum config_section section) {
         } else if(strcmp(words[0], "color") == 0) {
             NEED_ARGUMENTS(1);
 
-            c->shadow.color = parse_color(words[1]);
+            c->shadow.color.active = parse_color(words[1]);
+            c->shadow.color.inactive = arg_count > 1 ? parse_color(words[2]) : c->shadow.color.active;
         } else {
             ERROR("unknown keyword `%s` for section `shadow`", words[0]);
         }

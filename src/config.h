@@ -144,7 +144,9 @@ struct border_config {
 struct shadow_config {
     int size;
     int x, y;
-    struct color color;
+    struct {
+        struct color inactive, active;
+    } color;
     double blur;
 };
 
