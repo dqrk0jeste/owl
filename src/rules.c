@@ -19,11 +19,12 @@ satisfies_regex(char *s, regex_t *regex) {
 
 static inline enum toplevel_mode_ext
 get_extended_mode(struct toplevel *toplevel) {
-    return toplevel == server.grabbed_toplevel           ? TOPLEVEL_MODE_EXT_GRABBED
-            : toplevel->mode == TOPLEVEL_MODE_FULLSCREEN ? TOPLEVEL_MODE_EXT_FULLSCREEN
-            : toplevel->mode == TOPLEVEL_MODE_FLOATING   ? TOPLEVEL_MODE_EXT_FLOATING
-            : toplevel->mode == TOPLEVEL_MODE_MASTER     ? TOPLEVEL_MODE_EXT_MASTER
-                                                         : TOPLEVEL_MODE_EXT_SLAVE;
+    return server.mode == SERVER_MODE_MOVING && toplevel == server.grabbed_toplevel      ? TOPLEVEL_MODE_EXT_MOVING
+            : server.mode == SERVER_MODE_RESIZING && toplevel == server.grabbed_toplevel ? TOPLEVEL_MODE_EXT_RESIZING
+            : toplevel->mode == TOPLEVEL_MODE_FULLSCREEN                                 ? TOPLEVEL_MODE_EXT_FULLSCREEN
+            : toplevel->mode == TOPLEVEL_MODE_FLOATING                                   ? TOPLEVEL_MODE_EXT_FLOATING
+            : toplevel->mode == TOPLEVEL_MODE_MASTER                                     ? TOPLEVEL_MODE_EXT_MASTER
+                                                                                         : TOPLEVEL_MODE_EXT_SLAVE;
 }
 
 bool

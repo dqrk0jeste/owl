@@ -102,7 +102,7 @@ change_workspace(struct workspace *workspace, bool keep_focus) {
 
     // warp the cursor if this output is not on the same output as currently globally active workspace
     if(server.active_workspace->output != workspace->output) {
-        jump_cursor_to_output(workspace->output);
+        cursor_warp_output(workspace->output);
     }
 
     // set it as globally active workspace

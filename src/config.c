@@ -429,8 +429,8 @@ create_default_config(void) {
     array_push(&c->gaps,
             ((struct gaps_config){
                     .specified = GAPS_FIELD_INNER | GAPS_FIELD_OUTER,
-                    .inner = 0,
-                    .outer = 0,
+                    .inner = {0},
+                    .outer = {0},
             }));
 
     array_push(&c->toplevels,
@@ -672,6 +672,18 @@ handle_value(struct config *c, char **words, enum config_section section) {
             NEED_ARGUMENTS(1);
 
             c->cursor.size = max(atoi(words[1]), 0);
+        } else if(strcmp(words[0], "warp") == 0) {
+            NEED_ARGUMENTS(1);
+
+            if(strcmp(words[1], "none") == 0) {
+                c->cursor.warp = CURSOR_WARP_NONE;
+            } else if(strcmp(words[1], "on_output_change") == 0) {
+                c->cursor.warp = CURSOR_WARP_ON_OUTPUT_CHANGE;
+            } else if(strcmp(words[1], "always") == 0) {
+                c->cursor.warp = CURSOR_WARP_ALWAYS;
+            } else {
+                ERROR("invalid option `%s`", words[1]);
+            }
         } else {
             ERROR("unknown keyword `%s` for section `cursor`", words[0]);
         }
@@ -965,15 +977,19 @@ handle_value(struct config *c, char **words, enum config_section section) {
             if(strcmp(words[1], "floating") == 0) {
                 toplevel->mode = TOPLEVEL_MODE_EXT_FLOATING;
             } else if(strcmp(words[1], "tiled") == 0) {
-                toplevel->mode = TOPLEVEL_MODE_EXT_TILED;
+                toplevel->mode = TOPLEVEL_MODE_EXT_MASTER | TOPLEVEL_MODE_EXT_SLAVE;
             } else if(strcmp(words[1], "master") == 0) {
                 toplevel->mode = TOPLEVEL_MODE_EXT_MASTER;
             } else if(strcmp(words[1], "slave") == 0) {
                 toplevel->mode = TOPLEVEL_MODE_EXT_SLAVE;
             } else if(strcmp(words[1], "fullscreen") == 0) {
                 toplevel->mode = TOPLEVEL_MODE_EXT_FULLSCREEN;
+            } else if(strcmp(words[1], "moving") == 0) {
+                toplevel->mode = TOPLEVEL_MODE_EXT_MOVING;
+            } else if(strcmp(words[1], "resizing") == 0) {
+                toplevel->mode = TOPLEVEL_MODE_EXT_RESIZING;
             } else if(strcmp(words[1], "grabbed") == 0) {
-                toplevel->mode = TOPLEVEL_MODE_EXT_GRABBED;
+                toplevel->mode = TOPLEVEL_MODE_EXT_MOVING | TOPLEVEL_MODE_EXT_RESIZING;
             } else {
                 ERROR("invalid option `%s`", words[1]);
                 return;

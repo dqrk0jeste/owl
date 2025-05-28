@@ -352,15 +352,6 @@ handle_new_output(struct wl_listener *listener, void *data) {
 }
 
 void
-jump_cursor_to_output(struct output *output) {
-    struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
-
-    wlr_cursor_warp(server.cursor.base, NULL, output_box.x + output_box.width / 2.0,
-            output_box.y + output_box.height / 2.0);
-}
-
-void
 focus_output(struct output *output, enum direction direction) {
     struct workspace *workspace = output->active_workspace;
     server.active_workspace = workspace;
@@ -385,7 +376,7 @@ focus_output(struct output *output, enum direction direction) {
         focus_toplevel(first_master(workspace), true);
     } else {
         unfocus_focused_toplevel();
-        jump_cursor_to_output(output);
+        cursor_warp_output(output);
     }
 }
 

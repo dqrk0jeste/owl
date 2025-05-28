@@ -73,10 +73,18 @@ struct trackpad_config {
     enum libinput_config_scroll_method scroll_method;
 };
 
+enum cursor_warp {
+    CURSOR_WARP_NONE = 0,
+    CURSOR_WARP_ON_OUTPUT_CHANGE,
+    CURSOR_WARP_ALWAYS,
+};
+
 struct cursor_config {
     // todo: check null values
     char *theme;
     int size;
+
+    enum cursor_warp warp;
 };
 
 enum gaps_field {
@@ -189,10 +197,10 @@ enum toplevel_default_mode {
 enum toplevel_mode_ext {
     TOPLEVEL_MODE_EXT_MASTER = 1 << 0,
     TOPLEVEL_MODE_EXT_SLAVE = 1 << 1,
-    TOPLEVEL_MODE_EXT_TILED = TOPLEVEL_MODE_EXT_MASTER | TOPLEVEL_MODE_EXT_SLAVE,
     TOPLEVEL_MODE_EXT_FLOATING = 1 << 2,
     TOPLEVEL_MODE_EXT_FULLSCREEN = 1 << 3,
-    TOPLEVEL_MODE_EXT_GRABBED = 1 << 4,
+    TOPLEVEL_MODE_EXT_MOVING = 1 << 4,
+    TOPLEVEL_MODE_EXT_RESIZING = 1 << 5,
 };
 
 struct toplevel_config {

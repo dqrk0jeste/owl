@@ -606,11 +606,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
     }
 
     if(jump_cursor) {
-        // jump to the middpoint of the toplevel
-        wlr_cursor_warp(server.cursor.base, NULL, toplevel->deco_box.x + toplevel->deco_box.width / 2.0,
-                toplevel->deco_box.y + toplevel->deco_box.height / 2.0);
-
-        cursor_handle_focus(get_now_in_ms(), false);
+        cursor_warp_toplevel(toplevel, prev->workspace->output);
     }
 
     ipc_send_focused_toplevel();
@@ -848,6 +844,8 @@ toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind
 
     server.resize_edges = edges;
     server.grabbed_toplevel_initial_box = toplevel_get_current_display_deco_box(toplevel);
+
+    rules_update_for_toplevel(toplevel);
 
     if(toplevel->animation != NULL) {
         // if there is an animation running we need to stop it and start the drag

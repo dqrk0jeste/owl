@@ -42,9 +42,6 @@ struct output *
 output_get_relative(struct output *output, enum direction direction, int x, int y);
 
 void
-jump_cursor_to_output(struct output *output);
-
-void
 focus_output(struct output *output, enum direction direction);
 
 struct wlr_box

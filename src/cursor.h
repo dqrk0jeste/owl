@@ -38,4 +38,10 @@ struct toplevel *
 cursor_get_toplevel(void);
 
 void
+cursor_warp_output(struct output *output);
+
+void
+cursor_warp_toplevel(struct toplevel *toplevel, struct output *from_output);
+
+void
 cursor_init(void);

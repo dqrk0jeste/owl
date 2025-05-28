@@ -396,6 +396,30 @@ cursor_stop_move_resize(void) {
 }
 
 void
+cursor_warp_output(struct output *output) {
+    if(server.config->cursor.warp > CURSOR_WARP_ON_OUTPUT_CHANGE)
+        return;
+
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server.output_layout, output->wlr_output, &output_box);
+
+    wlr_cursor_warp(server.cursor.base, NULL, output_box.x + output_box.width / 2.0,
+            output_box.y + output_box.height / 2.0);
+}
+
+void
+cursor_warp_toplevel(struct toplevel *toplevel, struct output *from_output) {
+    if(server.config->cursor.warp == CURSOR_WARP_NONE ||
+            (server.config->cursor.warp == CURSOR_WARP_ON_OUTPUT_CHANGE && toplevel->workspace->output == from_output))
+        return;
+
+    wlr_cursor_warp(server.cursor.base, NULL, toplevel->deco_box.x + toplevel->deco_box.width / 2.0,
+            toplevel->deco_box.y + toplevel->deco_box.height / 2.0);
+
+    cursor_handle_focus(get_now_in_ms(), false);
+}
+
+void
 cursor_init(void) {
     server.cursor.base = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server.cursor.base, server.output_layout);
