@@ -25,13 +25,20 @@ move_to_hint(struct wlr_pointer_constraint_v1 *constraint) {
 }
 
 void
+constraint_remove_current() {
+    wlr_pointer_constraint_v1_send_deactivated(server.constraint_manager.current_constraint);
+    wl_list_remove(&server.constraint_manager.current_constraint_destroy.link);
+
+    server.constraint_manager.current_constraint = NULL;
+}
+
+void
 constraint_set_as_current(struct wlr_pointer_constraint_v1 *constraint) {
     if(server.constraint_manager.current_constraint == constraint)
         return;
 
     if(server.constraint_manager.current_constraint != NULL) {
-        wlr_pointer_constraint_v1_send_deactivated(server.constraint_manager.current_constraint);
-        wl_list_remove(&server.constraint_manager.current_constraint_destroy.link);
+        constraint_remove_current();
     }
 
     server.constraint_manager.current_constraint = constraint;
@@ -51,20 +58,19 @@ constraint_apply_to_move(double *dx, double *dy) {
 
     if(server.constraint_manager.current_constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED) {
         *dx = *dy = 0;
-        return;
-    }
+    } else {
+        if(server.seat.base->pointer_state.focused_surface == NULL)
+            return;
 
-    if(server.seat.base->pointer_state.focused_surface == NULL)
-        return;
+        double current_x = server.seat.base->pointer_state.sx;
+        double current_y = server.seat.base->pointer_state.sy;
 
-    double current_x = server.seat.base->pointer_state.sx;
-    double current_y = server.seat.base->pointer_state.sy;
-
-    double constrained_x, constrained_y;
-    if(wlr_region_confine(&server.constraint_manager.current_constraint->region, current_x, current_y, current_x + *dx,
-               current_y + *dy, &constrained_x, &constrained_y)) {
-        *dx = constrained_x - current_x;
-        *dy = constrained_y - current_y;
+        double constrained_x, constrained_y;
+        if(wlr_region_confine(&server.constraint_manager.current_constraint->region, current_x, current_y,
+                   current_x + *dx, current_y + *dy, &constrained_x, &constrained_y)) {
+            *dx = constrained_x - current_x;
+            *dy = constrained_y - current_y;
+        }
     }
 }
 

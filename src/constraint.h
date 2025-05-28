@@ -16,6 +16,9 @@ void
 constraint_manager_init(void);
 
 void
+constraint_remove_current();
+
+void
 constraint_set_as_current(struct wlr_pointer_constraint_v1 *constraint);
 
 void

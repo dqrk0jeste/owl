@@ -16,7 +16,6 @@
 #include "mwc.h"
 #include "rules.h"
 #include "toplevel.h"
-#include "wlr/util/log.h"
 #include "workspace.h"
 
 extern struct server server;

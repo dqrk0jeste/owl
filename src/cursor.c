@@ -11,7 +11,6 @@
 #include "output.h"
 #include "rules.h"
 #include "seat.h"
-#include "wlr/util/log.h"
 
 extern struct server server;
 
@@ -297,7 +296,9 @@ cursor_handle_focus(uint32_t time, bool handle_keyboard_focus) {
         struct wlr_pointer_constraint_v1 *constraint = wlr_pointer_constraints_v1_constraint_for_surface(
                 server.constraint_manager.base, surface, server.seat.base);
         if(constraint == NULL) {
-            server.constraint_manager.current_constraint = NULL;
+            if(server.constraint_manager.current_constraint != NULL) {
+                constraint_remove_current();
+            }
         } else {
             constraint_set_as_current(constraint);
         }
