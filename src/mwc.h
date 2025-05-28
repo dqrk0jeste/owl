@@ -111,6 +111,9 @@ struct server {
         int fd, wd;
     } config_watcher;
 
+    struct fx_animation_curve *animation_curve;
+    struct font *title_font;
+
     struct {
         struct wl_event_source *source;
         int fd;

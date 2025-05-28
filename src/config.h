@@ -8,7 +8,6 @@
 #include <stdint.h>
 #include <wayland-server-core.h>
 
-#include "animations.h"
 #include "decoration.h"
 #include "helpers.h"
 #include "keybinds.h"
@@ -127,9 +126,7 @@ struct titlebar_config {
             int left, right;
         } padding;
         struct color color;
-        char *font_name;
-        // this will be generated from the font name and size
-        struct fcft_font *font;
+        char *font;
     } title;
 };
 
@@ -150,7 +147,7 @@ struct shadow_config {
 struct animations_config {
     bool enabled;
     int duration;
-    struct fx_animation_curve *curve;
+    double curve[4];
 };
 
 struct blur_config {
@@ -276,8 +273,6 @@ struct config {
     // a value that tells if we should or should not have blur nodes enabled. we do this to minimize the
     // load if the user does not want any blur, so that the blur is not recalculated at all.
     bool needs_optimized_blur;
-    // a value we track so we can later create the font at the right size
-    double largest_scale;
 };
 
 struct config *

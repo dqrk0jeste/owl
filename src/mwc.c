@@ -160,9 +160,6 @@ main(int argc, char *argv[]) {
     mkdir("/tmp/mwc", 0777);
     init_logs(log_level);
 
-    // initialize the font library before parsing the initial config file
-    font_manager_init();
-
     server.config_path = get_config_path();
     if(server.config_path == NULL || (server.config = config_load(server.config_path)) == NULL) {
         wlr_log(WLR_ERROR, "couldn't open the config file, backing to default config");
@@ -170,7 +167,7 @@ main(int argc, char *argv[]) {
         if(server.config == NULL) {
             wlr_log(WLR_ERROR, "couldn't open the default config file, quitting");
             ret = 1;
-            goto font;
+            goto config_path;
         }
     }
 
@@ -246,6 +243,11 @@ main(int argc, char *argv[]) {
     // set the initial blur params
     wlr_scene_set_blur_data(server.scene, server.config->blur.params);
 
+    font_manager_init();
+    if(server.config->titlebar.title.font != NULL) {
+        server.title_font = font_create(server.config->titlebar.title.font, server.config->titlebar.title.size);
+    }
+
     seat_init();
     cursor_init();
 
@@ -273,6 +275,7 @@ main(int argc, char *argv[]) {
     wlr_virtual_keyboard_manager_v1_create(server.display);
 
     fx_animation_manager_init(server.display, server.scene);
+    server.animation_curve = fx_animation_curve_create(server.config->animations.curve);
 
     // Add a unix socket to the wayland display
     const char *socket = wl_display_add_socket_auto(server.display);
@@ -324,6 +327,8 @@ main(int argc, char *argv[]) {
         config_watcher_deinit();
     }
 
+    font_manager_deinit();
+
     wl_event_source_remove(sigchld_source);
     wl_event_source_remove(sigpipe_source);
 
@@ -342,11 +347,10 @@ display:
     wl_display_destroy(server.display);
 config:
     config_destroy(server.config);
+config_path:
     if(server.config_path != NULL) {
         string_destroy(server.config_path);
     }
-font:
-    font_manager_deinit();
 
     return ret;
 }

@@ -23,17 +23,11 @@ font_manager_deinit(void);
 
 // returns NULL if the font could not be loaded
 struct font *
-font_load(char *name, int size, int scale_count, float scales[static scale_count]);
+font_create(char *name, int size);
 
 void
 font_destroy(struct font *font);
 
-// returns NULL if there is no such font
+// returns an already existing font or creates it if needed
 struct fcft_font *
 font_get_at_scale(struct font *font, float scale);
-
-void
-font_add_scale(struct font *font, float scale);
-
-void
-font_remove_scale(struct font *font, float scale);

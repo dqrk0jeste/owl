@@ -58,7 +58,6 @@ struct decoration {
     int corner_radius, corner_location;
     double opacity;
 
-    double scale;
     char *title;
 };
 
@@ -88,9 +87,6 @@ decoration_set_active(struct decoration *decoration, bool active);
 
 void
 decoration_set_title(struct decoration *decoration, char *title);
-
-void
-decoration_set_scale(struct decoration *decoration, double scale);
 
 void
 decoration_set_blur(struct decoration *decoration, enum blur blur);

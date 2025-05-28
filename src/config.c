@@ -20,6 +20,7 @@
 
 #include "array.h"
 #include "dyn_string.h"
+#include "font.h"
 #include "helpers.h"
 #include "keybinds.h"
 #include "layout.h"
@@ -358,22 +359,17 @@ add_keybind(struct config *c, char *modifiers, char *key, char *action, char **a
     }
 }
 
-static void
-patch(struct config *c) {
-    if(c->animations.enabled && c->animations.curve == NULL) {
-        c->animations.curve = fx_animation_curve_create((double[4]){0});
-        wlr_log(WLR_INFO, "config: animations: `curve` not specified. using linear");
-    }
-
-    if(c->titlebar.title.enabled && c->titlebar.title.font_name != NULL) {
-        // create the font
-        char size[32];
-        snprintf(size, sizeof(size), "pixelsize=%d", (int)(c->largest_scale * c->titlebar.title.size));
-        c->titlebar.title.font = fcft_from_name(1, (const char **)&c->titlebar.title.font_name, size);
-
-        if(c->titlebar.title.font == NULL) {
-            wlr_log(WLR_ERROR, "config: failed creating the title font");
+void
+load_title_font(char *name, int size) {
+    // we only load the font if it has changed, so we get the most of glyph cache
+    if(server.title_font == NULL || strcmp(name, server.title_font->name) == 0 || server.title_font->size == size) {
+        if(server.title_font != NULL) {
+            // if the font needs to be replaces destroy the old one
+            font_destroy(server.title_font);
         }
+
+        // create the new font
+        server.title_font = font_create(name, size);
     }
 }
 
@@ -467,7 +463,6 @@ create_default_config(void) {
 
     c->animations.duration = 500;
     c->needs_optimized_blur = false;
-    c->largest_scale = 1.0;
 
     return c;
 }
@@ -563,7 +558,6 @@ handle_value(struct config *c, char **words, enum config_section section) {
             NEED_ARGUMENTS(1);
 
             output->scale = max(atof(words[1]), 1.0);
-            c->largest_scale = max(c->largest_scale, output->scale);
             output->specified |= OUTPUT_FIELD_SCALE;
         } else if(strcmp(words[0], "master_count") == 0) {
             NEED_ARGUMENTS(1);
@@ -822,7 +816,7 @@ handle_value(struct config *c, char **words, enum config_section section) {
         } else if(strcmp(words[0], "font") == 0) {
             NEED_ARGUMENTS(1);
 
-            c->titlebar.title.font_name = strdup(words[1]);
+            c->titlebar.title.font = strdup(words[1]);
         } else {
             ERROR("unknown keyword `%s` for section `titlebar:title`", words[0]);
         }
@@ -872,8 +866,10 @@ handle_value(struct config *c, char **words, enum config_section section) {
         } else if(strcmp(words[0], "curve") == 0) {
             NEED_ARGUMENTS(4);
 
-            c->animations.curve = fx_animation_curve_create(
-                    (double[4]){atof(words[1]), atof(words[2]), atof(words[3]), atof(words[4])});
+            c->animations.curve[0] = atof(words[1]);
+            c->animations.curve[1] = atof(words[2]);
+            c->animations.curve[2] = atof(words[3]);
+            c->animations.curve[3] = atof(words[4]);
         } else {
             ERROR("unknown keyword `%s` for section `animations`", words[0]);
         }
@@ -1183,7 +1179,6 @@ config_load(char *path) {
     }
 
     fclose(config_file);
-    patch(c);
 
     return c;
 }
@@ -1236,14 +1231,9 @@ config_destroy(struct config *c) {
     }
     array_destroy(c->gaps);
 
-    if(c->titlebar.title.font_name != NULL) {
-        free(c->titlebar.title.font_name);
-    }
     if(c->titlebar.title.font != NULL) {
-        fcft_destroy(c->titlebar.title.font);
+        free(c->titlebar.title.font);
     }
-
-    fx_animation_curve_destroy(c->animations.curve);
 
     for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
         if(iter->action == keybind_run) {
@@ -1302,6 +1292,21 @@ config_reload(void) {
     // set the new blur parametars
     wlr_scene_set_blur_data(server.scene, c->blur.params);
 
+    if(server.animation_curve != NULL) {
+        fx_animation_curve_destroy(server.animation_curve);
+    }
+    server.animation_curve = fx_animation_curve_create(c->animations.curve);
+
+    if(c->titlebar.title.font != NULL) {
+        if(server.title_font == NULL) {
+            server.title_font = font_create(c->titlebar.title.font, c->titlebar.title.size);
+        } else if(strcmp(server.title_font->name, c->titlebar.title.font) != 0 ||
+                server.title_font->size != c->titlebar.title.size) {
+            font_destroy(server.title_font);
+            server.title_font = font_create(c->titlebar.title.font, c->titlebar.title.size);
+        }
+    }
+
     // we reconfigure the outputs
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
@@ -1310,7 +1315,8 @@ config_reload(void) {
         struct wlr_box old_usable_area = iter_output->usable_area;
         output_configure(iter_output, false);
 
-        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
+        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable
+        // area
         layer_surfaces_configure(iter_output);
         // recheck layer rules
         struct layer_surface *iter_layer_surface;

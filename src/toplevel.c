@@ -768,7 +768,7 @@ toplevel_set_state(struct toplevel *toplevel, struct wlr_box deco_box) {
             !(toplevel_is_tiled(toplevel) && server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) &&
             !wlr_box_equal(&current, &deco_box)) {
         toplevel->animation = fx_transform_animation_create(current, deco_box, server.config->animations.duration,
-                server.config->animations.curve, toplevel_animation_callback, toplevel);
+                server.animation_curve, toplevel_animation_callback, toplevel);
     } else {
         decoration_configure(&toplevel->decoration, deco_box.width, deco_box.height);
         toplevel_clip_tree(toplevel, width, height);
