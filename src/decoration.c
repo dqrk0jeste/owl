@@ -148,30 +148,23 @@ update_titlebar(struct decoration *decoration, struct wlr_box *box) {
         // we try to center it, but we dont want it placed before `left_pad`
         if(server.config->titlebar.title.position == TITLEBAR_TITLE_POSITION_CENTER &&
                 (box->width - decoration->titlebar.title->width) / 2 > left_pad) {
+            // todo: use actual width here
             x = (box->width - decoration->titlebar.title->width) / 2;
         }
-        int y = (server.config->titlebar.height - decoration->titlebar.title->height) / 2;
+        int y = (server.config->titlebar.height - server.config->titlebar.title.size) / 2;
 
         wlr_scene_node_set_position(&decoration->titlebar.title->scene_buffer->node, x, y);
 
-        // int free_width = box->width - x - server.config->titlebar.title.padding.right;
-        // if(server.config->titlebar.close_button.enabled &&
-        //         server.config->titlebar.close_button.position == TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT) {
-        //     free_width -= server.config->titlebar.close_button.size +
-        //             server.config->titlebar.close_button.padding.left +
-        //             server.config->titlebar.close_button.padding.right;
-        // }
-        //
-        // wlr_scene_node_set_enabled(&decoration->titlebar.title->scene_buffer->node, free_width > 0);
-        // struct wlr_fbox clip_box = {
-        //         .x = 0.0,
-        //         .y = 0.0,
-        //         .width = min(free_width, decoration->titlebar.title->width),
-        //         .height = decoration->titlebar.title->height,
-        // };
-        // wlr_scene_buffer_set_source_box(decoration->titlebar.title->scene_buffer, &clip_box);
-        // wlr_scene_buffer_set_dest_size(decoration->titlebar.title->scene_buffer,
-        //         min(free_width, decoration->titlebar.title->width), server.config->titlebar.title.size);
+        int free_width = box->width - x - server.config->titlebar.title.padding.right;
+        if(server.config->titlebar.close_button.enabled &&
+                server.config->titlebar.close_button.position == TITLEBAR_CLOSE_BUTTON_POSITION_RIGHT) {
+            free_width -= server.config->titlebar.close_button.size +
+                    server.config->titlebar.close_button.padding.left +
+                    server.config->titlebar.close_button.padding.right;
+        }
+
+        wlr_scene_node_set_enabled(&decoration->titlebar.title->scene_buffer->node, free_width > 0);
+        text_node_set_clip(decoration->titlebar.title, free_width);
     }
 }
 

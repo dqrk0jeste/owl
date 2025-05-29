@@ -16,7 +16,10 @@ struct text_node {
     char *text;  // utf8 encoded text
 
     struct fcft_font *current_font;
+    // logical size of the node
     int width, height;
+    // clipped width
+    int clip;
 
     // this listens for when the buffer node is destroyed, so it can free the other resources
     struct wl_listener node_destroy;
@@ -33,4 +36,4 @@ void
 text_node_set_text(struct text_node *node, char *text);
 
 void
-text_node_set_scale(struct text_node *node, float scale);
+text_node_set_clip(struct text_node *node, int width);

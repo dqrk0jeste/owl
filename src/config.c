@@ -1344,13 +1344,19 @@ config_reload(void) {
     }
     server.animation_curve = fx_animation_curve_create(c->animations.curve);
 
+    // we need to keep this font alive at least until the call to `output_configure()`, because text_node callback
+    // depends on it. it is unfortunate, but there does not seem to be a better way to do it. refcounted pointer may be
+    // better suited here, but i dont have the implementation of it right know, so it will have to wait. TODO: this
+    struct font *old_font = server.title_font;
+    bool old_font_needs_destroy = false;
+
     if(c->titlebar.title.font != NULL) {
         if(server.title_font == NULL) {
             server.title_font = font_create(c->titlebar.title.font, c->titlebar.title.size);
         } else if(strcmp(server.title_font->name, c->titlebar.title.font) != 0 ||
                 server.title_font->size != c->titlebar.title.size) {
-            font_destroy(server.title_font);
             server.title_font = font_create(c->titlebar.title.font, c->titlebar.title.size);
+            old_font_needs_destroy = true;
         }
     }
 
@@ -1431,6 +1437,9 @@ config_reload(void) {
     }
 
     cursor_set_theme(c->cursor.theme, c->cursor.size);
+    if(old_font_needs_destroy) {
+        font_destroy(old_font);
+    }
 }
 
 static int

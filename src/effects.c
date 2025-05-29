@@ -47,7 +47,6 @@ layer_surface_apply_effects(struct layer_surface *layer_surface) {
 struct iter_toplevel_apply_effects_args {
     int root_x, root_y;
     struct wlr_box geometry;
-    int width, height;
     double width_scale, height_scale;
     double opacity;
     int corner_radius;
@@ -130,8 +129,6 @@ toplevel_apply_effects(struct toplevel *toplevel) {
             .root_x = toplevel->scene_tree->node.x + toplevel->content_tree->node.x,
             .root_y = toplevel->scene_tree->node.y + toplevel->content_tree->node.y,
             .geometry = geometry,
-            .width = width,
-            .height = height,
             .width_scale = (double)width / geometry.width,
             .height_scale = (double)height / geometry.height,
             .opacity = toplevel->opacity,

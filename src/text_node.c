@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <drm_fourcc.h>
 #include <fcft/fcft.h>
+#include <limits.h>
 #include <pixman.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,37 +31,6 @@ handle_node_destroy(struct wl_listener *listener, void *data) {
         free(node->text);
     }
     free(node);
-}
-
-static void
-handle_output_update(struct wl_listener *listener, void *data) {
-    struct text_node *node = wl_container_of(listener, node, output_update);
-
-    struct wlr_scene_output *output = node->scene_buffer->primary_output;
-    if(output != NULL) {
-        text_node_set_scale(node, output->output->scale);
-    }
-}
-
-struct text_node *
-text_node_create(struct wlr_scene_tree *parent, struct font *font, float scale, struct color color, char *text) {
-    struct text_node *node = calloc(1, sizeof(*node));
-    node->font = font;
-    node->color = color;
-    node->scale = scale;
-    node->current_font = font_get_at_scale(font, scale);
-
-    node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
-
-    node->node_destroy.notify = handle_node_destroy;
-    wl_signal_add(&node->scene_buffer->node.events.destroy, &node->node_destroy);
-
-    node->output_update.notify = handle_output_update;
-    wl_signal_add(&node->scene_buffer->events.outputs_update, &node->output_update);
-
-    text_node_set_text(node, text);
-
-    return node;
 }
 
 // function to decode a single utf8 character into a utf32 code point
@@ -97,6 +67,14 @@ utf8_strlen(const char *str) {
     return len;
 }
 
+static void
+clip_node(struct text_node *node) {
+    wlr_scene_buffer_set_source_box(node->scene_buffer,
+            &(struct wlr_fbox){0, 0, min(node->clip * node->scale, node->width * node->scale),
+                    node->height * node->scale});
+    wlr_scene_buffer_set_dest_size(node->scene_buffer, min(node->clip, node->width), node->font->size);
+}
+
 static int
 render_text(struct pixman_buffer *buffer, struct fcft_font *font, const char32_t *text, size_t len,
         pixman_image_t *color) {
@@ -124,7 +102,7 @@ render_text(struct pixman_buffer *buffer, struct fcft_font *font, const char32_t
 }
 
 static void
-render_current_text(struct text_node *node) {
+render_node(struct text_node *node) {
     // drop the old buffer if any
     if(node->buffer != NULL) {
         wlr_buffer_drop(&node->buffer->base);
@@ -138,9 +116,8 @@ render_current_text(struct text_node *node) {
         return;
     }
 
-    // we approximate the width of the text
+    // we approximate the width of the text, so we can allocate the a buffer of an appropriate size
     int width = len * (node->current_font->max_advance.x);
-    // todo: test with font->height
     int height = node->current_font->height;
 
     node->buffer = pixman_buffer_create(width, height);
@@ -163,10 +140,57 @@ render_current_text(struct text_node *node) {
     color_to_pixman_color(node->color, &color);
     pixman_image_t *foreground_color = pixman_image_create_solid_fill(&color);
 
-    node->width = render_text(node->buffer, node->current_font, utf32, len, foreground_color);
-    node->height = height;
+    // we render characters, but scale the size down to its logical size
+    node->width = render_text(node->buffer, node->current_font, utf32, len, foreground_color) / node->scale;
+    node->height = height / node->scale;
 
     pixman_image_unref(foreground_color);
+
+    clip_node(node);
+}
+
+static void
+set_scale(struct text_node *node, float scale) {
+    if(scale == node->scale)
+        return;
+
+    node->scale = scale;
+    node->current_font = font_get_at_scale(node->font, scale);
+    // rerender the text for the new scale
+    render_node(node);
+}
+
+static void
+handle_output_update(struct wl_listener *listener, void *data) {
+    struct text_node *node = wl_container_of(listener, node, output_update);
+
+    struct wlr_scene_output *output = node->scene_buffer->primary_output;
+    if(output != NULL) {
+        set_scale(node, output->output->scale);
+    }
+}
+
+struct text_node *
+text_node_create(struct wlr_scene_tree *parent, struct font *font, float scale, struct color color, char *text) {
+    struct text_node *node = calloc(1, sizeof(*node));
+    node->font = font;
+    node->color = color;
+    node->scale = scale;
+
+    node->current_font = font_get_at_scale(font, scale);
+    node->scene_buffer = wlr_scene_buffer_create(parent, NULL);
+
+    node->clip = INT_MAX;
+
+    node->node_destroy.notify = handle_node_destroy;
+    wl_signal_add(&node->scene_buffer->node.events.destroy, &node->node_destroy);
+
+    node->output_update.notify = handle_output_update;
+    wl_signal_add(&node->scene_buffer->events.outputs_update, &node->output_update);
+
+    text_node_set_text(node, text);
+
+    return node;
 }
 
 void
@@ -177,20 +201,14 @@ text_node_set_text(struct text_node *node, char *text) {
     }
 
     node->text = text == NULL ? NULL : strdup(text);
-    render_current_text(node);
+    render_node(node);
 }
 
 void
-text_node_set_scale(struct text_node *node, float scale) {
-    if(scale == node->scale)
+text_node_set_clip(struct text_node *node, int width) {
+    if(width == node->clip)
         return;
 
-    node->current_font = font_get_at_scale(node->font, scale);
-    // rerender the text for the new scale
-    render_current_text(node);
-    // why the fuck this works ???
-    wlr_scene_buffer_set_dest_size(node->scene_buffer, node->width, node->height / scale);
-    // todo: test this when at setup against moving between outputs
-    node->width /= scale;
-    node->height /= scale;
+    node->clip = width;
+    clip_node(node);
 }
