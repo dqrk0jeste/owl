@@ -438,7 +438,7 @@ create_default_config(void) {
                     .specified = TOPLEVEL_FIELD_CORNER_RADIUS | TOPLEVEL_FIELD_CORNER_LOCATION |
                             TOPLEVEL_FIELD_OPACITY | TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS | TOPLEVEL_FIELD_BLUR |
                             TOPLEVEL_FIELD_SHADOW | TOPLEVEL_FIELD_BORDER | TOPLEVEL_FIELD_TITLEBAR |
-                            TOPLEVEL_FIELD_DEFAULT_MODE,
+                            TOPLEVEL_FIELD_DEFAULT_MODE | TOPLEVEL_FIELD_DEFAULT_POSITION,
                     .corner_radius = 0,
                     .corner_location = CORNER_LOCATION_ALL,
                     .opacity = 1.0,
@@ -448,6 +448,7 @@ create_default_config(void) {
                     .border = false,
                     .titlebar = false,
                     .default_mode = TOPLEVEL_DEFAULT_MODE_TILED,
+                    .default_position = {0},
             }));
 
     array_push(&c->layers,
@@ -1129,7 +1130,7 @@ handle_value(struct config *c, char **words, enum config_section section) {
             } else if(strcmp(words[1], "floating") == 0) {
                 toplevel->default_mode = TOPLEVEL_DEFAULT_MODE_FLOATING;
             } else {
-                ERROR("invalid option `%s`", words[1]);
+                ERROR("invalid mode `%s`", words[1]);
                 return;
             }
 
@@ -1150,6 +1151,27 @@ handle_value(struct config *c, char **words, enum config_section section) {
             toplevel->default_width = max(atoi(words[1]), 0);
             toplevel->default_height = max(atoi(words[2]), 0);
             toplevel->specified |= TOPLEVEL_FIELD_DEFAULT_SIZE;
+        } else if(strcmp(words[0], "default_position") == 0) {
+            NEED_ARGUMENTS(1);
+
+            if(strcmp(words[1], "center") == 0) {
+                toplevel->default_position.anchor = ANCHOR_CENTER;
+            } else if(strcmp(words[1], "top_left") == 0) {
+                toplevel->default_position.anchor = ANCHOR_TOP_LEFT;
+            } else if(strcmp(words[1], "top_right") == 0) {
+                toplevel->default_position.anchor = ANCHOR_TOP_RIGHT;
+            } else if(strcmp(words[1], "bottom_right") == 0) {
+                toplevel->default_position.anchor = ANCHOR_BOTTOM_RIGHT;
+            } else if(strcmp(words[1], "bottom_left") == 0) {
+                toplevel->default_position.anchor = ANCHOR_BOTTOM_LEFT;
+            } else {
+                ERROR("invalid anchor `%s`", words[1]);
+                return;
+            }
+
+            toplevel->default_position.x = arg_count > 1 ? max(atoi(words[2]), 0) : 0;
+            toplevel->default_position.y = arg_count > 2 ? max(atoi(words[3]), 0) : 0;
+            toplevel->specified |= TOPLEVEL_FIELD_DEFAULT_POSITION;
         } else {
             ERROR("unknown keyword `%s` for section `toplevel`", words[0]);
         }
@@ -1345,8 +1367,9 @@ config_reload(void) {
     server.animation_curve = fx_animation_curve_create(c->animations.curve);
 
     // we need to keep this font alive at least until the call to `output_configure()`, because text_node callback
-    // depends on it. it is unfortunate, but there does not seem to be a better way to do it. refcounted pointer may be
-    // better suited here, but i dont have the implementation of it right know, so it will have to wait. TODO: this
+    // depends on it. it is unfortunate, but there does not seem to be a better way to do it. refcounted pointer may
+    // be better suited here, but i dont have the implementation of it right know, so it will have to wait. TODO:
+    // this
     struct font *old_font = server.title_font;
     bool old_font_needs_destroy = false;
 
@@ -1363,12 +1386,13 @@ config_reload(void) {
     // we reconfigure the outputs
     struct output *iter_output;
     wl_list_for_each(iter_output, &server.outputs, link) {
-        // before configuring the output we save its original usable area, so the floating toplevels can later be placed
-        // at the same place on the output
+        // before configuring the output we save its original usable area, so the floating toplevels can later be
+        // placed at the same place on the output
         struct wlr_box old_usable_area = iter_output->usable_area;
         output_configure(iter_output, false);
 
-        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable area
+        // configure the layers; this needs to happen before configuring the toplevels, since it changes the usable
+        // area
         layer_surfaces_configure(iter_output);
         // recheck layer rules
         struct layer_surface *iter_layer_surface;

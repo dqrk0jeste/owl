@@ -187,6 +187,7 @@ enum toplevel_field {
     TOPLEVEL_FIELD_TITLEBAR = 1 << 14,
     TOPLEVEL_FIELD_DEFAULT_MODE = 1 << 15,
     TOPLEVEL_FIELD_DEFAULT_SIZE = 1 << 16,
+    TOPLEVEL_FIELD_DEFAULT_POSITION = 1 << 17,
 };
 
 enum toplevel_default_mode {
@@ -201,6 +202,14 @@ enum toplevel_mode_ext {
     TOPLEVEL_MODE_EXT_FULLSCREEN = 1 << 3,
     TOPLEVEL_MODE_EXT_MOVING = 1 << 4,
     TOPLEVEL_MODE_EXT_RESIZING = 1 << 5,
+};
+
+enum anchor {
+    ANCHOR_CENTER = 0,
+    ANCHOR_TOP_LEFT,
+    ANCHOR_TOP_RIGHT,
+    ANCHOR_BOTTOM_RIGHT,
+    ANCHOR_BOTTOM_LEFT,
 };
 
 struct toplevel_config {
@@ -226,6 +235,10 @@ struct toplevel_config {
     enum toplevel_default_mode default_mode;
     int default_width, default_height;
     bool width_is_relative, height_is_relative;
+    struct default_position {
+        enum anchor anchor;
+        int x, y;
+    } default_position;
 };
 
 enum layer_field {

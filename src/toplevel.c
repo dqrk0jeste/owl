@@ -41,23 +41,51 @@ toplevel_is_tiled(struct toplevel *toplevel) {
 }
 
 static void
+toplevel_get_floating_position(struct toplevel *toplevel, int width, int height, int *x, int *y) {
+    struct wlr_box output_box = toplevel->workspace->output->usable_area;
+
+    if(toplevel->default_position.anchor == ANCHOR_CENTER) {
+        *x = output_box.x + (output_box.width - width) / 2;
+        *y = output_box.y + (output_box.height - height) / 2;
+    } else if(toplevel->default_position.anchor == ANCHOR_TOP_LEFT) {
+        *x = output_box.x + toplevel->default_position.x;
+        *y = output_box.y + toplevel->default_position.y;
+    } else if(toplevel->default_position.anchor == ANCHOR_TOP_RIGHT) {
+        *x = output_box.x + output_box.width - width - toplevel->default_position.x;
+        *y = output_box.y + toplevel->default_position.y;
+    } else if(toplevel->default_position.anchor == ANCHOR_BOTTOM_RIGHT) {
+        *x = output_box.x + output_box.width - width - toplevel->default_position.x;
+        *y = output_box.y + output_box.height - height - toplevel->default_position.y;
+    } else {
+        *x = output_box.x + toplevel->default_position.x;
+        *y = output_box.y + output_box.height - height - toplevel->default_position.y;
+    }
+}
+
+static void
 toplevel_handle_own_size(struct toplevel *toplevel) {
-    // remove the flag
     toplevel->should_choose_size = false;
 
     struct wlr_box geometry = toplevel_get_geometry(toplevel);
+    decoration_get_decoration_size(&toplevel->decoration, &geometry.width, &geometry.height);
 
-    int width = geometry.width, height = geometry.height;
-    decoration_get_decoration_size(&toplevel->decoration, &width, &height);
+    toplevel_floating_set(toplevel, geometry.width, geometry.height);
+}
 
-    // we center it on top of parent or output if none
+void
+toplevel_floating_set(struct toplevel *toplevel, int width, int height) {
+    struct wlr_box box = {.width = width, .height = height};
+
     if(toplevel->xdg_toplevel->parent != NULL) {
+        // we center it on top of parent
         struct toplevel *parent = toplevel->xdg_toplevel->parent->base->data;
-        toplevel_set_state(toplevel, create_centered_box_for_box(&parent->deco_box, width, height));
+        box.x = parent->deco_box.x + (parent->deco_box.width - box.width) / 2;
+        box.y = parent->deco_box.y + (parent->deco_box.height - box.height) / 2;
     } else {
-        toplevel_set_state(toplevel,
-                create_centered_box_for_box(&toplevel->workspace->output->usable_area, width, height));
+        toplevel_get_floating_position(toplevel, box.width, box.height, &box.x, &box.y);
     }
+
+    toplevel_set_state(toplevel, box);
 }
 
 static void

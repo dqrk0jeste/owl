@@ -370,7 +370,7 @@ keybind_toggle_floating(void *data) {
             if(toplevel->height_is_relative)
                 height *= toplevel->workspace->output->usable_area.height / 100.0;
 
-            toplevel_set_state(toplevel, create_centered_box_for_box(&workspace->output->usable_area, width, height));
+            toplevel_floating_set(toplevel, width, height);
         } else {
             toplevel_floating_set_own_size(toplevel);
         }

@@ -134,6 +134,10 @@ rules_update_for_toplevel(struct toplevel *toplevel) {
             toplevel->height_is_relative = iter->height_is_relative;
             found |= TOPLEVEL_FIELD_DEFAULT_SIZE;
         }
+        if(!(found & TOPLEVEL_FIELD_DEFAULT_POSITION) && (iter->specified & TOPLEVEL_FIELD_DEFAULT_POSITION)) {
+            toplevel->default_position = iter->default_position;
+            found |= TOPLEVEL_FIELD_DEFAULT_POSITION;
+        }
     }
 
     // update the decorations

@@ -6,6 +6,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 
 #include "animations.h"
+#include "config.h"
 #include "decoration.h"
 #include "foreign_toplevel.h"
 #include "helpers.h"
@@ -59,6 +60,8 @@ struct toplevel {
     enum corner_location corner_location;
     int default_width, default_height;
     bool width_is_relative, height_is_relative;
+
+    struct default_position default_position;
 
     struct fx_transform_animation *animation;
 
@@ -127,3 +130,6 @@ toplevel_find_closest_floating_on_workspace(struct toplevel *toplevel, enum dire
 // raise this toplevel and its parents/children to the top of its scene graph
 void
 toplevel_raise_to_top(struct toplevel *toplevel);
+
+void
+toplevel_floating_set(struct toplevel *toplevel, int width, int height);
