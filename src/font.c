@@ -16,9 +16,14 @@ font_manager_deinit(void) {
 }
 
 struct font *
-font_create(char *name, int size) {
+font_create(int count, char *names[static count], int size) {
     struct font *font = calloc(1, sizeof(*font));
-    font->name = strdup(name);
+    font->names = calloc(count, sizeof(char *));
+    font->names_count = count;
+    for(int i = 0; i < count; i++) {
+        font->names[i] = strdup(names[i]);
+    }
+
     font->size = size;
     array_init(&font->scales);
 
@@ -32,7 +37,11 @@ font_destroy(struct font *font) {
     }
     array_destroy(font->scales);
 
-    free(font->name);
+    for(int i = 0; i < font->names_count; i++) {
+        free(font->names[i]);
+    }
+    free(font->names);
+
     free(font);
 }
 
@@ -41,7 +50,7 @@ create_at_scale(struct font *font, float scale) {
     char pixelsize[32];
     snprintf(pixelsize, sizeof(pixelsize), "pixelsize=%d", (int)(font->size * scale));
 
-    struct font_scale at_scale = {scale, fcft_from_name(1, (const char **)&font->name, pixelsize)};
+    struct font_scale at_scale = {scale, fcft_from_name(font->names_count, (const char **)font->names, pixelsize)};
     if(at_scale.font != NULL) {
         array_push(&font->scales, at_scale);
     }

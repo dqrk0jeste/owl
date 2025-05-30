@@ -92,8 +92,14 @@ render_text(struct pixman_buffer *buffer, struct fcft_font *font, const char32_t
         }
 
         // composite the image into the buffer
-        pixman_image_composite32(PIXMAN_OP_OVER, color, glyph->pix, buffer->image, 0, 0, 0, 0, x + glyph->x,
-                font->ascent - glyph->y, glyph->width, glyph->height);
+        if(glyph->is_color_glyph) {
+            pixman_image_composite32(PIXMAN_OP_OVER, glyph->pix, NULL, buffer->image, 0, 0, 0, 0, x + glyph->x,
+                    font->ascent - glyph->y, glyph->width, glyph->height);
+        } else {
+            pixman_image_composite32(PIXMAN_OP_OVER, color, glyph->pix, buffer->image, 0, 0, 0, 0, x + glyph->x,
+                    font->ascent - glyph->y, glyph->width, glyph->height);
+        }
+
         // and advance the position for the next one
         x += glyph->advance.x;
     }

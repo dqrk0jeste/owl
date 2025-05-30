@@ -264,20 +264,6 @@ add_keybind(struct config *c, char *modifiers, char *key, char *action, char **a
     }
 }
 
-void
-load_title_font(char *name, int size) {
-    // we only load the font if it has changed, so we get the most of glyph cache
-    if(server.title_font == NULL || strcmp(name, server.title_font->name) == 0 || server.title_font->size == size) {
-        if(server.title_font != NULL) {
-            // if the font needs to be replaces destroy the old one
-            font_destroy(server.title_font);
-        }
-
-        // create the new font
-        server.title_font = font_create(name, size);
-    }
-}
-
 static struct config *
 create_default_config(void) {
     struct config *c = calloc(1, sizeof(*c));
@@ -762,7 +748,10 @@ handle_value(struct config *c, char **words, enum config_section section) {
         } else if(strcmp(words[0], "font") == 0) {
             NEED_ARGUMENTS(1);
 
-            c->titlebar.title.font = strdup(words[1]);
+            array_init(&c->titlebar.title.fonts);
+            for(int i = 1; i < array_len(words); i++) {
+                array_push(&c->titlebar.title.fonts, strdup(words[i]));
+            }
         } else {
             ERROR("unknown keyword `%s` for section `titlebar:title`", words[0]);
         }
@@ -1200,8 +1189,12 @@ config_destroy(struct config *c) {
     }
     array_destroy(c->gaps);
 
-    if(c->titlebar.title.font != NULL) {
-        free(c->titlebar.title.font);
+    if(c->titlebar.title.fonts != NULL) {
+        for(int i = 0; i < array_len(c->titlebar.title.fonts); i++) {
+            free(c->titlebar.title.fonts[i]);
+        }
+
+        array_destroy(c->titlebar.title.fonts);
     }
 
     for(struct keybind *iter = c->keybinds; iter <= array_last(c->keybinds); iter++) {
@@ -1245,6 +1238,19 @@ layout_reorganize(struct workspace *workspace) {
     }
 }
 
+static bool
+names_changed(int count, char *names[static count]) {
+    if(count != server.title_font->names_count)
+        return true;
+
+    for(int i = 0; i < count; i++) {
+        if(strcmp(names[i], server.title_font->names[i]) != 0)
+            return true;
+    }
+
+    return false;
+}
+
 static void
 config_reload(void) {
     struct config *c = config_load(server.config_path);
@@ -1279,12 +1285,14 @@ config_reload(void) {
     struct font *old_font = server.title_font;
     bool old_font_needs_destroy = false;
 
-    if(c->titlebar.title.font != NULL) {
+    if(c->titlebar.title.fonts != NULL) {
         if(server.title_font == NULL) {
-            server.title_font = font_create(c->titlebar.title.font, c->titlebar.title.size);
-        } else if(strcmp(server.title_font->name, c->titlebar.title.font) != 0 ||
-                server.title_font->size != c->titlebar.title.size) {
-            server.title_font = font_create(c->titlebar.title.font, c->titlebar.title.size);
+            server.title_font =
+                    font_create(array_len(c->titlebar.title.fonts), c->titlebar.title.fonts, c->titlebar.title.size);
+        } else if(server.title_font->size != c->titlebar.title.size ||
+                names_changed(array_len(c->titlebar.title.fonts), c->titlebar.title.fonts)) {
+            server.title_font =
+                    font_create(array_len(c->titlebar.title.fonts), c->titlebar.title.fonts, c->titlebar.title.size);
             old_font_needs_destroy = true;
         }
     }

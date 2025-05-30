@@ -244,8 +244,9 @@ main(int argc, char *argv[]) {
     wlr_scene_set_blur_data(server.scene, server.config->blur.params);
 
     font_manager_init();
-    if(server.config->titlebar.title.font != NULL) {
-        server.title_font = font_create(server.config->titlebar.title.font, server.config->titlebar.title.size);
+    if(server.config->titlebar.title.fonts != NULL) {
+        server.title_font = font_create(array_len(server.config->titlebar.title.fonts),
+                server.config->titlebar.title.fonts, server.config->titlebar.title.size);
     }
 
     seat_init();

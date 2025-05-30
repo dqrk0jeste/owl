@@ -8,7 +8,8 @@ struct font_scale {
 };
 
 struct font {
-    char *name;
+    int names_count;
+    char **names;
     int size;
 
     struct font_scale *scales;  // array
@@ -23,7 +24,7 @@ font_manager_deinit(void);
 
 // returns NULL if the font could not be loaded
 struct font *
-font_create(char *name, int size);
+font_create(int count, char *names[static count], int size);
 
 void
 font_destroy(struct font *font);

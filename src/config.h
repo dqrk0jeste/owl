@@ -138,7 +138,7 @@ struct titlebar_config {
             int left, right;
         } padding;
         struct color color;
-        char *font;
+        char **fonts;
     } title;
 };
 
