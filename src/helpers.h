@@ -66,6 +66,3 @@ box_midpoint(const struct wlr_box *box, int *x, int *y);
 
 void
 get_same_relative_coords(int *x, int *y, const struct wlr_box *old, const struct wlr_box *new);
-
-struct wlr_box
-create_centered_box_for_box(struct wlr_box *box, int width, int height);
