@@ -12,6 +12,9 @@ cursor_shape_manager_handle_destroy(struct wl_listener *listener, void *data) {
 
 void
 cursor_shape_manager_handle_request(struct wl_listener *listener, void *data) {
+    if(server.cursor.is_hidden)
+        return;
+
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
 
     struct wlr_seat_client *focused_client = server.seat.base->pointer_state.focused_client;

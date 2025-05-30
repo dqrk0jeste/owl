@@ -21,8 +21,6 @@
 #include "session_lock.h"
 #include "xdg_shell.h"
 
-#define MWC_VERSION 0.2.0
-
 enum server_mode {
     SERVER_MODE_NORMAL = 0,
     SERVER_MODE_DRAGGING,

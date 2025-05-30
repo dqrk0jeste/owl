@@ -237,6 +237,9 @@ handle_motion_absolute(struct wl_listener *listener, void *data) {
 
 static void
 handle_set_cursor(struct wl_listener *listener, void *data) {
+    if(server.cursor.is_hidden)
+        return;
+
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
 
     struct wlr_seat_client *focused_client = server.seat.base->pointer_state.focused_client;
@@ -273,6 +276,15 @@ cursor_get_toplevel(void) {
 
 void
 cursor_handle_focus(uint32_t time, bool handle_keyboard_focus) {
+    if(server.cursor.is_hidden) {
+        server.cursor.is_hidden = false;
+        wlr_seat_pointer_clear_focus(server.seat.base);
+    }
+
+    if(server.config->cursor.hide_after > 0) {
+        wl_event_source_timer_update(server.cursor.hide_timer, server.config->cursor.hide_after);
+    }
+
     // find the view under the pointer and send the event along
     double sx, sy;
     struct wlr_surface *surface = NULL;
@@ -410,7 +422,7 @@ cursor_warp_output(struct output *output) {
 
 void
 cursor_warp_toplevel(struct toplevel *toplevel, struct output *from_output) {
-    if(server.config->cursor.warp == CURSOR_WARP_NONE ||
+    if(server.config->cursor.warp == CURSOR_WARP_NEVER ||
             (server.config->cursor.warp == CURSOR_WARP_ON_OUTPUT_CHANGE && toplevel->workspace->output == from_output))
         return;
 
@@ -420,12 +432,22 @@ cursor_warp_toplevel(struct toplevel *toplevel, struct output *from_output) {
     cursor_handle_focus(get_now_in_ms(), false);
 }
 
+static int
+hide_cursor(void *data) {
+    wlr_cursor_set_surface(server.cursor.base, NULL, 0, 0);
+    server.cursor.is_hidden = true;
+
+    return 0;
+}
+
 void
 cursor_init(void) {
     server.cursor.base = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server.cursor.base, server.output_layout);
 
     cursor_set_theme(server.config->cursor.theme, server.config->cursor.size);
+
+    server.cursor.hide_timer = wl_event_loop_add_timer(server.event_loop, hide_cursor, NULL);
 
     server.cursor.motion.notify = handle_motion;
     wl_signal_add(&server.cursor.base->events.motion, &server.cursor.motion);

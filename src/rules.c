@@ -29,7 +29,12 @@ get_extended_mode(struct toplevel *toplevel) {
 
 bool
 toplevel_matches_rule(struct toplevel *toplevel, struct toplevel_config *config) {
-    if((config->specified & TOPLEVEL_FIELD_MATCH_STATE) && (toplevel == server.focused_toplevel) != config->focused)
+    if((config->specified & TOPLEVEL_FIELD_MATCH_FOCUSED) &&
+            (toplevel == server.focused_toplevel) != !!config->is_focused)
+        return false;
+
+    if((config->specified & TOPLEVEL_FIELD_MATCH_FAKE_FULLSCREEN) &&
+            (toplevel->is_fake_fullscreen) != !!config->is_fake_fullscreen)
         return false;
 
     enum toplevel_mode_ext mode = get_extended_mode(toplevel);

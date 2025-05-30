@@ -88,101 +88,6 @@ parse_color(char *s) {
     return (struct color){0};
 }
 
-//
-//     if(strcmp(predicate, "float") == 0) {
-//         array_push(&c->toplevel_rules.floating,
-//                 ((struct toplevel_rule){
-//                         .condition = condition,
-//                 }));
-//     } else if(strcmp(predicate, "size") == 0) {
-//         if(arg_count < 2)
-//             goto invalid;
-//
-//         struct toplevel_rule_size toplevel_rule;
-//         toplevel_rule.condition = condition;
-//
-//         // if it ends with '%' we treat it as a relative unit
-//         if(args[0][strlen(args[0]) - 1] == '%') {
-//             args[0][strlen(args[0]) - 1] = 0;
-//             toplevel_rule.relative_width = true;
-//         }
-//         if(args[1][strlen(args[1]) - 1] == '%') {
-//             args[1][strlen(args[1]) - 1] = 0;
-//             toplevel_rule.relative_height = true;
-//         }
-//
-//         toplevel_rule.width = max(atoi(args[0]), 0);
-//         toplevel_rule.height = max(atoi(args[1]), 0);
-//
-//         array_push(&c->toplevel_rules.size, toplevel_rule);
-//     } else if(strcmp(predicate, "opacity") == 0) {
-//         if(arg_count < 1)
-//             goto invalid;
-//
-//         double active = clamp(atof(args[0]), 0.0, 1.0);
-//         double inactive = arg_count > 1 ? clamp(atof(args[1]), 0.0, 1.0) : active;
-//
-//         array_push(&c->toplevel_rules.opacity,
-//                 ((struct toplevel_rule_opacity){
-//                         .condition = condition,
-//                         .active_value = active,
-//                         .inactive_value = inactive,
-//                 }));
-//     } else if(strcmp(predicate, "titlebar") == 0) {
-//         if(arg_count < 1)
-//             goto invalid;
-//
-//         array_push(&c->toplevel_rules.titlebar,
-//                 ((struct toplevel_rule_bool){
-//                         .condition = condition,
-//                         .value = atoi(args[0]),
-//                 }));
-//     } else if(strcmp(predicate, "border") == 0) {
-//         if(arg_count < 1)
-//             goto invalid;
-//
-//         array_push(&c->toplevel_rules.border,
-//                 ((struct toplevel_rule_bool){
-//                         .condition = condition,
-//                         .value = atoi(args[0]),
-//                 }));
-//     } else if(strcmp(predicate, "shadow") == 0) {
-//         if(arg_count < 1)
-//             goto invalid;
-//
-//         array_push(&c->toplevel_rules.shadow,
-//                 ((struct toplevel_rule_bool){
-//                         .condition = condition,
-//                         .value = atoi(args[0]),
-//                 }));
-//     } else if(strcmp(predicate, "blur") == 0) {
-//         if(arg_count < 1)
-//             goto invalid;
-//
-//         array_push(&c->toplevel_rules.blur,
-//                 ((struct toplevel_rule_bool){
-//                         .condition = condition,
-//                         .value = atoi(args[0]),
-//                 }));
-//     } else {
-//         ERROR("invalid toplevel_rule `%s`", predicate);
-//         goto cleanup;
-//     }
-//
-//     return true;
-//
-// invalid:
-//     ERROR("invalid args to toplevel_rule `%s`", predicate);
-// cleanup:
-//     if(condition.has_app_id_regex) {
-//         regfree(&condition.app_id_regex);
-//     }
-//     if(condition.has_title_regex) {
-//         regfree(&condition.title_regex);
-//     }
-//     return false;
-// }
-
 // handle appending to the config string
 static void
 add_keymap(struct config *c, char *layout, char *variant) {
@@ -676,8 +581,8 @@ handle_value(struct config *c, char **words, enum config_section section) {
         } else if(strcmp(words[0], "warp") == 0) {
             NEED_ARGUMENTS(1);
 
-            if(strcmp(words[1], "none") == 0) {
-                c->cursor.warp = CURSOR_WARP_NONE;
+            if(strcmp(words[1], "never") == 0) {
+                c->cursor.warp = CURSOR_WARP_NEVER;
             } else if(strcmp(words[1], "on_output_change") == 0) {
                 c->cursor.warp = CURSOR_WARP_ON_OUTPUT_CHANGE;
             } else if(strcmp(words[1], "always") == 0) {
@@ -685,6 +590,10 @@ handle_value(struct config *c, char **words, enum config_section section) {
             } else {
                 ERROR("invalid option `%s`", words[1]);
             }
+        } else if(strcmp(words[0], "hide_after") == 0) {
+            NEED_ARGUMENTS(1);
+
+            c->cursor.hide_after = max(atoi(words[1]), 0);
         } else {
             ERROR("unknown keyword `%s` for section `cursor`", words[0]);
         }
@@ -997,19 +906,16 @@ handle_value(struct config *c, char **words, enum config_section section) {
             }
 
             toplevel->specified |= TOPLEVEL_FIELD_MATCH_MODE;
-        } else if(strcmp(words[0], "state") == 0) {
+        } else if(strcmp(words[0], "is_focused") == 0) {
             NEED_ARGUMENTS(1);
 
-            if(strcmp(words[1], "focused") == 0) {
-                toplevel->focused = true;
-            } else if(strcmp(words[1], "unfocused") == 0) {
-                toplevel->focused = false;
-            } else {
-                ERROR("invalid option `%s`", words[1]);
-                return;
-            }
+            toplevel->is_focused = atoi(words[1]);
+            toplevel->specified |= TOPLEVEL_FIELD_MATCH_FOCUSED;
+        } else if(strcmp(words[0], "is_fake_fullscreen") == 0) {
+            NEED_ARGUMENTS(1);
 
-            toplevel->specified |= TOPLEVEL_FIELD_MATCH_STATE;
+            toplevel->is_fake_fullscreen = atoi(words[1]);
+            toplevel->specified |= TOPLEVEL_FIELD_MATCH_FAKE_FULLSCREEN;
         } else if(strcmp(words[0], "master_count") == 0) {
             NEED_ARGUMENTS(2);
 

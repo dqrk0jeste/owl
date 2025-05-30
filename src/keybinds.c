@@ -401,6 +401,8 @@ keybind_toggle_fake_fullscreen(void *data) {
 
     toplevel->is_fake_fullscreen = !toplevel->is_fake_fullscreen;
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, toplevel->is_fake_fullscreen);
+
+    rules_update_for_toplevel(toplevel);
 }
 
 void

@@ -7,6 +7,9 @@ struct cursor {
 
     struct wlr_xcursor_manager *theme_manager;
 
+    bool is_hidden;
+    struct wl_event_source *hide_timer;
+
     struct wl_listener motion;
     struct wl_listener motion_absolute;
     struct wl_listener button;

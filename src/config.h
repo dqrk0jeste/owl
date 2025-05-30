@@ -74,17 +74,17 @@ struct trackpad_config {
 };
 
 enum cursor_warp {
-    CURSOR_WARP_NONE = 0,
+    CURSOR_WARP_NEVER = 0,
     CURSOR_WARP_ON_OUTPUT_CHANGE,
     CURSOR_WARP_ALWAYS,
 };
 
 struct cursor_config {
-    // todo: check null values
     char *theme;
     int size;
 
     enum cursor_warp warp;
+    int hide_after;
 };
 
 enum gaps_field {
@@ -172,22 +172,23 @@ enum toplevel_field {
     TOPLEVEL_FIELD_MATCH_APP_ID = 1 << 0,
     TOPLEVEL_FIELD_MATCH_TITLE = 1 << 1,
     TOPLEVEL_FIELD_MATCH_MODE = 1 << 2,
-    TOPLEVEL_FIELD_MATCH_STATE = 1 << 3,
-    TOPLEVEL_FIELD_MATCH_MASTER_COUNT = 1 << 4,
-    TOPLEVEL_FIELD_MATCH_SLAVE_COUNT = 1 << 5,
+    TOPLEVEL_FIELD_MATCH_FOCUSED = 1 << 3,
+    TOPLEVEL_FIELD_MATCH_FAKE_FULLSCREEN = 1 << 4,
+    TOPLEVEL_FIELD_MATCH_MASTER_COUNT = 1 << 5,
+    TOPLEVEL_FIELD_MATCH_SLAVE_COUNT = 1 << 6,
 
-    TOPLEVEL_FIELD_CORNER_RADIUS = 1 << 6,
-    TOPLEVEL_FIELD_CORNER_LOCATION = 1 << 7,
-    TOPLEVEL_FIELD_OPACITY = 1 << 8,
-    TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS = 1 << 9,
-    TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS = 1 << 10,
-    TOPLEVEL_FIELD_BLUR = 1 << 11,
-    TOPLEVEL_FIELD_SHADOW = 1 << 12,
-    TOPLEVEL_FIELD_BORDER = 1 << 13,
-    TOPLEVEL_FIELD_TITLEBAR = 1 << 14,
-    TOPLEVEL_FIELD_DEFAULT_MODE = 1 << 15,
-    TOPLEVEL_FIELD_DEFAULT_SIZE = 1 << 16,
-    TOPLEVEL_FIELD_DEFAULT_POSITION = 1 << 17,
+    TOPLEVEL_FIELD_CORNER_RADIUS = 1 << 7,
+    TOPLEVEL_FIELD_CORNER_LOCATION = 1 << 8,
+    TOPLEVEL_FIELD_OPACITY = 1 << 9,
+    TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS = 1 << 10,
+    TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS = 1 << 11,
+    TOPLEVEL_FIELD_BLUR = 1 << 12,
+    TOPLEVEL_FIELD_SHADOW = 1 << 13,
+    TOPLEVEL_FIELD_BORDER = 1 << 14,
+    TOPLEVEL_FIELD_TITLEBAR = 1 << 15,
+    TOPLEVEL_FIELD_DEFAULT_MODE = 1 << 16,
+    TOPLEVEL_FIELD_DEFAULT_SIZE = 1 << 17,
+    TOPLEVEL_FIELD_DEFAULT_POSITION = 1 << 18,
 };
 
 enum toplevel_default_mode {
@@ -222,7 +223,7 @@ struct toplevel_config {
     int master_count;
     enum relation slave_relation;
     int slave_count;
-    bool focused;
+    bool is_focused, is_fake_fullscreen;
 
     // these will be applied if matching
     int corner_radius;
