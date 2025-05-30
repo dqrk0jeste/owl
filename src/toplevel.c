@@ -206,6 +206,9 @@ handle_map(struct wl_listener *listener, void *data) {
         layout_configure(toplevel->workspace);
     }
 
+    wlr_foreign_toplevel_handle_v1_output_enter(toplevel->foreign_toplevel_handle->wlr_handle,
+            toplevel->workspace->output->wlr_output);
+
     focus_toplevel(toplevel, false);
 }
 

@@ -384,6 +384,13 @@ cursor_stop_move_resize(void) {
         if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
             struct output *primary_output = get_primary_output(toplevel);
 
+            if(toplevel->workspace->output != primary_output) {
+                wlr_foreign_toplevel_handle_v1_output_leave(toplevel->foreign_toplevel_handle->wlr_handle,
+                        toplevel->workspace->output->wlr_output);
+                wlr_foreign_toplevel_handle_v1_output_enter(toplevel->foreign_toplevel_handle->wlr_handle,
+                        primary_output->wlr_output);
+            }
+
             // we set this outputs active workspace as toplevels workspace
             toplevel->workspace = primary_output->active_workspace;
             wl_list_insert(primary_output->active_workspace->floating.next, &toplevel->link);

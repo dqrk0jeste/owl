@@ -193,6 +193,13 @@ toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspac
         layout_configure(old_workspace);
         layout_configure(workspace);
     }
+
+    if(old_workspace->output != workspace->output) {
+        wlr_foreign_toplevel_handle_v1_output_leave(toplevel->foreign_toplevel_handle->wlr_handle,
+                old_workspace->output->wlr_output);
+        wlr_foreign_toplevel_handle_v1_output_enter(toplevel->foreign_toplevel_handle->wlr_handle,
+                workspace->output->wlr_output);
+    }
 }
 
 struct toplevel *
