@@ -398,7 +398,7 @@ cursor_stop_move_resize(void) {
             wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
             // and restore the previous stacking
             toplevel_raise_to_top(toplevel);
-            rules_update_for_toplevel(toplevel);
+            rules_update_for_toplevel(toplevel, true);
         } else {
             wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
             // here the only possible mode is moving, so we insert it into the layout

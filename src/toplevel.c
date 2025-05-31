@@ -112,7 +112,7 @@ toplevel_clip_tree(struct toplevel *toplevel, int width, int height) {
 
 static void
 handle_initial_commit(struct toplevel *toplevel) {
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, false);
 
     // unlike other toplevel rules we only check the floating ones on initial commit
     int width, height;
@@ -388,7 +388,7 @@ static void
 handle_set_app_id(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, set_app_id);
 
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, true);
 
     wlr_foreign_toplevel_handle_v1_set_app_id(toplevel->foreign_toplevel_handle->wlr_handle,
             toplevel->xdg_toplevel->app_id);
@@ -402,7 +402,7 @@ static void
 handle_set_title(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, set_title);
 
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, true);
     decoration_set_title(&toplevel->decoration, toplevel->xdg_toplevel->title);
 
     wlr_foreign_toplevel_handle_v1_set_title(toplevel->foreign_toplevel_handle->wlr_handle,
@@ -475,7 +475,7 @@ toplevel_raise_to_top(struct toplevel *toplevel) {
 
 void
 toplevel_set_fullscreen(struct toplevel *toplevel) {
-    if(toplevel->workspace->fullscreen != NULL || toplevel == server.grabbed_toplevel || toplevel->is_fake_fullscreen)
+    if(toplevel->workspace->fullscreen != NULL || toplevel == server.grabbed_toplevel)
         return;
 
     struct workspace *workspace = toplevel->workspace;
@@ -505,7 +505,7 @@ toplevel_set_fullscreen(struct toplevel *toplevel) {
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.fullscreen_tree);
 
     // before we set the state for this toplevel be sure to recheck the rules
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, false);
 
     struct wlr_box output_box;
     wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
@@ -513,7 +513,7 @@ toplevel_set_fullscreen(struct toplevel *toplevel) {
 
     // we disable all the other toplevels so they are not seen if there is transparency
     workspace_toplevels_set_enabled(workspace, false);
-    // we also disable bottom and top layer surfaces, and leave only the background
+    // we also disable bottom and top layer surfaces, and leave only the background (needed for blur)
     layers_under_fullscreen_set_enabled(workspace->output, false);
 
     // lastly, we configure the layout; it is important to call this after the nodes have been disabled, so the
@@ -545,7 +545,7 @@ toplevel_unset_fullscreen(struct toplevel *toplevel) {
         // we restack the children/parents
         toplevel_raise_to_top(toplevel);
         // before we set the state for this toplevel be sure to recheck the rules
-        rules_update_for_toplevel(toplevel);
+        rules_update_for_toplevel(toplevel, false);
 
         toplevel_set_state(toplevel, toplevel->prev_deco_box);
     } else {
@@ -572,7 +572,7 @@ toplevel_unset_fullscreen(struct toplevel *toplevel) {
 
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.tiled_tree);
         // before we set the state for this toplevel be sure to recheck the rules
-        rules_update_for_toplevel(toplevel);
+        rules_update_for_toplevel(toplevel, false);
 
         layout_configure(workspace);
     }
@@ -618,7 +618,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
         wlr_xdg_toplevel_set_activated(prev->xdg_toplevel, false);
         wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_toplevel_handle->wlr_handle, false);
 
-        rules_update_for_toplevel(prev);
+        rules_update_for_toplevel(prev, true);
         decoration_set_active(&prev->decoration, false);
     }
 
@@ -632,7 +632,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
     wlr_foreign_toplevel_handle_v1_set_activated(toplevel->foreign_toplevel_handle->wlr_handle, true);
 
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, true);
 
     toplevel_raise_to_top(toplevel);
     decoration_set_active(&toplevel->decoration, true);
@@ -837,7 +837,7 @@ toplevel_start_move(struct toplevel *toplevel, bool by_keybind) {
     server.grab_x = server.cursor.base->x;
     server.grab_y = server.cursor.base->y;
 
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, false);
 
     server.grabbed_toplevel_initial_box = toplevel_get_current_display_deco_box(toplevel);
 
@@ -883,7 +883,7 @@ toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind
     server.resize_edges = edges;
     server.grabbed_toplevel_initial_box = toplevel_get_current_display_deco_box(toplevel);
 
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, false);
 
     if(toplevel->animation != NULL) {
         // if there is an animation running we need to stop it and start the drag

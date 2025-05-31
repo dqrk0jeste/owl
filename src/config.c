@@ -1328,7 +1328,7 @@ config_reload(void) {
             wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
                 decoration_recreate(&iter_toplevel->decoration);
 
-                rules_update_for_toplevel(iter_toplevel);
+                rules_update_for_toplevel(iter_toplevel, false);
                 struct wlr_box box = iter_toplevel->deco_box;
                 get_same_relative_coords(&box.x, &box.y, &old_usable_area, &iter_output->usable_area);
                 toplevel_set_state(iter_toplevel, box);
@@ -1336,7 +1336,7 @@ config_reload(void) {
 
             if(iter_workspace->fullscreen != NULL) {
                 decoration_recreate(&iter_workspace->fullscreen->decoration);
-                rules_update_for_toplevel(iter_workspace->fullscreen);
+                rules_update_for_toplevel(iter_workspace->fullscreen, false);
 
                 struct wlr_box output_box;
                 wlr_output_layout_get_box(server.output_layout, iter_output->wlr_output, &output_box);

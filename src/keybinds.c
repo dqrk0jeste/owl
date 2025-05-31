@@ -362,7 +362,7 @@ keybind_toggle_floating(void *data) {
         toplevel->mode = TOPLEVEL_MODE_FLOATING;
         wl_list_insert(&toplevel->workspace->floating, &toplevel->link);
 
-        rules_update_for_toplevel(toplevel);
+        rules_update_for_toplevel(toplevel, false);
         if(toplevel->default_width != 0 && toplevel->default_height != 0) {
             int width = toplevel->default_width, height = toplevel->default_height;
             if(toplevel->width_is_relative)
@@ -402,7 +402,7 @@ keybind_toggle_fake_fullscreen(void *data) {
     toplevel->is_fake_fullscreen = !toplevel->is_fake_fullscreen;
     wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, toplevel->is_fake_fullscreen);
 
-    rules_update_for_toplevel(toplevel);
+    rules_update_for_toplevel(toplevel, true);
 }
 
 void

@@ -222,7 +222,7 @@ layout_configure(struct workspace *workspace) {
                 height - inner_gaps.top - inner_gaps.bottom,
         };
 
-        rules_update_for_toplevel(toplevel);
+        rules_update_for_toplevel(toplevel, false);
         toplevel_set_state(toplevel, box);
         i++;
     }
@@ -242,7 +242,7 @@ layout_configure(struct workspace *workspace) {
                 height - inner_gaps.top - inner_gaps.bottom,
         };
 
-        rules_update_for_toplevel(toplevel);
+        rules_update_for_toplevel(toplevel, false);
         toplevel_set_state(toplevel, box);
         i++;
     }

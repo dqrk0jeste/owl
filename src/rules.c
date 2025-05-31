@@ -73,7 +73,7 @@ layer_surface_matches_rule(struct layer_surface *layer_surface, struct layer_con
     return true;
 }
 void
-rules_update_for_toplevel(struct toplevel *toplevel) {
+rules_update_for_toplevel(struct toplevel *toplevel, bool configure) {
     uint32_t found = 0, types = 0;
     bool apply_opacity_to_decorations = false;
     for(struct toplevel_config *iter = array_last(server.config->toplevels); iter >= server.config->toplevels; iter--) {
@@ -153,7 +153,14 @@ rules_update_for_toplevel(struct toplevel *toplevel) {
     } else {
         decoration_set_opacity(&toplevel->decoration, 1.0);
     }
+    // this will also configure the decoration
     decoration_set_types(&toplevel->decoration, types);
+
+    if(configure) {
+        int width = toplevel->deco_box.width, height = toplevel->deco_box.height;
+        decoration_get_content_size(&toplevel->decoration, &width, &height);
+        wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+    }
 }
 
 void
