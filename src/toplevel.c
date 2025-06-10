@@ -187,9 +187,6 @@ handle_map(struct wl_listener *listener, void *data) {
 
     // enable the node
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-    // set initial decoration blur
-    decoration_set_blur(&toplevel->decoration, toplevel->blur);
-
     // we set this flag for the pop-in animation
     toplevel->needs_popin_adjustment = server.config->animations.enabled;
 
@@ -197,17 +194,14 @@ handle_map(struct wl_listener *listener, void *data) {
     if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
         wl_list_insert(&toplevel->workspace->floating, &toplevel->link);
         wlr_scene_node_reparent(&toplevel->scene_tree->node, server.floating_tree);
-        // even if we have sent a concrete value here, we respect if the toplevel chose another size; it would be weird
-        // having a floating toplevel clipped (thats exactly what happens when a toplevel changes its size on its own,
-        // and is left to fix)
+        // even if we have sent a concrete value here, we respect if the toplevel chose another size; it would be
+        // weird having a floating toplevel clipped (thats exactly what happens when a toplevel changes its size on
+        // its own, and is left to fix)
         toplevel_handle_own_size(toplevel);
     } else {
         layout_add(toplevel->workspace, toplevel);
         layout_configure(toplevel->workspace);
     }
-
-    wlr_foreign_toplevel_handle_v1_output_enter(toplevel->foreign_toplevel_handle->wlr_handle,
-            toplevel->workspace->output->wlr_output);
 
     focus_toplevel(toplevel, false);
 }
@@ -417,10 +411,10 @@ static void
 handle_destroy(struct wl_listener *listener, void *data) {
     struct toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
-    foreign_toplevel_handle_destroy(toplevel->foreign_toplevel_handle);
-
     decoration_destroy(&toplevel->decoration);
     wlr_scene_node_destroy(&toplevel->scene_tree->node);
+
+    foreign_toplevel_handle_destroy(toplevel->foreign_toplevel_handle);
 
     wl_list_remove(&toplevel->map.link);
     wl_list_remove(&toplevel->unmap.link);
@@ -430,6 +424,9 @@ handle_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&toplevel->request_resize.link);
     wl_list_remove(&toplevel->request_maximize.link);
     wl_list_remove(&toplevel->request_fullscreen.link);
+
+    wl_list_remove(&toplevel->enter_output.link);
+    wl_list_remove(&toplevel->leave_output.link);
 
     free(toplevel);
 }
@@ -903,6 +900,46 @@ toplevel_start_resize(struct toplevel *toplevel, uint32_t edges, bool by_keybind
     wlr_scene_node_reparent(&toplevel->scene_tree->node, server.grabbed_tree);
 }
 
+static struct wlr_scene_surface *
+get_scene_surface(struct wlr_scene_tree *tree, struct wlr_surface *surface) {
+    struct wlr_scene_node *iter;
+    wl_list_for_each(iter, &tree->children, link) {
+        if(iter->type == WLR_SCENE_NODE_TREE) {
+            struct wlr_scene_tree *child_tree = wlr_scene_tree_from_node(iter);
+
+            struct wlr_scene_surface *scene_surface = get_scene_surface(child_tree, surface);
+            if(scene_surface->surface == surface) {
+                return scene_surface;
+            }
+        } else if(iter->type == WLR_SCENE_NODE_BUFFER) {
+            struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(iter);
+
+            struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+            if(scene_surface->surface == surface) {
+                return scene_surface;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static void
+handle_enter_output(struct wl_listener *listener, void *data) {
+    struct toplevel *toplevel = wl_container_of(listener, toplevel, enter_output);
+    struct wlr_scene_output *output = data;
+
+    wlr_foreign_toplevel_handle_v1_output_enter(toplevel->foreign_toplevel_handle->wlr_handle, output->output);
+}
+
+static void
+handle_leave_output(struct wl_listener *listener, void *data) {
+    struct toplevel *toplevel = wl_container_of(listener, toplevel, leave_output);
+    struct wlr_scene_output *output = data;
+
+    wlr_foreign_toplevel_handle_v1_output_leave(toplevel->foreign_toplevel_handle->wlr_handle, output->output);
+}
+
 void
 handle_new_toplevel(struct wl_listener *listener, void *data) {
     // this event is raised when a client creates a new toplevel
@@ -920,9 +957,12 @@ handle_new_toplevel(struct wl_listener *listener, void *data) {
     toplevel->scene_tree = wlr_scene_tree_create(server.tiled_tree);
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
     toplevel->content_tree = wlr_scene_xdg_surface_create(toplevel->scene_tree, toplevel->xdg_toplevel->base);
+    toplevel->scene_surface = get_scene_surface(toplevel->content_tree, toplevel->xdg_toplevel->base->surface);
+    assert(toplevel->scene_surface != NULL);
+
     // in the node we want to keep information what it represents. we do that be keeping view in user data field,
-    // which is a union of all possible 'things' we can have on the screen, or more precicely, all the things that can
-    // receive pointer focus
+    // which is a union of all possible 'things' we can have on the screen, or more precicely, all the things that
+    // can receive pointer focus
     view_create_for_node(&toplevel->scene_tree->node, VIEW_TOPLEVEL, toplevel);
 
     // initialize the decoration
@@ -965,4 +1005,10 @@ handle_new_toplevel(struct wl_listener *listener, void *data) {
 
     toplevel->set_title.notify = handle_set_title;
     wl_signal_add(&xdg_toplevel->events.set_title, &toplevel->set_title);
+
+    toplevel->enter_output.notify = handle_enter_output;
+    wl_signal_add(&toplevel->scene_surface->buffer->events.output_enter, &toplevel->enter_output);
+
+    toplevel->leave_output.notify = handle_leave_output;
+    wl_signal_add(&toplevel->scene_surface->buffer->events.output_leave, &toplevel->leave_output);
 }

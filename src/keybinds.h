@@ -73,7 +73,7 @@ void
 keybind_toggle_fake_fullscreen(void *data);
 
 void
-keybind_increase_master_ratio(void *data);
+keybind_adjust_master_ratio(void *data);
 
 void
-keybind_decrease_master_ratio(void *data);
+keybind_set_master_ratio(void *data);

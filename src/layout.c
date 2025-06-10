@@ -298,12 +298,6 @@ layout_toplevel_at(struct workspace *workspace, int x, int y) {
 void
 layout_insert_toplevel_at(struct toplevel *toplevel, int x, int y) {
     struct workspace *workspace = server.active_workspace;
-    if(workspace->output != toplevel->workspace->output) {
-        wlr_foreign_toplevel_handle_v1_output_leave(toplevel->foreign_toplevel_handle->wlr_handle,
-                toplevel->workspace->output->wlr_output);
-        wlr_foreign_toplevel_handle_v1_output_enter(toplevel->foreign_toplevel_handle->wlr_handle,
-                workspace->output->wlr_output);
-    }
 
     toplevel->workspace = workspace;
 

@@ -25,6 +25,7 @@ struct toplevel {
 
     // scene tree with decorations
     struct wlr_scene_tree *scene_tree;
+    struct wlr_scene_surface *scene_surface;
     // subsurface tree for this toplevel
     struct wlr_scene_tree *content_tree;
 
@@ -77,6 +78,9 @@ struct toplevel {
     struct wl_listener request_fullscreen;
     struct wl_listener set_app_id;
     struct wl_listener set_title;
+
+    struct wl_listener enter_output;
+    struct wl_listener leave_output;
 };
 
 bool

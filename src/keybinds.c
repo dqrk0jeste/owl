@@ -16,6 +16,7 @@
 #include "mwc.h"
 #include "rules.h"
 #include "toplevel.h"
+#include "wlr/util/log.h"
 #include "workspace.h"
 
 extern struct server server;
@@ -406,19 +407,19 @@ keybind_toggle_fake_fullscreen(void *data) {
 }
 
 void
-keybind_increase_master_ratio(void *data) {
-    double delta = (uintptr_t)data / 100.0;
+keybind_adjust_master_ratio(void *data) {
+    double delta = (intptr_t)data / 100000.0;
+    wlr_log(WLR_ERROR, "delta = %lf", delta);
     struct workspace *workspace = server.active_workspace;
 
     workspace_set_master_ratio(workspace, workspace->master_ratio + delta);
 }
 
 void
-keybind_decrease_master_ratio(void *data) {
-    double delta = (uintptr_t)data / 100.0;
+keybind_set_master_ratio(void *data) {
     struct workspace *workspace = server.active_workspace;
 
-    workspace_set_master_ratio(workspace, workspace->master_ratio - delta);
+    workspace_set_master_ratio(workspace, (intptr_t)data / 100000.0);
 }
 
 bool

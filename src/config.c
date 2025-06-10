@@ -241,17 +241,25 @@ add_keybind(struct config *c, char *modifiers, char *key, char *action, char **a
         keybind.action = keybind_toggle_fullscreen;
     } else if(strcmp(action, "toggle_fake_fullscreen") == 0) {
         keybind.action = keybind_toggle_fake_fullscreen;
-    } else if(strcmp(action, "increase_master_ratio") == 0) {
+    } else if(strcmp(action, "master_ratio") == 0) {
         NEED_ARGUMENTS(1);
 
-        keybind.action = keybind_increase_master_ratio;
-        // ugly hack to keep a double in this field, tho with only two digits of precision, idk
-        keybind.data = (void *)(intptr_t)(atof(args[0]) * 100);
-    } else if(strcmp(action, "decrease_master_ratio") == 0) {
-        NEED_ARGUMENTS(1);
-
-        keybind.action = keybind_decrease_master_ratio;
-        keybind.data = (void *)(intptr_t)(atof(args[0]) * 100);
+        if(args[0][0] == '+') {
+            wlr_log(WLR_ERROR, "master ratio +");
+            keybind.action = keybind_adjust_master_ratio;
+            // ugly hack to keep a double in this field, tho with less digits of precision
+            keybind.data = (void *)(intptr_t)(atof(&(args[0][1])) * 100000);
+            wlr_log(WLR_ERROR, "keybind.data = %d", (int)keybind.data);
+        } else if(args[0][0] == '-') {
+            wlr_log(WLR_ERROR, "master ratio -");
+            keybind.action = keybind_adjust_master_ratio;
+            keybind.data = (void *)(intptr_t)(-atof(&(args[0][1])) * 100000);
+            wlr_log(WLR_ERROR, "keybind.data = %d", (int)keybind.data);
+        } else {
+            wlr_log(WLR_ERROR, "master ratio nothing");
+            keybind.action = keybind_set_master_ratio;
+            keybind.data = (void *)(intptr_t)(atof(args[0]) * 100000);
+        }
     } else {
         ERROR("invalid action `%s`", action);
         return;

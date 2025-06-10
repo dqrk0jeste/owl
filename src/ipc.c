@@ -124,7 +124,7 @@ layer_json(struct layer_surface *layer_surface) {
     } else if(layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
         layer_string = "top";
     } else if(layer == ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
-        layer_string = "overylay";
+        layer_string = "overlay";
     } else {
         assert(false && "unrechable");
     }
@@ -334,28 +334,31 @@ handle_action(int fd, char *action, char **args, size_t arg_count) {
         if(arg_count < 1)
             goto done;
 
-        keybind_change_workspace((void *)(uintptr_t)atoi(args[0]));
+        keybind_change_workspace((void *)(intptr_t)atoi(args[0]));
     } else if(strcmp(action, "move_to_workspace") == 0) {
         if(arg_count < 1)
             goto done;
 
-        keybind_move_to_workspace((void *)(uintptr_t)atoi(args[0]));
+        keybind_move_to_workspace((void *)(intptr_t)atoi(args[0]));
     } else if(strcmp(action, "next_workspace") == 0) {
         keybind_next_workspace(NULL);
     } else if(strcmp(action, "prev_workspace") == 0) {
         keybind_prev_workspace(NULL);
     } else if(strcmp(action, "toggle_fullscreen") == 0) {
         keybind_toggle_fullscreen(NULL);
-    } else if(strcmp(action, "increase_master_ratio") == 0) {
+    } else if(strcmp(action, "toggle_fake_fullscreen") == 0) {
+        keybind_toggle_fake_fullscreen(NULL);
+    } else if(strcmp(action, "master_ratio") == 0) {
         if(arg_count < 1)
             goto done;
 
-        keybind_increase_master_ratio((void *)(uintptr_t)(atof(args[0]) * 100));
-    } else if(strcmp(action, "decrease_master_ratio") == 0) {
-        if(arg_count < 1)
-            goto done;
-
-        keybind_decrease_master_ratio((void *)(uintptr_t)(atof(args[0]) * 100));
+        if(args[0][1] == '+') {
+            keybind_adjust_master_ratio((void *)(intptr_t)(atof(&args[0][1]) * 10000));
+        } else if(args[0][1] == '-') {
+            keybind_adjust_master_ratio((void *)(intptr_t)(-atof(&args[0][1]) * 10000));
+        } else {
+            keybind_set_master_ratio((void *)(intptr_t)(atof(args[0]) * 10000));
+        }
     }
 
 done:
