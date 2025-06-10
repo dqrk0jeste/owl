@@ -605,6 +605,8 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
             (toplevel->workspace->fullscreen != NULL && toplevel != toplevel->workspace->fullscreen))
         return;
 
+    // keep the old output; we need this for warping
+    struct output *prev_output = server.active_workspace->output;
     // we change the workspace if needed, this is primarly because of the activation protocol
     change_workspace(toplevel->workspace, true);
 
@@ -617,6 +619,8 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
 
         rules_update_for_toplevel(prev, true);
         decoration_set_active(&prev->decoration, false);
+
+        prev_output = prev->workspace->output;
     }
 
     // if the toplevel is floating we keep it at the beggining of the list, so we know the z-indexing
@@ -641,7 +645,7 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
     }
 
     if(jump_cursor) {
-        cursor_warp_toplevel(toplevel, prev->workspace->output);
+        cursor_warp_toplevel(toplevel, prev_output);
     }
 
     ipc_send_focused_toplevel();

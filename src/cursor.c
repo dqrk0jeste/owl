@@ -190,6 +190,9 @@ handle_motion_shared(uint32_t time) {
     // set global active workspace
     if(output->active_workspace != server.active_workspace) {
         server.active_workspace = output->active_workspace;
+        if(server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
+            cursor_stop_move_resize();
+        }
         ipc_send_active_workspace();
     }
 
