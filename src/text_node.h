@@ -12,6 +12,11 @@ struct text_node {
     struct font *font;
     struct color color;
     float scale;
+    // there used to happen a really weird bug when changing the scale. updating the scale would `squish` the text a
+    // bit, and that may immediatelly change the primary output the previous one, which would then `grow` the text,
+    // setting the new scale again, and so on, getting into a recursive loop, and ending in a stack overflow. this flag
+    // makes sure that we only update the scale if it isnt currently being updated
+    bool updating_scale;
 
     char *text;  // utf8 encoded text
 

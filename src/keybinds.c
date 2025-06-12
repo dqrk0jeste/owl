@@ -202,7 +202,7 @@ keybind_move_focus(void *data) {
     if(server.grabbed_toplevel != NULL && toplevel == server.grabbed_toplevel)
         return;
 
-    enum direction direction = (uintptr_t)data;
+    enum direction direction = (intptr_t)data;
 
     // if no toplevel has keyboard focus then get the active output and try from there
     if(toplevel == NULL) {

@@ -245,18 +245,13 @@ add_keybind(struct config *c, char *modifiers, char *key, char *action, char **a
         NEED_ARGUMENTS(1);
 
         if(args[0][0] == '+') {
-            wlr_log(WLR_ERROR, "master ratio +");
             keybind.action = keybind_adjust_master_ratio;
             // ugly hack to keep a double in this field, tho with less digits of precision
             keybind.data = (void *)(intptr_t)(atof(&(args[0][1])) * 100000);
-            wlr_log(WLR_ERROR, "keybind.data = %d", (int)keybind.data);
         } else if(args[0][0] == '-') {
-            wlr_log(WLR_ERROR, "master ratio -");
             keybind.action = keybind_adjust_master_ratio;
             keybind.data = (void *)(intptr_t)(-atof(&(args[0][1])) * 100000);
-            wlr_log(WLR_ERROR, "keybind.data = %d", (int)keybind.data);
         } else {
-            wlr_log(WLR_ERROR, "master ratio nothing");
             keybind.action = keybind_set_master_ratio;
             keybind.data = (void *)(intptr_t)(atof(args[0]) * 100000);
         }

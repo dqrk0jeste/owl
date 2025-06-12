@@ -157,13 +157,15 @@ render_node(struct text_node *node) {
 
 static void
 set_scale(struct text_node *node, float scale) {
-    if(scale == node->scale)
+    if(scale == node->scale || node->updating_scale)
         return;
 
     node->scale = scale;
     node->current_font = font_get_at_scale(node->font, scale);
     // rerender the text for the new scale
+    node->updating_scale = true;
     render_node(node);
+    node->updating_scale = false;
 }
 
 static void

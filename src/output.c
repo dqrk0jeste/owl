@@ -31,7 +31,7 @@ transfer_existing_workspaces(struct output *output) {
     struct output *iter_output;
     struct workspace *iter_workspace, *tmp;
     wl_list_for_each(iter_output, &server.outputs, link) {
-        // we skip this one if in the list
+        // we skip this one
         if(iter_output == output)
             continue;
 
@@ -39,7 +39,7 @@ transfer_existing_workspaces(struct output *output) {
             if(strcmp(iter_workspace->original_output, output->wlr_output->name) == 0) {
                 struct toplevel *iter_toplevel;
                 wl_list_for_each(iter_toplevel, &iter_workspace->floating, link) {
-                    // place floating at the same relative coords. do this before changing `iter->workspace->output`
+                    // place floating at the same relative coords. do this before changing `iter_workspace->output`
                     struct wlr_box box = iter_toplevel->deco_box;
                     get_same_relative_coords(&box.x, &box.y, &iter_workspace->output->usable_area,
                             &output->usable_area);
@@ -50,14 +50,16 @@ transfer_existing_workspaces(struct output *output) {
                 iter_workspace->output = output;
                 wl_list_remove(&iter_workspace->link);
                 wl_list_insert(&output->workspaces, &iter_workspace->link);
+                // configure the layout
+                layout_configure(iter_workspace);
             }
         }
 
-        // after we have moved all the workspaces from this output we need to patch its active workspace
+        // after we have moved all the workspaces from this output we need to patch its active workspace if moved
         if(iter_output->active_workspace->output != iter_output) {
             assert(!wl_list_empty(&iter_output->workspaces));
             struct workspace *first = wl_container_of(iter_output->workspaces.next, first, link);
-            change_workspace(first, false);
+            change_workspace(first, true);
         }
     }
 }
@@ -348,6 +350,8 @@ handle_new_output(struct wl_listener *listener, void *data) {
     // we take the first workspace for the active one for this output
     struct workspace *first = wl_container_of(output->workspaces.next, first, link);
     output->active_workspace = first;
+    // if this output is hotplugged, then we show the toplevels retrieved (if any)
+    workspace_toplevels_set_enabled(first, true);
 
     // and for the globally active if there isnt one
     if(server.active_workspace == NULL) {
@@ -371,8 +375,6 @@ handle_new_output(struct wl_listener *listener, void *data) {
 void
 focus_output(struct output *output, enum direction direction) {
     struct workspace *workspace = output->active_workspace;
-    server.active_workspace = workspace;
-    ipc_send_active_workspace();
 
     if(server.mode == SERVER_MODE_LOCKED) {
         if(!wl_list_empty(&server.lock_manager.current_lock->surfaces)) {
@@ -385,6 +387,7 @@ focus_output(struct output *output, enum direction direction) {
     if(server.mode > SERVER_MODE_CAN_GIVE_FOCUS || server.exclusive)
         return;
 
+    // todo: can this be replaced with `change_workspace()` ?
     if(workspace->fullscreen != NULL) {
         focus_toplevel(workspace->fullscreen, true);
     } else if(has_floating(workspace)) {
@@ -395,6 +398,9 @@ focus_output(struct output *output, enum direction direction) {
         unfocus_focused_toplevel();
         cursor_warp_output(output);
     }
+
+    server.active_workspace = workspace;
+    ipc_send_active_workspace();
 }
 
 static int wlr_direction_from[] = {

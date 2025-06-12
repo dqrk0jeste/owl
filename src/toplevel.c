@@ -605,22 +605,24 @@ focus_toplevel(struct toplevel *toplevel, bool jump_cursor) {
             (toplevel->workspace->fullscreen != NULL && toplevel != toplevel->workspace->fullscreen))
         return;
 
-    // keep the old output; we need this for warping
+    // keep the old output; we need this for warping. note: this is overriden later if there is a focused toplevel
+    // already, since the active workspace != focused toplevels workspace
     struct output *prev_output = server.active_workspace->output;
-    // we change the workspace if needed, this is primarly because of the activation protocol
+
+    // change the workspace if needed, this is primarly because of the activation protocol
     change_workspace(toplevel->workspace, true);
 
     struct toplevel *prev = server.focused_toplevel;
     server.focused_toplevel = toplevel;
 
     if(prev != NULL) {
+        prev_output = prev->workspace->output;
+
         wlr_xdg_toplevel_set_activated(prev->xdg_toplevel, false);
         wlr_foreign_toplevel_handle_v1_set_activated(prev->foreign_toplevel_handle->wlr_handle, false);
 
         rules_update_for_toplevel(prev, true);
         decoration_set_active(&prev->decoration, false);
-
-        prev_output = prev->workspace->output;
     }
 
     // if the toplevel is floating we keep it at the beggining of the list, so we know the z-indexing

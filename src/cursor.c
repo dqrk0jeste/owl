@@ -414,7 +414,7 @@ cursor_stop_move_resize(void) {
 
 void
 cursor_warp_output(struct output *output) {
-    if(server.config->cursor.warp > CURSOR_WARP_ON_OUTPUT_CHANGE)
+    if(server.config->cursor.warp < CURSOR_WARP_ON_OUTPUT_CHANGE)
         return;
 
     struct wlr_box output_box;
