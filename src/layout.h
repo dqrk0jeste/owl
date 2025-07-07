@@ -1,37 +1,66 @@
 #pragma once
 
-#include "output.h"
-#include "mwc.h"
-
 #include <stdint.h>
 
-void
-calculate_masters_dimensions(struct mwc_output *output, uint32_t master_count,
-                             uint32_t slave_count, uint32_t *width, uint32_t *height);
+#include "toplevel.h"
+#include "workspace.h"
 
 void
-calculate_slaves_dimensions(struct mwc_output *output, uint32_t slave_count,
-                            uint32_t *width, uint32_t *height);
+layout_get_masters_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
+        int *height);
+
+void
+layout_get_slaves_container_size(struct workspace *workspace, int master_count, int slave_count, int *width,
+        int *height);
+
+struct toplevel *
+next_master(struct toplevel *toplevel);
+
+struct toplevel *
+prev_master(struct toplevel *toplevel);
+
+struct toplevel *
+next_slave(struct toplevel *toplevel);
+
+struct toplevel *
+prev_slave(struct toplevel *toplevel);
+
+struct toplevel *
+first_master(struct workspace *workspace);
+
+struct toplevel *
+last_master(struct workspace *workspace);
+
+struct toplevel *
+first_slave(struct workspace *workspace);
+
+struct toplevel *
+last_slave(struct workspace *workspace);
+
+void
+demote_last_master(struct workspace *workspace);
+
+void
+promote_last_slave(struct workspace *workspace);
 
 bool
-toplevel_is_master(struct mwc_toplevel *toplevel);
+has_masters(struct workspace *workspace);
 
 bool
-toplevel_is_slave(struct mwc_toplevel *toplevel);
+has_slaves(struct workspace *workspace);
 
 void
-layout_set_pending_state(struct mwc_workspace *workspace);
+layout_add(struct workspace *workspace, struct toplevel *toplevel);
 
-/* this function assumes they are in the same workspace and
- * that t2 comes after t1 if in the same list */
 void
-layout_swap_tiled_toplevels(struct mwc_toplevel *t1,
-                            struct mwc_toplevel *t2);
+layout_configure(struct workspace *workspace);
 
-struct mwc_toplevel *
-layout_find_closest_tiled_toplevel(struct mwc_workspace *workspace, bool master,
-                                   enum mwc_direction side);
+// this function assumes they are in the same workspace and that t2 comes after t1 if in the same list
+void
+layout_swap(struct toplevel *t1, struct toplevel *t2);
 
-struct mwc_toplevel *
-layout_toplevel_at(struct mwc_workspace *workspace, uint32_t x, uint32_t y);
+// struct toplevel *
+// layout_find_closest_toplevel(struct workspace *workspace, bool master, enum direction side);
 
+void
+layout_insert_toplevel_at(struct toplevel *toplevel, int x, int y);

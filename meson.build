@@ -1,7 +1,7 @@
 project(
   'mwc',
   'c',
-  version: '0.1.0',
+  version: '0.2.0',
   license: 'MIT',
 )
 
@@ -37,25 +37,36 @@ foreach f : protocol_files
 endforeach
 
 src = [
-  'src/config.c',
-  'src/decoration.c',
-  'src/dnd.c',
-  'src/gamma_control.c',
-  'src/helpers.c',
-  'src/ipc.c',
-  'src/keybinds.c',
-  'src/keyboard.c',
-  'src/layer_surface.c',
-  'src/layout.c',
-  'src/mwc.c',
-  'src/output.c',
-  'src/pointer.c',
-  'src/popup.c',
-  'src/rendering.c',
-  'src/session_lock.c',
-  'src/something.c',
-  'src/toplevel.c',
-  'src/workspace.c'
+    'src/animations.c',
+    'src/config.c',
+    'src/constraint.c',
+    'src/cursor.c',
+    'src/cursor_shape.c',
+    'src/decoration.c',
+    'src/effects.c',
+    'src/font.c',
+    'src/foreign_toplevel.c',
+    'src/gamma_control.c',
+    'src/helpers.c',
+    'src/ipc.c',
+    'src/keybinds.c',
+    'src/keyboard.c',
+    'src/layer_shell.c',
+    'src/layout.c',
+    'src/mwc.c',
+    'src/output.c',
+    'src/pixman_buffer.c',
+    'src/pointer.c',
+    'src/popup.c',
+    'src/relative_pointer.c',
+    'src/rules.c',
+    'src/seat.c',
+    'src/session_lock.c',
+    'src/text_node.c',
+    'src/toplevel.c',
+    'src/view.c',
+    'src/workspace.c',
+    'src/xdg_shell.c',
 ]
 
 inc = [
@@ -66,10 +77,13 @@ inc = [
 
 deps = [
   dependency('wayland-server'),
-  dependency('scenefx-0.2', version: '>=0.2.0', fallback: 'scenefx'),
+  dependency('scenefx-0.2', version: '>=0.2.0'),
   dependency('wlroots-0.18', version: ['>=0.18.0', '<0.19.0'], fallback: 'wlroots'),
+  dependency('pixman-1'),
   dependency('xkbcommon'),
   dependency('libinput'),
+  dependency('fcft'),
+  dependency('json-c'),
 ]
 
 executable('mwc',

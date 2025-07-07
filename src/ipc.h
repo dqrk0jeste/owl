@@ -1,13 +1,23 @@
+#pragma once
+
+#include <stdbool.h>
+
 #include "ipc_shared.h"
 
-enum ipc_event {
-  IPC_ACTIVE_WORKSPACE,
-  IPC_ACTIVE_TOPLEVEL,
-  IPC_EVENT_COUNT,
-};
+void
+ipc_init(void);
 
 void
-ipc_broadcast_message(enum ipc_event event);
+ipc_deinit(void);
 
-void *
-ipc_run(void *args);
+bool
+ipc_running(void);
+
+void
+ipc_send_active_workspace(void);
+
+void
+ipc_send_focused_toplevel(void);
+
+void
+ipc_send_focused_layer(void);

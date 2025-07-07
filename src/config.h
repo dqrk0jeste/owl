@@ -1,206 +1,319 @@
 #pragma once
 
-#include "helpers.h"
-
-#include <scenefx/types/fx/blur_data.h>
-#include <scenefx/types/fx/corner_location.h>
-
 #include <libinput.h>
 #include <regex.h>
+#include <scenefx/types/fx/blur_data.h>
+#include <scenefx/types/fx/corner_location.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <wayland-server-core.h>
-#include <wayland-server-protocol.h>
 
-#define BAKED_POINTS_COUNT 256
+#include "decoration.h"
+#include "helpers.h"
+#include "keybinds.h"
 
-struct window_rule_regex {
-  bool has_app_id_regex;
-  regex_t app_id_regex;
-  bool has_title_regex;
-  regex_t title_regex;
-};
+enum output_field {
+    OUTPUT_FIELD_MATCH_NAME = 1 << 0,
 
-struct window_rule_float {
-  struct window_rule_regex condition;
-  struct wl_list link;
-};
-
-struct window_rule_size {
-  struct window_rule_regex condition;
-  struct wl_list link;
-  bool relative_width;
-  uint32_t width;
-  bool relative_height;
-  uint32_t height;
-};
-
-struct window_rule_opacity {
-  struct window_rule_regex condition;
-  struct wl_list link;
-  double inactive_value;
-  double active_value;
-};
-
-struct layer_rule_regex {
-  bool has;
-  regex_t regex;
-};
-
-struct layer_rule_blur {
-  struct layer_rule_regex condition;
-  struct wl_list link;
+    OUTPUT_FIELD_MODE = 1 << 1,
+    OUTPUT_FIELD_POSITION = 1 << 2,
+    OUTPUT_FIELD_SCALE = 1 << 3,
+    OUTPUT_FIELD_WORKSPACES = 1 << 4,
+    OUTPUT_FIELD_MASTER_COUNT = 1 << 5,
+    OUTPUT_FIELD_MASTER_RATIO = 1 << 6,
 };
 
 struct output_config {
-  char *name;
-  struct wl_list link;
-  uint32_t width;
-  uint32_t height;
-  uint32_t refresh_rate;
-  uint32_t x;
-  uint32_t y;
-  double scale;
+    uint32_t specified;  // bitmask of `enum output_field`
+    char *name;
+
+    int width, height, refresh;
+    int x, y;
+    double scale;
+    int *workspaces;  // array
+    int master_count;
+    double master_ratio;
 };
 
-struct workspace_config {
-  uint32_t index;
-  char *output;
-  struct wl_list link;
+enum pointer_field {
+    POINTER_FIELD_MATCH_NAME = 1 << 0,
+
+    POINTER_FIELD_SENSITIVITY = 1 << 1,
+    POINTER_FIELD_ACCELERATION = 1 << 2,
+    POINTER_FIELD_LEFT_HANDED = 1 << 3,
 };
 
 struct pointer_config {
-  char *name;
-  double sensitivity;
-  enum libinput_config_accel_profile acceleration;
-  struct wl_list link;
+    uint32_t specified;  // bitmask of `pointer_field`
+    char *name;
+
+    double sensitivity;
+    enum libinput_config_accel_profile acceleration;
+    bool left_handed;
 };
 
-/* we usually can tell if an option is specified or not by comparing them to 0 (or NULL),
- * but sometimes 0 can also mean something else. for such options we add another bool value
- * to tell if they are specified or not. */
-#define WITH_SPECIFIED(type) struct { \
-  type value;                         \
-  bool specified;                     \
-}                                     \
+enum keyboard_field {
+    KEYBOARD_FIELD_MATCH_NAME = 1 << 0,
 
-struct mwc_config {
-  char *dir; // NULL if default
-
-  struct wl_list outputs;
-  struct wl_list keybinds;
-  struct wl_list pointer_keybinds;
-  struct wl_list workspaces;
-  struct {
-    struct wl_list floating;
-    struct wl_list size;
-    struct wl_list opacity;
-  } window_rules;
-
-  struct {
-    struct wl_list blur;
-  } layer_rules;
-
-  /* keyboard stuff */
-  char *keymap_layouts;
-  char *keymap_variants;
-  char *keymap_options;
-  uint32_t keyboard_rate;
-  uint32_t keyboard_delay;
-
-  /* pointer stuff */
-  double pointer_sensitivity;
-  bool pointer_acceleration;
-  struct wl_list pointers;
-  bool pointer_left_handed;
-
-  /* trackpad stuff */
-  bool trackpad_disable_while_typing;
-  bool trackpad_natural_scroll;
-  bool trackpad_tap_to_click;
-  enum libinput_config_scroll_method trackpad_scroll_method;
-
-  /* cursor theme and size */
-  char *cursor_theme;
-  uint32_t cursor_size;
-
-  /* general toplevel and layout stuff */
-  uint32_t min_toplevel_size;
-  float inactive_border_color[4];
-  float active_border_color[4];
-  double inactive_opacity;
-  double active_opacity;
-  bool apply_opacity_when_fullscreen;
-  uint32_t border_width;
-  uint32_t outer_gaps;
-  uint32_t inner_gaps;
-
-  /* eye-candy */
-  uint32_t border_radius;
-  enum corner_location border_radius_location;
-  bool blur;
-  struct blur_data blur_params;
-  bool shadows;
-  uint32_t shadows_size;
-  struct {
-    int32_t x;
-    int32_t y;
-  } shadows_position;
-  float shadows_color[4];
-  double shadows_blur;
-
-  uint32_t master_count;
-  double master_ratio;
-  bool client_side_decorations;
-
-  /* animations stuff */
-  bool animations;
-  uint32_t animation_duration;
-  double animation_curve[4];
-  struct vec2 *baked_points;
-
-  /* run on startup */
-  char *run[64];
-  size_t run_count;
+    KEYBOARD_FIELD_RATE = 1 << 1,
+    KEYBOARD_FIELD_DELAY = 1 << 2,
+    KEYBOARD_FIELD_OPTIONS = 1 << 3,
 };
 
-struct vec2
-calculate_animation_curve_at(struct mwc_config *c, double t);
+struct keyboard_config {
+    uint32_t specified;  // bitmask of `keyboard_field`
+    char *name;
+
+    int rate, delay;
+    char *options;
+};
+
+struct trackpad_config {
+    bool disable_while_typing, natural_scroll, tap_to_click;
+    enum libinput_config_scroll_method scroll_method;
+};
+
+enum cursor_warp {
+    CURSOR_WARP_NEVER = 0,
+    CURSOR_WARP_ON_OUTPUT_CHANGE,
+    CURSOR_WARP_ALWAYS,
+};
+
+struct cursor_config {
+    char *theme;
+    int size;
+
+    enum cursor_warp warp;
+    int hide_after;
+};
+
+enum gaps_field {
+    GAPS_FIELD_MATCH_OUTPUT = 1 << 0,
+    GAPS_FIELD_MATCH_MASTER_COUNT = 1 << 1,
+    GAPS_FIELD_MATCH_SLAVE_COUNT = 1 << 2,
+
+    GAPS_FIELD_OUTER = 1 << 3,
+    GAPS_FIELD_INNER = 1 << 4,
+};
+
+struct gaps {
+    int top, right, bottom, left;
+};
+
+struct gaps_config {
+    uint32_t specified;  // bitmask of `layout_field`
+    char *output;
+    enum relation master_relation;
+    int master_count;
+    enum relation slave_relation;
+    int slave_count;
+
+    struct gaps inner, outer;
+};
+
+struct titlebar_config {
+    int height;
+    struct {
+        struct color active, inactive;
+    } color;
+
+    struct {
+        bool enabled;
+        int size;
+        struct {
+            int left, right;
+        } padding;
+        enum titlebar_close_button_shape shape;
+        enum titlebar_close_button_position position;
+        struct {
+            struct color active, inactive;
+        } color;
+    } close_button;
+
+    struct {
+        bool enabled;
+        int size;
+        enum titlebar_title_position position;
+        struct {
+            int left, right;
+        } padding;
+        struct color color;
+        char **fonts;
+    } title;
+};
+
+struct border_config {
+    int width;
+    struct {
+        struct color active, inactive;
+    } color;
+};
+
+struct shadow_config {
+    int size;
+    int x, y;
+    struct {
+        struct color inactive, active;
+    } color;
+    double blur;
+};
+
+struct animations_config {
+    bool enabled;
+    int duration;
+    double curve[4];
+};
+
+struct blur_config {
+    struct blur_data params;
+};
+
+enum toplevel_field {
+    TOPLEVEL_FIELD_MATCH_APP_ID = 1 << 0,
+    TOPLEVEL_FIELD_MATCH_TITLE = 1 << 1,
+    TOPLEVEL_FIELD_MATCH_MODE = 1 << 2,
+    TOPLEVEL_FIELD_MATCH_FOCUSED = 1 << 3,
+    TOPLEVEL_FIELD_MATCH_FAKE_FULLSCREEN = 1 << 4,
+    TOPLEVEL_FIELD_MATCH_MASTER_COUNT = 1 << 5,
+    TOPLEVEL_FIELD_MATCH_SLAVE_COUNT = 1 << 6,
+
+    TOPLEVEL_FIELD_CORNER_RADIUS = 1 << 7,
+    TOPLEVEL_FIELD_CORNER_LOCATION = 1 << 8,
+    TOPLEVEL_FIELD_OPACITY = 1 << 9,
+    TOPLEVEL_FIELD_APPLY_OPACITY_TO_DECORATIONS = 1 << 10,
+    TOPLEVEL_FIELD_CLIENT_SIDE_DECORATIONS = 1 << 11,
+    TOPLEVEL_FIELD_BLUR = 1 << 12,
+    TOPLEVEL_FIELD_SHADOW = 1 << 13,
+    TOPLEVEL_FIELD_BORDER = 1 << 14,
+    TOPLEVEL_FIELD_TITLEBAR = 1 << 15,
+    TOPLEVEL_FIELD_DEFAULT_MODE = 1 << 16,
+    TOPLEVEL_FIELD_DEFAULT_SIZE = 1 << 17,
+    TOPLEVEL_FIELD_DEFAULT_POSITION = 1 << 18,
+};
+
+enum toplevel_default_mode {
+    TOPLEVEL_DEFAULT_MODE_FLOATING,
+    TOPLEVEL_DEFAULT_MODE_TILED,
+};
+
+enum toplevel_mode_ext {
+    TOPLEVEL_MODE_EXT_MASTER = 1 << 0,
+    TOPLEVEL_MODE_EXT_SLAVE = 1 << 1,
+    TOPLEVEL_MODE_EXT_FLOATING = 1 << 2,
+    TOPLEVEL_MODE_EXT_FULLSCREEN = 1 << 3,
+    TOPLEVEL_MODE_EXT_MOVING = 1 << 4,
+    TOPLEVEL_MODE_EXT_RESIZING = 1 << 5,
+};
+
+enum anchor {
+    ANCHOR_CENTER = 0,
+    ANCHOR_TOP_LEFT,
+    ANCHOR_TOP_RIGHT,
+    ANCHOR_BOTTOM_RIGHT,
+    ANCHOR_BOTTOM_LEFT,
+};
+
+struct toplevel_config {
+    uint32_t specified;  // bitmask of `enum toplevel_field`
+
+    // these fields will be matched on
+    regex_t app_id, title;
+    enum toplevel_mode_ext mode;
+    enum relation master_relation;
+    int master_count;
+    enum relation slave_relation;
+    int slave_count;
+    bool is_focused, is_fake_fullscreen;
+
+    // these will be applied if matching
+    int corner_radius;
+    enum corner_location corner_location;
+    double opacity;
+    bool apply_opacity_to_decorations;
+    bool client_side_decorations;
+    enum blur blur;
+    bool shadow, border, titlebar;
+    enum toplevel_default_mode default_mode;
+    int default_width, default_height;
+    bool width_is_relative, height_is_relative;
+    struct default_position {
+        enum anchor anchor;
+        int x, y;
+    } default_position;
+};
+
+enum layer_field {
+    LAYER_FIELD_MATCH_NAMESPACE = 1 << 0,
+
+    LAYER_FIELD_BLUR = 1 << 1,
+    LAYER_FIELD_BLUR_IGNORE_TRANSPARENT = 1 << 2,
+};
+
+struct layer_config {
+    uint32_t specified;  // bitmaks of `layer_field`
+    regex_t namespace;
+
+    enum blur blur;
+    bool blur_ignore_transparent;
+};
+
+enum config_section {
+    CONFIG_SECTION_NONE = 0,
+    CONFIG_SECTION_ENV,
+    CONFIG_SECTION_ON_STARTUP,
+    CONFIG_SECTION_OUTPUT,
+    CONFIG_SECTION_KEYBOARD,
+    CONFIG_SECTION_KEYMAPS,
+    CONFIG_SECTION_POINTER,
+    CONFIG_SECTION_TRACKPAD,
+    CONFIG_SECTION_CURSOR,
+    CONFIG_SECTION_GAPS,
+    CONFIG_SECTION_TITLEBAR,
+    CONFIG_SECTION_TITLEBAR_CLOSE_BUTTON,
+    CONFIG_SECTION_TITLEBAR_TITLE,
+    CONFIG_SECTION_BORDER,
+    CONFIG_SECTION_SHADOW,
+    CONFIG_SECTION_ANIMATIONS,
+    CONFIG_SECTION_BLUR,
+    CONFIG_SECTION_KEYBINDS,
+    CONFIG_SECTION_TOPLEVEL,
+    CONFIG_SECTION_LAYER,
+};
+
+struct config {
+    char **on_startup;  // array
+    struct output_config *outputs;  // array
+    struct keyboard_config *keyboards;  // array
+    char *keymap_layouts, *keymap_variants;  // string
+    struct pointer_config *pointers;  // array
+    struct trackpad_config trackpad;
+    struct cursor_config cursor;
+    struct gaps_config *gaps;  // array
+    struct titlebar_config titlebar;
+    struct border_config border;
+    struct shadow_config shadow;
+    struct animations_config animations;
+    struct blur_config blur;
+    struct keybind *keybinds, *pointer_keybinds;  // array
+    struct toplevel_config *toplevels;  // array
+    struct layer_config *layers;  // array
+
+    // a value that tells if we should or should not have blur nodes enabled. we do this to minimize the
+    // load if the user does not want any blur, so that the blur is not recalculated at all.
+    bool needs_optimized_blur;
+};
+
+struct config *
+config_load(char *path);
 
 void
-bake_bezier_curve_points(struct mwc_config *c);
+config_destroy(struct config *c);
+
+void
+config_watcher_init(char *dir);
+
+void
+config_watcher_deinit(void);
 
 bool
-config_add_window_rule(struct mwc_config *c, char *app_id_regex, char *title_regex,
-                       char *predicate, char **args, size_t arg_count);
-
-bool
-config_add_keybind(struct mwc_config *c, char *modifiers, char *key,
-                   char* action, char **args, size_t arg_count);
-
-void
-config_free_args(char **args, size_t arg_count);
-
-bool
-config_handle_value(struct mwc_config *c, char *keyword, char **args, size_t arg_count);
-
-/* assumes the line is newline teriminated, as it should be with fgets() */
-bool
-config_handle_line(char *line, size_t line_number, char **keyword,
-                   char ***args, size_t *args_count);
-
-struct mwc_config *
-config_load();
-
-void
-config_set_default_needed_params(struct mwc_config *c);
-
-void
-config_reload();
-
-void
-config_destroy(struct mwc_config *c);
-
-void *
-config_watch(void *data);
+config_watcher_running(void);

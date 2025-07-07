@@ -1,277 +1,303 @@
-#include <scenefx/types/wlr_scene.h>
-
 #include "workspace.h"
 
+#include <assert.h>
+#include <limits.h>
+#include <scenefx/types/wlr_scene.h>
+#include <stdint.h>
+
+#include "helpers.h"
+#include "ipc.h"
+#include "layer_shell.h"
 #include "layout.h"
 #include "mwc.h"
-#include "ipc.h"
-#include "keybinds.h"
-#include "layer_surface.h"
-#include "something.h"
+#include "view.h"
 
-#include <assert.h>
-#include <stdlib.h>
+extern struct server server;
 
-extern struct mwc_server server;
+bool
+has_floating(struct workspace *workspace) {
+    return !wl_list_empty(&workspace->floating);
+}
 
-void
-workspace_create_for_output(struct mwc_output *output, struct workspace_config *config) {
-  struct mwc_workspace *workspace = calloc(1, sizeof(*workspace));
+struct toplevel *
+next_floating(struct toplevel *toplevel) {
+    if(toplevel->link.next == &toplevel->workspace->floating)
+        return NULL;
 
-  wl_list_init(&workspace->floating_toplevels);
-  wl_list_init(&workspace->masters);
-  wl_list_init(&workspace->slaves);
+    struct toplevel *t = wl_container_of(toplevel->link.next, t, link);
+    return t;
+}
 
-  workspace->output = output;
-  workspace->index = config->index;
-  workspace->config = config;
+struct toplevel *
+prev_floating(struct toplevel *toplevel) {
+    if(toplevel->link.prev == &toplevel->workspace->floating)
+        return NULL;
 
-  wl_list_insert(&output->workspaces, &workspace->link);
+    struct toplevel *t = wl_container_of(toplevel->link.prev, t, link);
+    return t;
+}
 
-  /* if first then set it active */
-  if(output->active_workspace == NULL) {
-    output->active_workspace = workspace;
-  }
+struct toplevel *
+first_floating(struct workspace *workspace) {
+    if(wl_list_empty(&workspace->floating))
+        return NULL;
 
-  struct keybind *k;
-  wl_list_for_each(k, &server.config->keybinds, link) {
-    /* we didnt have information about what workspace this is going to be,
-     * so we only kept an index. now we replace it with
-     * the actual workspace pointer */
-    if(k->action == keybind_change_workspace && (uint64_t)k->args == workspace->index) {
-      k->args = workspace;
-      k->initialized = true;
-    } else if(k->action == keybind_move_focused_toplevel_to_workspace
-              && (uint64_t)k->args == workspace->index) {
-      k->args = workspace;
-      k->initialized = true;
+    struct toplevel *t = wl_container_of(workspace->floating.next, t, link);
+    return t;
+}
+
+struct toplevel *
+last_floating(struct workspace *workspace) {
+    if(wl_list_empty(&workspace->floating))
+        return NULL;
+
+    struct toplevel *t = wl_container_of(workspace->floating.prev, t, link);
+    return t;
+}
+
+static void
+handle_focus(struct workspace *workspace) {
+    if(workspace->fullscreen != NULL) {
+        focus_toplevel(workspace->fullscreen, false);
+    } else if(has_floating(workspace)) {
+        focus_toplevel(first_floating(workspace), false);
+    } else if(has_masters(workspace)) {
+        focus_toplevel(first_master(workspace), false);
+    } else {
+        unfocus_focused_toplevel();
     }
-  }
 }
 
 void
-change_workspace(struct mwc_workspace *workspace, bool keep_focus) {
-  /* if it is the same as global active workspace, do nothing */
-  if(server.active_workspace == workspace) return;
+change_workspace(struct workspace *workspace, bool keep_focus) {
+    // if it is the same as global active workspace, do nothing
+    if(server.active_workspace == workspace)
+        return;
 
-  /* if it is an already active on its output, just switch to it */
-  if(workspace == workspace->output->active_workspace) {
-    if(keep_focus) {
-      /* do nothing */
-    } else if(workspace->fullscreen_toplevel != NULL) {
-      focus_toplevel(workspace->fullscreen_toplevel);
-    } else if(!wl_list_empty(&workspace->masters)) {
-      struct mwc_toplevel *t = wl_container_of(workspace->masters.next, t, link);
-      focus_toplevel(t);
-    } else if(!wl_list_empty(&workspace->floating_toplevels)) {
-      struct mwc_toplevel *t = wl_container_of(workspace->floating_toplevels.next, t, link);
-      focus_toplevel(t);
-    } else {
-      unfocus_focused_toplevel();
+    // if we were resizing the layout stop it before switching to new workspace
+    if(server.mode == SERVER_MODE_RESIZING_MASTER_RATIO) {
+        cursor_stop_move_resize();
     }
 
+    // if this workspace is not presented on its output we handle the presentation first
+    if(workspace != workspace->output->active_workspace) {
+        // disable all the toplevels on the current workspace on the output
+        struct workspace *current_workspace = workspace->output->active_workspace;
+        workspace_toplevels_set_enabled(current_workspace, false);
+        if(current_workspace->fullscreen != NULL) {
+            wlr_scene_node_set_enabled(&current_workspace->fullscreen->scene_tree->node, false);
+        }
+
+        if(workspace->fullscreen != NULL) {
+            // if there is a fullscreen toplevel we only enable that one
+            wlr_scene_node_set_enabled(&workspace->fullscreen->scene_tree->node, true);
+            layers_under_fullscreen_set_enabled(workspace->output, false);
+        } else {
+            // else enable all of the toplevels and layers (they may have been disabled if `current_workspace` had a
+            // fullscreen toplevel on it)
+            workspace_toplevels_set_enabled(workspace, true);
+            layers_under_fullscreen_set_enabled(workspace->output, true);
+        }
+    }
+
+    // warp the cursor if this output is not on the same output as currently globally active workspace
+    if(server.active_workspace->output != workspace->output) {
+        cursor_warp_output(workspace->output);
+    }
+
+    // set it as globally active workspace
     server.active_workspace = workspace;
-    cursor_jump_output(workspace->output);
-    ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-    return;
-  }
+    // and also as this outputs active workspace
+    workspace->output->active_workspace = workspace;
 
-  /* else remove all the toplevels on that workspace */
-  struct mwc_toplevel *t;
-  wl_list_for_each(t, &workspace->output->active_workspace->floating_toplevels, link) {
-    wlr_scene_node_set_enabled(&t->scene_tree->node, false);
-  }
-  wl_list_for_each(t, &workspace->output->active_workspace->masters, link) {
-    wlr_scene_node_set_enabled(&t->scene_tree->node, false);
-  }
-  wl_list_for_each(t, &workspace->output->active_workspace->slaves, link) {
-    wlr_scene_node_set_enabled(&t->scene_tree->node, false);
-  }
+    ipc_send_active_workspace();
 
-  /* and show this workspace's toplevels */
-  if(workspace->fullscreen_toplevel != NULL) {
-    wlr_scene_node_set_enabled(&workspace->fullscreen_toplevel->scene_tree->node, true);
-    layers_under_fullscreen_set_enabled(workspace->output, false);
-  } else {
-    wl_list_for_each(t, &workspace->floating_toplevels, link) {
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-    }
-    wl_list_for_each(t, &workspace->masters, link) {
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
-    }
-    wl_list_for_each(t, &workspace->slaves, link) {
-      wlr_scene_node_set_enabled(&t->scene_tree->node, true);
+    // handle the keyboard focus
+    if(!keep_focus && server.mode <= SERVER_MODE_CAN_GIVE_FOCUS && !server.exclusive) {
+        handle_focus(workspace);
     }
 
-    if(workspace->output->active_workspace->fullscreen_toplevel != NULL) {
-      layers_under_fullscreen_set_enabled(workspace->output, true);
-    }
-  }
-
-  if(server.active_workspace->output != workspace->output) {
-    cursor_jump_output(workspace->output);
-  }
-
-  server.active_workspace = workspace;
-  workspace->output->active_workspace = workspace;
-  ipc_broadcast_message(IPC_ACTIVE_WORKSPACE);
-
-  /* same as above */
-  if(keep_focus) {
-    /* do nothing */
-  } else if(workspace->fullscreen_toplevel != NULL) {
-    focus_toplevel(workspace->fullscreen_toplevel);
-  } else if(keep_focus) {
-    return;
-  } else if(!wl_list_empty(&workspace->masters)) {
-    struct mwc_toplevel *t = wl_container_of(workspace->masters.next, t, link);
-    focus_toplevel(t);
-  } else if(!wl_list_empty(&workspace->floating_toplevels)) {
-    struct mwc_toplevel *t = wl_container_of(workspace->floating_toplevels.next, t, link);
-    focus_toplevel(t);
-  } else {
-    unfocus_focused_toplevel();
-  }
+    // and pointer focus
+    cursor_handle_focus(get_now_in_ms(), false);
 }
 
 void
-toplevel_move_to_workspace(struct mwc_toplevel *toplevel,
-                           struct mwc_workspace *workspace) {
-  assert(toplevel != NULL && workspace != NULL);
-  if(toplevel == server.grabbed_toplevel || toplevel->workspace == workspace
-     || workspace->fullscreen_toplevel != NULL) return;
+toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspace) {
+    if(toplevel == server.grabbed_toplevel || toplevel->workspace == workspace || workspace->fullscreen != NULL)
+        return;
 
-  struct mwc_workspace *old_workspace = toplevel->workspace;
-
-  /* handle server state; note: even tho fullscreen toplevel is handled differently
-   * we will still update its underlying type */
-  if(toplevel->floating) {
+    struct workspace *old_workspace = toplevel->workspace;
     toplevel->workspace = workspace;
-    wl_list_remove(&toplevel->link);
-    wl_list_insert(&workspace->floating_toplevels, &toplevel->link);
-  } else if(toplevel_is_master(toplevel)){
-    wl_list_remove(&toplevel->link);
-    if(!wl_list_empty(&old_workspace->slaves)) {
-      struct mwc_toplevel *s = wl_container_of(old_workspace->slaves.next, s, link);
-      wl_list_remove(&s->link);
-      wl_list_insert(old_workspace->masters.prev, &s->link);
-    }
 
-    toplevel->workspace = workspace;
-    if(wl_list_length(&workspace->masters) < server.config->master_count) {
-      wl_list_insert(workspace->masters.prev, &toplevel->link);
+    // handle server state
+    if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
+        old_workspace->fullscreen = NULL;
+        workspace->fullscreen = toplevel;
+    } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING) {
+        wl_list_remove(&toplevel->link);
+        wl_list_insert(&workspace->floating, &toplevel->link);
     } else {
-      wl_list_insert(workspace->slaves.prev, &toplevel->link);
-    }
-  } else {
-    wl_list_remove(&toplevel->link);
+        wl_list_remove(&toplevel->link);
 
-    toplevel->workspace = workspace;
-    if(wl_list_length(&workspace->masters) < server.config->master_count) {
-      wl_list_insert(workspace->masters.prev, &toplevel->link);
-    } else {
-      wl_list_insert(workspace->slaves.prev, &toplevel->link);
-    }
-  }
+        // if its master we try to find its replacement
+        if(toplevel->mode == TOPLEVEL_MODE_MASTER) {
+            old_workspace->master_count--;
+            if(has_slaves(old_workspace)) {
+                promote_last_slave(old_workspace);
+            }
+        } else {
+            old_workspace->slave_count--;
+        }
 
-  /* handle presentation */
-  if(toplevel->fullscreen) {
-    old_workspace->fullscreen_toplevel = NULL;
-    workspace->fullscreen_toplevel = toplevel;
-
-    struct wlr_box output_box;
-    wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
-    toplevel_set_pending_state(toplevel, output_box.x, output_box.y,
-                               output_box.width, output_box.height);
-
-    layers_under_fullscreen_set_enabled(workspace->output, false);
-    if(old_workspace->output != workspace->output) {
-      layers_under_fullscreen_set_enabled(old_workspace->output, true);
+        layout_add(workspace, toplevel);
     }
 
-    if(toplevel->floating) {
-      /* calculate where the toplevel should be placed after exiting fullscreen,
-       * see note for floating bellow */
-      uint32_t old_output_relative_x =
-        toplevel->prev_geometry.x - old_workspace->output->usable_area.x;
-      double relative_x =
-        (double)old_output_relative_x / old_workspace->output->usable_area.width;
+    // change the active workspace before handling the presentation, so the right damage is tracked and for some
+    // animation optimizations while also keeping the focus on this toplevel
+    change_workspace(workspace, true);
 
-      uint32_t old_output_relative_y =
-        toplevel->prev_geometry.y - old_workspace->output->usable_area.y;
-      double relative_y =
-        (double)old_output_relative_y / old_workspace->output->usable_area.height;
+    // handle presentation
+    if(toplevel->mode == TOPLEVEL_MODE_FULLSCREEN) {
+        struct wlr_box output_box;
+        wlr_output_layout_get_box(server.output_layout, workspace->output->wlr_output, &output_box);
+        toplevel_set_state(toplevel, output_box);
 
-      uint32_t new_output_x = workspace->output->usable_area.x
-        + relative_x * workspace->output->usable_area.width;
-      uint32_t new_output_y = workspace->output->usable_area.y
-        + relative_y * workspace->output->usable_area.height;
+        if(old_workspace->output != workspace->output) {
+            // if the output changed then we enable the layers and toplevels on the old output
+            layers_under_fullscreen_set_enabled(old_workspace->output, true);
+            workspace_toplevels_set_enabled(old_workspace, true);
+            // and disable them on this one
+            layers_under_fullscreen_set_enabled(workspace->output, false);
+            workspace_toplevels_set_enabled(workspace, false);
+        }
 
-      toplevel->prev_geometry.x = new_output_x;
-      toplevel->prev_geometry.y = new_output_y;
-    } else {
-      layout_set_pending_state(old_workspace);
+        if(toplevel->prev_mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
+            // calculate where the toplevel should be placed after exiting fullscreen; we use the same relative place on
+            // this output as is was on the last one
+            get_same_relative_coords(&toplevel->prev_deco_box.x, &toplevel->prev_deco_box.y,
+                    &old_workspace->output->usable_area, &workspace->output->usable_area);
+        } else {
+            // invalidate the index
+            toplevel->prev_index = -1;
+            layout_configure(old_workspace);
+        }
+    } else if(toplevel->mode == TOPLEVEL_MODE_FLOATING && old_workspace->output != workspace->output) {
+        // if the toplevel is moved between workspaces on the same output we dont do anything about the presentation;
+        // else we place it at the same relative coords on the new output; here we copy the box, since this state should
+        // not be changed directly
+        struct wlr_box box = toplevel->deco_box;
+        get_same_relative_coords(&box.x, &box.y, &old_workspace->output->usable_area, &workspace->output->usable_area);
+        toplevel_set_state(toplevel, box);
+    } else if(toplevel_is_tiled(toplevel)) {
+        // and if tiled we just configure the layouts of both the old one and the new one
+        layout_configure(old_workspace);
+        layout_configure(workspace);
     }
-  } else if(toplevel->floating && old_workspace->output != workspace->output) {
-    /* we want to place the toplevel to the same relative coordinates,
-     * as the new output may have a different resolution */
-    uint32_t old_output_relative_x =
-      toplevel->scene_tree->node.x - old_workspace->output->usable_area.x;
-    double relative_x =
-      (double)old_output_relative_x / old_workspace->output->usable_area.width;
-
-    uint32_t old_output_relative_y =
-      toplevel->scene_tree->node.y - old_workspace->output->usable_area.y;
-    double relative_y =
-      (double)old_output_relative_y / old_workspace->output->usable_area.height;
-
-    uint32_t new_output_x = workspace->output->usable_area.x
-      + relative_x * workspace->output->usable_area.width;
-    uint32_t new_output_y = workspace->output->usable_area.y
-      + relative_y * workspace->output->usable_area.height;
-
-    toplevel_set_pending_state(toplevel, new_output_x, new_output_y,
-                               toplevel->current.width, toplevel->current.height);
-  } else {
-    layout_set_pending_state(old_workspace);
-    layout_set_pending_state(workspace);
-  }
-
-  /* change active workspace */
-  change_workspace(workspace, true);
 }
 
-struct mwc_toplevel *
-workspace_find_closest_floating_toplevel(struct mwc_workspace *workspace,
-                                         enum mwc_direction side) {
-  struct wl_list *l = workspace->floating_toplevels.next;
-  if(l == &workspace->floating_toplevels) return NULL;
+struct toplevel *
+workspace_find_closest_floating(struct workspace *workspace, enum direction side) {
+    if(!has_floating(workspace))
+        return NULL;
 
-  struct mwc_toplevel *t = wl_container_of(l, t, link);
+    if(side == DIRECTION_UP) {
+        struct toplevel *min = NULL;
+        int min_val = INT_MAX;
 
-  struct mwc_toplevel *min_x = t;
-  struct mwc_toplevel *max_x = t;
-  struct mwc_toplevel *min_y = t;
-  struct mwc_toplevel *max_y = t;
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int y = iter->deco_box.y + iter->deco_box.height / 2;
 
-  wl_list_for_each(t, &workspace->floating_toplevels, link) {
-    if(X(t) < X(min_x)) {
-      min_x = t;
-    } else if(X(t) > X(max_x)) {
-      max_x = t;
+            if(y < min_val) {
+                min = iter;
+                min_val = y;
+            }
+        }
+
+        return min;
+    } else if(side == DIRECTION_DOWN) {
+        struct toplevel *max = NULL;
+        int max_val = INT_MIN;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int y = iter->deco_box.y + iter->deco_box.height / 2;
+
+            if(y > max_val) {
+                max = iter;
+                max_val = y;
+            }
+        }
+
+        return max;
+    } else if(side == DIRECTION_LEFT) {
+        struct toplevel *min = NULL;
+        int min_val = INT_MAX;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int x = iter->deco_box.x + iter->deco_box.width / 2;
+
+            if(x < min_val) {
+                min = iter;
+                min_val = x;
+            }
+        }
+
+        return min;
+    } else if(side == DIRECTION_RIGHT) {
+        struct toplevel *max = NULL;
+        int max_val = INT_MIN;
+
+        struct toplevel *iter;
+        wl_list_for_each(iter, &workspace->floating, link) {
+            int x = iter->deco_box.x + iter->deco_box.width / 2;
+
+            if(x > max_val) {
+                max = iter;
+                max_val = x;
+            }
+        }
+
+        return max;
     }
-    if(Y(t) < Y(min_y)) {
-      min_y = t;
-    } else if(Y(t) > Y(max_y)) {
-      max_y = t;
-    }
-  }
 
-  switch(side) {
-    case MWC_UP: return min_y;
-    case MWC_DOWN: return max_y;
-    case MWC_LEFT: return min_x;
-    case MWC_RIGHT: return max_x;
-  }
+    assert(false && "unreachable");
 }
 
+void
+workspace_toplevels_set_enabled(struct workspace *workspace, bool enabled) {
+    struct toplevel *iter;
+    wl_list_for_each(iter, &workspace->masters, link) {
+        wlr_scene_node_set_enabled(&iter->scene_tree->node, enabled);
+    }
+
+    wl_list_for_each(iter, &workspace->slaves, link) {
+        wlr_scene_node_set_enabled(&iter->scene_tree->node, enabled);
+    }
+
+    wl_list_for_each(iter, &workspace->floating, link) {
+        wlr_scene_node_set_enabled(&iter->scene_tree->node, enabled);
+    }
+}
+
+void
+workspace_set_master_ratio(struct workspace *workspace, double master_ratio) {
+    workspace->master_ratio = clamp(master_ratio, 0.05, 0.95);
+
+    layout_configure(workspace);
+}
+
+struct workspace *
+workspace_find_by_index(int index) {
+    struct output *iter_output;
+    wl_list_for_each(iter_output, &server.outputs, link) {
+        struct workspace *iter_workspace;
+        wl_list_for_each(iter_workspace, &iter_output->workspaces, link) {
+            if(iter_workspace->index == index)
+                return iter_workspace;
+        }
+    }
+
+    return NULL;
+}

@@ -1,37 +1,64 @@
 #pragma once
 
 #include <scenefx/types/wlr_scene.h>
-
-#include "config.h"
-#include "toplevel.h"
-#include "output.h"
-
 #include <wayland-server-protocol.h>
 
-struct mwc_animation;
+#include "config.h"
+#include "output.h"
+#include "toplevel.h"
 
-struct mwc_workspace {
-  struct wl_list link;
+struct workspace {
+    struct wl_list link;
 
-  struct mwc_output *output;
-  uint32_t index;
-  struct workspace_config *config;
+    struct output *output;
+    int index;
 
-  struct wl_list masters;
-  struct wl_list slaves;
-  struct wl_list floating_toplevels;
-  struct mwc_toplevel *fullscreen_toplevel;
+    // when this workspace is reparented by another output, we keep the name of the original output that created this
+    // workspace so we can return it back later if that output is reenabled
+    char *original_output;
+
+    double master_ratio;
+    struct gaps inner_gaps, outer_gaps;
+
+    // we cache these values, as they are used fairly often, and are really easy to track manually
+    int master_count;
+    struct wl_list masters;
+    int slave_count;
+    struct wl_list slaves;
+    struct wl_list floating;
+    struct toplevel *fullscreen;
 };
 
-void
-workspace_create_for_output(struct mwc_output *output, struct workspace_config *config);
+bool
+has_floating(struct workspace *workspace);
+
+struct toplevel *
+next_floating(struct toplevel *toplevel);
+
+struct toplevel *
+prev_floating(struct toplevel *toplevel);
+
+struct toplevel *
+first_floating(struct workspace *workspace);
+
+struct toplevel *
+last_floating(struct workspace *workspace);
 
 void
-change_workspace(struct mwc_workspace *workspace, bool keep_focus);
+change_workspace(struct workspace *workspace, bool keep_focus);
 
 void
-toplevel_move_to_workspace(struct mwc_toplevel *toplevel, struct mwc_workspace *workspace);
+toplevel_move_to_workspace(struct toplevel *toplevel, struct workspace *workspace);
 
-struct mwc_toplevel *
-workspace_find_closest_floating_toplevel(struct mwc_workspace *workspace,
-                                      enum mwc_direction side);
+struct toplevel *
+workspace_find_closest_floating(struct workspace *workspace, enum direction side);
+
+// note: this does not include the fullscreen toplevel if there is one
+void
+workspace_toplevels_set_enabled(struct workspace *workspace, bool enabled);
+
+void
+workspace_set_master_ratio(struct workspace *workspace, double master_ratio);
+
+struct workspace *
+workspace_find_by_index(int index);
