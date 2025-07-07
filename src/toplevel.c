@@ -185,8 +185,8 @@ handle_map(struct wl_listener *listener, void *data) {
     // called when the surface is mapped, or ready to display on the screen
     struct toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
-    // enable the node
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+    // enable the node (if there is no fullscreen toplevel)
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, toplevel->workspace->fullscreen != NULL);
     // we set this flag for the pop-in animation
     toplevel->needs_popin_adjustment = server.config->animations.enabled;
 

@@ -156,7 +156,9 @@ rules_update_for_toplevel(struct toplevel *toplevel, bool configure) {
     // this will also configure the decoration
     decoration_set_types(&toplevel->decoration, types);
 
-    if(configure) {
+    // there was a problem with own size toplevels, we send this only when the toplevel isnt in the process of choosing
+    // its size
+    if(configure && !toplevel->should_choose_size) {
         int width = toplevel->deco_box.width, height = toplevel->deco_box.height;
         decoration_get_content_size(&toplevel->decoration, &width, &height);
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
