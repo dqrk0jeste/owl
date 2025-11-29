@@ -100,7 +100,7 @@ layer_surface_handle_commit(struct wl_listener *listener, void *data) {
 	}
 
   if(server.config->blur && layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND) {
-    wlr_scene_optimized_blur_mark_dirty(output->blur);
+    wlr_scene_optimized_blur_mark_dirty(output->scene_output->scene,output->blur,output->wlr_output);
   }
 }
 
